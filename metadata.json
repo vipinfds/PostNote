@@ -1,0 +1,6 @@
+{
+  "name": "Postnote",
+  "description": "Multi-tenant social studio and post queue calendar for agency teams and private client data.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
