@@ -1,0 +1,7 @@
+export default defineConfig(() => {
+  return {
+    base: '/PostNote/',
+    plugins: [react(), tailwindcss()],
+    // existing configuration...
+  };
+});
