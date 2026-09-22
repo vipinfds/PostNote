@@ -6,7 +6,7 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     // GitHub Pages serves this project from /PostNote/, while Vercel serves it from /.
-    base: process.env.GITHUB_ACTIONS === 'true' ? '/PostNote/' : '/',
+ base: '/PostNote/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
