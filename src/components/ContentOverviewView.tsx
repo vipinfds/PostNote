@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, ChevronDown, Check, Film, Image as ImageIcon, Play } from 'lucide-react';
 import { Post, Client } from '../types';
-import { CATEGORY_COLORS, STATUS_STYLES, formatSectionDate } from '../utils/theme';
+import { CATEGORY_COLORS, STATUS_STYLES, formatSectionDate, getCategoryBadgeStyle } from '../utils/theme';
 
 interface ContentOverviewViewProps {
   posts: Post[];
@@ -69,7 +69,7 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
 
         <button
           onClick={onOpenNewPost}
-          className="px-3.5 py-1.5 bg-[#181E24] hover:bg-black text-white text-xs font-semibold rounded-xl flex items-center gap-1 shadow-xs transition-colors"
+          className="px-3.5 py-1.5 bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-semibold rounded-xl flex items-center gap-1 shadow-xs transition-colors"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
           <span>New</span>
@@ -97,8 +97,8 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
             onClick={() => setFilterMode('upcoming')}
             className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
               filterMode === 'upcoming'
-                ? 'bg-[#181E24] text-white shadow-xs'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+                ? 'bg-[#181E24] dark:bg-[#C44D34] text-white shadow-xs'
+                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
             }`}
           >
             Upcoming
@@ -107,8 +107,8 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
             onClick={() => setFilterMode('all')}
             className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
               filterMode === 'all'
-                ? 'bg-[#181E24] text-white shadow-xs'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+                ? 'bg-[#181E24] dark:bg-[#C44D34] text-white shadow-xs'
+                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
             }`}
           >
             All posts

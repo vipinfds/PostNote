@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Film, Image as ImageIcon, Play } from 'lucide-react';
 import { Post, PostCategory } from '../types';
-import { CATEGORY_COLORS, STATUS_STYLES, formatLongDate } from '../utils/theme';
+import { CATEGORY_COLORS, STATUS_STYLES, formatLongDate, getCategoryBadgeStyle } from '../utils/theme';
 
 interface HomeViewProps {
   posts: Post[];
@@ -467,7 +467,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 </div>
               ) : (
                 selectedDayPosts.map((post) => {
-                  const catStyle = CATEGORY_COLORS[post.category] || CATEGORY_COLORS.POST;
+                  const catStyle = getCategoryBadgeStyle(post.category, isDark);
                   const statStyle = STATUS_STYLES[post.status] || STATUS_STYLES.Planned;
 
                   return (
@@ -488,10 +488,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                         <div className="flex items-center gap-2">
                           <span
                             className="font-bold text-[10px] tracking-wider uppercase px-1.5 py-0.5 rounded"
-                            style={{
-                              color: catStyle.text,
-                              backgroundColor: catStyle.bg,
-                            }}
+                            style={catStyle}
                           >
                             {post.category}
                           </span>

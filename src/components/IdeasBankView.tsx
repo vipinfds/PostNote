@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Plus, CalendarPlus, Pencil, Trash2, X } from 'lucide-react';
 import { Idea, Client, PostCategory } from '../types';
-import { CATEGORY_COLORS } from '../utils/theme';
+import { CATEGORY_COLORS, getCategoryBadgeStyle } from '../utils/theme';
 
 interface IdeasBankViewProps {
   ideas: Idea[];
@@ -103,7 +103,7 @@ export const IdeasBankView: React.FC<IdeasBankViewProps> = ({
         <button
           id="new-idea-btn"
           onClick={openNewModal}
-          className="px-3.5 py-1.5 bg-[#181E24] hover:bg-black text-white text-xs font-semibold rounded-xl flex items-center gap-1 shadow-xs transition-colors"
+          className="px-3.5 py-1.5 bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-semibold rounded-xl flex items-center gap-1 shadow-xs transition-colors"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
           <span>New</span>
@@ -113,7 +113,7 @@ export const IdeasBankView: React.FC<IdeasBankViewProps> = ({
       {/* Ideas List */}
       <div className="space-y-3 mt-4">
         {ideas.map((idea) => {
-          const catStyle = CATEGORY_COLORS[idea.category] || CATEGORY_COLORS.POST;
+          const catStyle = getCategoryBadgeStyle(idea.category, isDark);
 
           return (
             <div
@@ -135,7 +135,7 @@ export const IdeasBankView: React.FC<IdeasBankViewProps> = ({
 
                 <span
                   className="font-bold text-[9px] uppercase px-1.5 py-0.5 rounded tracking-wider"
-                  style={{ color: catStyle.text, backgroundColor: catStyle.bg }}
+                  style={catStyle}
                 >
                   {idea.category}
                 </span>
@@ -226,7 +226,7 @@ export const IdeasBankView: React.FC<IdeasBankViewProps> = ({
                   }`}
                 >
                   {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
+                    <option key={c.id} value={c.id} className="bg-white dark:bg-[#252E38] text-stone-800 dark:text-stone-200">
                       {c.name}
                     </option>
                   ))}
@@ -247,7 +247,7 @@ export const IdeasBankView: React.FC<IdeasBankViewProps> = ({
                   }`}
                 >
                   {categories.map((c) => (
-                    <option key={c} value={c}>
+                    <option key={c} value={c} className="bg-white dark:bg-[#252E38] text-stone-800 dark:text-stone-200">
                       {c}
                     </option>
                   ))}
@@ -301,7 +301,7 @@ export const IdeasBankView: React.FC<IdeasBankViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-[#181E24] hover:bg-black text-white text-xs font-bold uppercase tracking-wider shadow-sm"
+                  className="px-4 py-2 rounded-xl bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-bold uppercase tracking-wider shadow-sm"
                 >
                   {editingIdea ? 'Save' : 'Save Idea'}
                 </button>
