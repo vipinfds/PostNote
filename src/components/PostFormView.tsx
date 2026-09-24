@@ -365,7 +365,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
             }`}
           >
             {clients.map((c) => (
-              <option key={c.id} value={c.id}>
+              <option key={c.id} value={c.id} className="bg-white dark:bg-[#1D242C] text-stone-800 dark:text-stone-200">
                 {c.name}
               </option>
             ))}
@@ -387,9 +387,9 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                 : 'bg-white border-[#E8E4DC] text-stone-800 shadow-xs'
             }`}
           >
-            <option value="">No campaign</option>
+            <option value="" className="bg-white dark:bg-[#1D242C] text-stone-800 dark:text-stone-200">No campaign</option>
             {availableCampaigns.map((camp) => (
-              <option key={camp.id} value={camp.id}>
+              <option key={camp.id} value={camp.id} className="bg-white dark:bg-[#1D242C] text-stone-800 dark:text-stone-200">
                 {camp.name}
               </option>
             ))}
@@ -526,7 +526,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
               }`}
             >
               {statuses.map((s) => (
-                <option key={s} value={s}>
+                <option key={s} value={s} className="bg-white dark:bg-[#1D242C] text-stone-800 dark:text-stone-200">
                   {s}
                 </option>
               ))}
@@ -552,7 +552,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
               }`}
             >
               {categories.map((cat) => (
-                <option key={cat} value={cat}>
+                <option key={cat} value={cat} className="bg-white dark:bg-[#1D242C] text-stone-800 dark:text-stone-200">
                   {cat}
                 </option>
               ))}
@@ -575,7 +575,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
               }`}
             >
               {platforms.map((plat) => (
-                <option key={plat} value={plat}>
+                <option key={plat} value={plat} className="bg-white dark:bg-[#1D242C] text-stone-800 dark:text-stone-200">
                   {plat}
                 </option>
               ))}
@@ -827,7 +827,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
           <button
             id="post-form-submit-btn"
             type="submit"
-            className="w-full py-3 rounded-xl bg-[#181E24] hover:bg-black text-white font-bold text-xs tracking-wider uppercase shadow-md transition-all active:scale-[0.99]"
+            className="w-full py-3 rounded-xl bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white font-bold text-xs tracking-wider uppercase shadow-md transition-all active:scale-[0.99]"
           >
             {isEditing ? 'Save post' : 'Create post'}
           </button>

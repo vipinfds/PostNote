@@ -147,7 +147,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <button
             onClick={onNavigateToTeam}
-            className="w-full py-2.5 rounded-xl bg-[#181E24] hover:bg-black text-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs"
+            className="w-full py-2.5 rounded-xl bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs"
           >
             Manage team
           </button>

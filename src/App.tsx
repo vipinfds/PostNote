@@ -154,21 +154,32 @@ export default function App() {
     localStorage.setItem('postnote_team_v2', JSON.stringify(teamMembers));
   }, [teamMembers]);
 
+  const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e: MediaQueryListEvent) => {
+      setSystemPrefersDark(e.matches);
+    };
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('postnote_theme', theme);
-    if (theme === 'dark') {
+    const effectiveIsDark =
+      theme === 'dark' || (theme === 'system' && systemPrefersDark);
+
+    if (effectiveIsDark) {
       document.documentElement.classList.add('dark');
-    } else if (theme === 'light') {
-      document.documentElement.classList.remove('dark');
     } else {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      if (prefersDark) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
+      document.documentElement.classList.remove('dark');
     }
-  }, [theme]);
+  }, [theme, systemPrefersDark]);
 
   // Toast trigger
   const showToast = (message: string) => {
@@ -389,10 +400,7 @@ export default function App() {
   };
 
   const isDark =
-    theme === 'dark' ||
-    (theme === 'system' &&
-      typeof window !== 'undefined' &&
-      window.matchMedia('(prefers-color-scheme: dark)').matches);
+    theme === 'dark' || (theme === 'system' && systemPrefersDark);
 
   const waitingApprovalsCount = posts.filter((p) => p.status === 'In review').length;
 
