@@ -26,7 +26,7 @@ interface ClientDetailViewProps {
   onBack: () => void;
   onNewPostForClient: (clientId: string) => void;
   onEditPost: (post: Post) => void;
-  onOpenPortal: (client: Client, initialTab?: 'approvals' | 'calendar' | 'analytics', isViewOnly?: boolean) => void;
+  onOpenPortal: (client: Client, initialTab?: 'overview' | 'upcoming' | 'analytics' | 'approvals' | 'calendar', isViewOnly?: boolean) => void;
   isDark?: boolean;
 }
 
@@ -675,7 +675,8 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
         client={client}
-        onOpenPortalPreview={() => onOpenPortal(client, 'analytics', true)}
+        posts={posts}
+        onOpenPortalPreview={() => onOpenPortal(client, 'overview', true)}
         isDark={isDark}
       />
     </div>

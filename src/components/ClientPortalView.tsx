@@ -19,15 +19,18 @@ import {
 import { Client, Post, SubscriptionState } from '../types';
 import { CATEGORY_COLORS } from '../utils/theme';
 
+export type ClientPortalTab = 'overview' | 'upcoming' | 'analytics' | 'approvals' | 'calendar';
+
 interface ClientPortalViewProps {
   client: Client;
   posts: Post[];
   subscription?: SubscriptionState;
-  initialTab?: 'approvals' | 'calendar' | 'analytics';
+  initialTab?: ClientPortalTab;
   isViewOnly?: boolean;
+  isLockedPortal?: boolean;
   onApprovePost: (postId: string) => void;
   onRequestChanges: (postId: string, notes?: string) => void;
-  onExit: () => void;
+  onExit?: () => void;
   isDark?: boolean;
 }
 
@@ -35,18 +38,25 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   client,
   posts,
   subscription,
-  initialTab = 'analytics',
+  initialTab = 'overview',
   isViewOnly = false,
+  isLockedPortal = false,
   onApprovePost,
   onRequestChanges,
   onExit,
   isDark,
 }) => {
-  const [activeTab, setActiveTab] = useState<'approvals' | 'calendar' | 'analytics'>(initialTab);
+  // Normalize initialTab: 'approvals' -> 'overview', 'calendar' -> 'upcoming'
+  const normalizedInitial =
+    initialTab === 'approvals' ? 'overview' : initialTab === 'calendar' ? 'upcoming' : initialTab;
+  const [activeTab, setActiveTab] = useState<'overview' | 'upcoming' | 'analytics'>(
+    normalizedInitial as 'overview' | 'upcoming' | 'analytics'
+  );
   const [feedbackPostId, setFeedbackPostId] = useState<string | null>(null);
   const [feedbackNote, setFeedbackNote] = useState('');
   const [filterPlatform, setFilterPlatform] = useState<string>('all');
 
+  // Filter posts strictly for THIS client only (strict isolation)
   const clientPosts = posts.filter((p) => p.clientId === client.id);
 
   // Status groupings
@@ -100,27 +110,51 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
       }`}
     >
       <div className="max-w-5xl mx-auto w-full">
-        {/* Agency Studio Preview Bar */}
-        <div
-          className={`mb-4 px-4 py-2.5 rounded-2xl border flex items-center justify-between text-xs font-semibold ${
-            isDark
-              ? 'bg-[#1D242C] border-[#2A3440] text-amber-300'
-              : 'bg-amber-50 border-amber-200 text-amber-900'
-          }`}
-        >
-          <div className="flex items-center gap-2 truncate">
-            <Eye className="w-4 h-4 text-amber-600 shrink-0" />
-            <span className="truncate">
-              {isViewOnly ? 'View-Only Analytics Portal' : 'Interactive Client Portal'}: <strong>{client.name}</strong>
+        {/* Preview or Security Bar */}
+        {!isLockedPortal && onExit ? (
+          <div
+            className={`mb-4 px-4 py-2.5 rounded-2xl border flex items-center justify-between text-xs font-semibold ${
+              isDark
+                ? 'bg-[#1D242C] border-[#2A3440] text-amber-300'
+                : 'bg-amber-50 border-amber-200 text-amber-900'
+            }`}
+          >
+            <div className="flex items-center gap-2 truncate">
+              <Eye className="w-4 h-4 text-amber-600 shrink-0" />
+              <span className="truncate">
+                Agency Studio Preview: <strong>{client.name} Portal</strong>
+              </span>
+            </div>
+            <button
+              onClick={onExit}
+              className="px-3 py-1.5 rounded-xl bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 text-xs font-bold shrink-0 hover:opacity-90 transition-opacity"
+            >
+              Exit Preview
+            </button>
+          </div>
+        ) : (
+          <div
+            className={`mb-4 px-4 py-2 rounded-2xl border flex items-center justify-between text-xs ${
+              isDark
+                ? 'bg-[#18212B] border-[#283648] text-stone-300'
+                : 'bg-white border-[#E8E2D8] text-stone-600'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+              <span className="font-semibold text-stone-900 dark:text-white">
+                Private Client Portal
+              </span>
+              <span className="text-stone-400">•</span>
+              <span className="truncate text-stone-500">
+                Exclusive workspace for <strong>{client.name}</strong>
+              </span>
+            </div>
+            <span className="hidden sm:inline text-[11px] text-stone-400">
+              Close tab to exit
             </span>
           </div>
-          <button
-            onClick={onExit}
-            className="px-3 py-1.5 rounded-xl bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 text-xs font-bold shrink-0 hover:opacity-90 transition-opacity"
-          >
-            Exit Portal
-          </button>
-        </div>
+        )}
 
       {/* Branded Portal Header */}
       <div
@@ -158,30 +192,31 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
           </p>
         )}
 
-        {/* Client Portal Tab Switcher */}
+        {/* Client Portal Tab Switcher (3 Tabs: Overview & Posts, Upcoming Content, Client Analytics) */}
         <div className="grid grid-cols-3 gap-1.5 mt-4 p-1 rounded-xl bg-stone-100 dark:bg-stone-800/80">
           <button
-            onClick={() => setActiveTab('approvals')}
-            className={`py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-              activeTab === 'approvals'
+            onClick={() => setActiveTab('overview')}
+            className={`py-2 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+              activeTab === 'overview'
                 ? isDark
                   ? 'bg-[#2A3644] text-white shadow-xs'
                   : 'bg-white text-stone-900 shadow-xs'
                 : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
             }`}
           >
-            <span>Approvals</span>
+            <Layers className="w-3.5 h-3.5" />
+            <span className="truncate">Overview Posts</span>
             {pendingApprovals.length > 0 && (
-              <span className="w-4 h-4 rounded-full bg-[#C44D34] text-white text-[10px] flex items-center justify-center font-extrabold">
+              <span className="w-4 h-4 rounded-full bg-[#C44D34] text-white text-[10px] flex items-center justify-center font-extrabold shrink-0">
                 {pendingApprovals.length}
               </span>
             )}
           </button>
 
           <button
-            onClick={() => setActiveTab('calendar')}
-            className={`py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-              activeTab === 'calendar'
+            onClick={() => setActiveTab('upcoming')}
+            className={`py-2 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+              activeTab === 'upcoming'
                 ? isDark
                   ? 'bg-[#2A3644] text-white shadow-xs'
                   : 'bg-white text-stone-900 shadow-xs'
@@ -189,12 +224,15 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
             }`}
           >
             <Calendar className="w-3.5 h-3.5" />
-            <span>Calendar</span>
+            <span className="truncate">Upcoming Content</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300 font-semibold shrink-0">
+              {scheduledPosts.length + plannedPosts.length}
+            </span>
           </button>
 
           <button
             onClick={() => setActiveTab('analytics')}
-            className={`py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+            className={`py-2 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
               activeTab === 'analytics'
                 ? isDark
                   ? 'bg-[#2A3644] text-white shadow-xs'
@@ -203,165 +241,190 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
             }`}
           >
             <BarChart3 className="w-3.5 h-3.5" />
-            <span>Analytics</span>
+            <span className="truncate">Client Analytics</span>
           </button>
         </div>
       </div>
 
-      {/* TAB 1: PENDING APPROVALS */}
-      {activeTab === 'approvals' && (
-        <div className="space-y-4 mt-4">
-          <div className="flex items-center justify-between px-1">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-stone-400">
-              Drafts Requiring Sign-off
-            </h2>
-            <span className="text-xs font-semibold text-stone-500">
-              {pendingApprovals.length} pending
-            </span>
-          </div>
-
-          {pendingApprovals.length === 0 ? (
+      {/* TAB 1: OVERVIEW & POSTS */}
+      {activeTab === 'overview' && (
+        <div className="space-y-5 mt-4">
+          {/* Key Summary Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div
-              className={`p-8 rounded-3xl border text-center space-y-3 ${
+              className={`p-3.5 rounded-2xl border text-center ${
                 isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
               }`}
             >
-              <div className="w-12 h-12 mx-auto rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-                <CheckCircle2 className="w-6 h-6" />
+              <div className="text-xl font-extrabold text-stone-900 dark:text-white font-serif">
+                {totalPosts}
               </div>
-              <h3 className="text-sm font-bold text-stone-900 dark:text-white font-serif">
-                All caught up!
-              </h3>
-              <p className="text-xs text-stone-500 dark:text-stone-400 max-w-xs mx-auto">
-                There are no drafts currently waiting for your review. Check back when the team schedules
-                new content.
-              </p>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mt-0.5">
+                Total Posts
+              </div>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {pendingApprovals.map((post) => {
-              const catColor = CATEGORY_COLORS[post.category]?.text || '#C44D34';
-              const catBg = CATEGORY_COLORS[post.category]?.bg || '#FDF2F0';
 
-              return (
-                <div
-                  key={post.id}
-                  className={`p-4 rounded-3xl border shadow-sm space-y-3 ${
-                    isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span
-                          className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase"
-                          style={{ color: catColor, backgroundColor: catBg }}
-                        >
-                          {post.category}
-                        </span>
-                        <span className="text-[11px] font-semibold text-stone-400">
-                          {post.platform}
-                        </span>
-                      </div>
-                      <h4 className="text-sm font-bold text-stone-900 dark:text-white">
-                        {post.title}
-                      </h4>
-                    </div>
-
-                    <div className="text-right shrink-0">
-                      <div className="text-xs font-bold text-stone-700 dark:text-stone-300">
-                        {post.date}
-                      </div>
-                      <span className="text-[10px] font-bold text-amber-600 uppercase">
-                        In Review
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Caption preview */}
-                  <div
-                    className={`p-3 rounded-xl text-xs leading-relaxed ${
-                      isDark ? 'bg-[#141A21] text-stone-300' : 'bg-stone-50 text-stone-700'
-                    }`}
-                  >
-                    {post.caption}
-                  </div>
-
-                  {/* Media item if present */}
-                  {post.mediaUrl && (
-                    <div className="rounded-xl overflow-hidden max-h-48 border border-stone-200 dark:border-stone-800">
-                      <img
-                        src={post.mediaUrl}
-                        alt={post.title}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  )}
-
-                  {/* Client Decision Actions */}
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <button
-                      onClick={() => setFeedbackPostId(post.id)}
-                      className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors ${
-                        isDark
-                          ? 'border-stone-700 text-stone-300 hover:bg-stone-800'
-                          : 'border-stone-300 text-stone-700 hover:bg-stone-100'
-                      }`}
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" />
-                      <span>Request Changes</span>
-                    </button>
-
-                    <button
-                      onClick={() => onApprovePost(post.id)}
-                      className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors"
-                    >
-                      <Check className="w-4 h-4 stroke-[2.5]" />
-                      <span>Approve Draft</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+            <div
+              className={`p-3.5 rounded-2xl border text-center ${
+                isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
+              }`}
+            >
+              <div className="text-xl font-extrabold text-amber-500 font-serif">
+                {pendingApprovals.length}
+              </div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mt-0.5">
+                Needs Sign-off
+              </div>
             </div>
-          )}
-        </div>
-      )}
 
-      {/* TAB 2: CONTENT CALENDAR */}
-      {activeTab === 'calendar' && (
-        <div className="space-y-4 mt-4">
-          {/* Platform Filter */}
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-            {['all', 'Instagram', 'LinkedIn', 'Twitter', 'Facebook', 'TikTok'].map((plat) => (
-              <button
-                key={plat}
-                onClick={() => setFilterPlatform(plat)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
-                  filterPlatform === plat
-                    ? 'bg-[#C44D34] text-white'
-                    : isDark
-                    ? 'bg-[#1D252F] text-stone-400 hover:text-white'
-                    : 'bg-white text-stone-600 hover:bg-stone-100 border border-[#E8E2D8]'
-                }`}
-              >
-                {plat === 'all' ? 'All Platforms' : plat}
-              </button>
-            ))}
+            <div
+              className={`p-3.5 rounded-2xl border text-center ${
+                isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
+              }`}
+            >
+              <div className="text-xl font-extrabold text-[#C44D34] font-serif">
+                {scheduledPosts.length + plannedPosts.length}
+              </div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mt-0.5">
+                Scheduled Pipeline
+              </div>
+            </div>
+
+            <div
+              className={`p-3.5 rounded-2xl border text-center ${
+                isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
+              }`}
+            >
+              <div className="text-xl font-extrabold text-emerald-600 font-serif">
+                {publishedPosts.length}
+              </div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mt-0.5">
+                Published & Live
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-3">
-            {filteredCalendarPosts.length === 0 ? (
-              <p className="text-xs text-stone-500 py-6 text-center">No posts found for this filter.</p>
-            ) : (
-              filteredCalendarPosts.map((post) => {
+          {/* Drafts Requiring Sign-off (if any) */}
+          {pendingApprovals.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                    Drafts Requiring Sign-off
+                  </h2>
+                </div>
+                <span className="text-xs font-semibold text-stone-500">
+                  {pendingApprovals.length} pending
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {pendingApprovals.map((post) => {
+                  const catColor = CATEGORY_COLORS[post.category]?.text || '#C44D34';
+                  const catBg = CATEGORY_COLORS[post.category]?.bg || '#FDF2F0';
+
+                  return (
+                    <div
+                      key={post.id}
+                      className={`p-4 rounded-3xl border shadow-sm space-y-3 ${
+                        isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span
+                              className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase"
+                              style={{ color: catColor, backgroundColor: catBg }}
+                            >
+                              {post.category}
+                            </span>
+                            <span className="text-[11px] font-semibold text-stone-400">
+                              {post.platform}
+                            </span>
+                          </div>
+                          <h4 className="text-sm font-bold text-stone-900 dark:text-white">
+                            {post.title}
+                          </h4>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="text-xs font-bold text-stone-700 dark:text-stone-300">
+                            {post.date}
+                          </div>
+                          <span className="text-[10px] font-bold text-amber-600 uppercase">
+                            In Review
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Caption preview */}
+                      <div
+                        className={`p-3 rounded-xl text-xs leading-relaxed ${
+                          isDark ? 'bg-[#141A21] text-stone-300' : 'bg-stone-50 text-stone-700'
+                        }`}
+                      >
+                        {post.caption}
+                      </div>
+
+                      {/* Media item if present */}
+                      {post.mediaUrl && (
+                        <div className="rounded-xl overflow-hidden max-h-48 border border-stone-200 dark:border-stone-800">
+                          <img
+                            src={post.mediaUrl}
+                            alt={post.title}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+
+                      {/* Client Decision Actions */}
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <button
+                          onClick={() => setFeedbackPostId(post.id)}
+                          className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors ${
+                            isDark
+                              ? 'border-stone-700 text-stone-300 hover:bg-stone-800'
+                              : 'border-stone-300 text-stone-700 hover:bg-stone-100'
+                          }`}
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span>Request Changes</span>
+                        </button>
+
+                        <button
+                          onClick={() => onApprovePost(post.id)}
+                          className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+                        >
+                          <Check className="w-4 h-4 stroke-[2.5]" />
+                          <span>Approve Draft</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* All Client Posts Overview Feed */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-stone-400">
+                All Content Overview ({clientPosts.length})
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {clientPosts.map((post) => {
                 const catColor = CATEGORY_COLORS[post.category]?.text || '#C44D34';
                 const catBg = CATEGORY_COLORS[post.category]?.bg || '#FDF2F0';
 
                 return (
                   <div
                     key={post.id}
-                    className={`p-3.5 rounded-2xl border shadow-xs ${
+                    className={`p-3.5 rounded-2xl border shadow-xs space-y-2 ${
                       isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
                     }`}
                   >
@@ -387,11 +450,121 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                         <span className="text-xs font-bold text-stone-600 dark:text-stone-300">
                           {post.date}
                         </span>
-                        <div className="text-[10px] font-semibold capitalize text-stone-400 mt-0.5">
+                        <div
+                          className={`text-[10px] font-semibold capitalize mt-0.5 px-2 py-0.5 rounded-full inline-block ${
+                            post.status === 'Published'
+                              ? 'bg-emerald-500/10 text-emerald-600'
+                              : post.status === 'In review'
+                              ? 'bg-amber-500/15 text-amber-600'
+                              : post.status === 'Approved'
+                              ? 'bg-blue-500/10 text-blue-600'
+                              : 'bg-stone-500/10 text-stone-500'
+                          }`}
+                        >
                           {post.status}
                         </div>
                       </div>
                     </div>
+
+                    <p className="text-xs text-stone-600 dark:text-stone-400 line-clamp-2">
+                      {post.caption}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: UPCOMING CONTENT */}
+      {activeTab === 'upcoming' && (
+        <div className="space-y-4 mt-4">
+          {/* Platform Filter */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+            {['all', 'Instagram', 'LinkedIn', 'Twitter', 'Facebook', 'TikTok'].map((plat) => (
+              <button
+                key={plat}
+                onClick={() => setFilterPlatform(plat)}
+                className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
+                  filterPlatform === plat
+                    ? 'bg-[#C44D34] text-white'
+                    : isDark
+                    ? 'bg-[#1D252F] text-stone-400 hover:text-white'
+                    : 'bg-white text-stone-600 hover:bg-stone-100 border border-[#E8E2D8]'
+                }`}
+              >
+                {plat === 'all' ? 'All Platforms' : plat}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-3">
+            {filteredCalendarPosts.length === 0 ? (
+              <div
+                className={`p-8 rounded-3xl border text-center space-y-2 ${
+                  isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
+                }`}
+              >
+                <Clock className="w-8 h-8 mx-auto text-stone-400" />
+                <h3 className="text-sm font-bold text-stone-900 dark:text-white">
+                  No upcoming content found
+                </h3>
+                <p className="text-xs text-stone-500">
+                  There are no scheduled posts for this filter. Check back soon!
+                </p>
+              </div>
+            ) : (
+              filteredCalendarPosts.map((post) => {
+                const catColor = CATEGORY_COLORS[post.category]?.text || '#C44D34';
+                const catBg = CATEGORY_COLORS[post.category]?.bg || '#FDF2F0';
+
+                return (
+                  <div
+                    key={post.id}
+                    className={`p-4 rounded-2xl border shadow-xs space-y-2 ${
+                      isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span
+                            className="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase"
+                            style={{ color: catColor, backgroundColor: catBg }}
+                          >
+                            {post.category}
+                          </span>
+                          <span className="text-[11px] font-semibold text-stone-400">
+                            {post.platform}
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-bold text-stone-900 dark:text-white">
+                          {post.title}
+                        </h4>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className="text-xs font-bold text-stone-700 dark:text-stone-300">
+                          {post.date}
+                        </span>
+                        <div
+                          className={`text-[10px] font-semibold capitalize mt-0.5 px-2 py-0.5 rounded-full inline-block ${
+                            post.status === 'Published'
+                              ? 'bg-emerald-500/10 text-emerald-600'
+                              : post.status === 'In review'
+                              ? 'bg-amber-500/15 text-amber-600'
+                              : 'bg-[#C44D34]/10 text-[#C44D34]'
+                          }`}
+                        >
+                          {post.status}
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-stone-600 dark:text-stone-400 line-clamp-2">
+                      {post.caption}
+                    </p>
                   </div>
                 );
               })

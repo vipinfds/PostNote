@@ -54,8 +54,9 @@ export default function App() {
   const [selectedClientDetail, setSelectedClientDetail] = useState<Client | null>(null);
   const [clientDetailTab, setClientDetailTab] = useState<'overview' | 'analytics'>('overview');
   const [portalClient, setPortalClient] = useState<Client | null>(null);
-  const [portalTab, setPortalTab] = useState<'approvals' | 'calendar' | 'analytics'>('analytics');
+  const [portalTab, setPortalTab] = useState<'overview' | 'upcoming' | 'analytics' | 'approvals' | 'calendar'>('overview');
   const [portalIsViewOnly, setPortalIsViewOnly] = useState<boolean>(true);
+  const [isLockedPortalSession, setIsLockedPortalSession] = useState<boolean>(false);
 
   // Post form state (for both New & Edit)
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
@@ -358,14 +359,15 @@ export default function App() {
 
         if (found) {
           setPortalClient(found);
-          if (viewParam === 'analytics' || !viewParam) {
+          setIsLockedPortalSession(true);
+          if (viewParam === 'analytics') {
             setPortalTab('analytics');
             setPortalIsViewOnly(true);
-          } else if (viewParam === 'calendar') {
-            setPortalTab('calendar');
+          } else if (viewParam === 'upcoming' || viewParam === 'calendar') {
+            setPortalTab('upcoming');
             setPortalIsViewOnly(true);
           } else {
-            setPortalTab('approvals');
+            setPortalTab('overview');
             setPortalIsViewOnly(false);
           }
         }
@@ -605,13 +607,17 @@ export default function App() {
 
     // 0. If Client Portal View is open (live client mode)
     if (portalClient) {
+      // STRICT CLIENT ISOLATION: Only posts belonging to this client are passed
+      const clientScopedPosts = posts.filter((p) => p.clientId === portalClient.id);
+
       return (
         <ClientPortalView
           client={portalClient}
-          posts={posts}
+          posts={clientScopedPosts}
           subscription={subscription}
           initialTab={portalTab}
           isViewOnly={portalIsViewOnly}
+          isLockedPortal={isLockedPortalSession}
           onApprovePost={handleApprovePost}
           onRequestChanges={(postId, notes) => {
             setPosts((prev) =>
@@ -627,16 +633,20 @@ export default function App() {
             );
             showToast('Feedback submitted to studio team');
           }}
-          onExit={() => {
-            setPortalClient(null);
-            try {
-              const url = new URL(window.location.href);
-              url.searchParams.delete('portal');
-              url.searchParams.delete('view');
-              url.searchParams.delete('token');
-              window.history.replaceState({}, '', url.toString());
-            } catch {}
-          }}
+          onExit={
+            isLockedPortalSession
+              ? undefined
+              : () => {
+                  setPortalClient(null);
+                  try {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('portal');
+                    url.searchParams.delete('view');
+                    url.searchParams.delete('token');
+                    window.history.replaceState({}, '', url.toString());
+                  } catch {}
+                }
+          }
           isDark={isDark}
         />
       );
@@ -689,10 +699,11 @@ export default function App() {
             onBack={() => setSelectedClientDetail(null)}
             onNewPostForClient={(cId) => handleOpenNewPost(undefined, cId)}
             onEditPost={handleEditPost}
-            onOpenPortal={(client, tab = 'analytics', isViewOnly = true) => {
+            onOpenPortal={(client, tab = 'overview', isViewOnly = true) => {
               setPortalClient(client);
               setPortalTab(tab);
               setPortalIsViewOnly(isViewOnly);
+              setIsLockedPortalSession(false);
             }}
             isDark={isDark}
           />
@@ -719,10 +730,11 @@ export default function App() {
           }}
           onDeleteClient={handleDeleteClient}
           onNewPostForClient={(cId) => handleOpenNewPost(undefined, cId)}
-          onOpenPortalPreview={(client, tab = 'analytics', isViewOnly = true) => {
+          onOpenPortalPreview={(client, tab = 'overview', isViewOnly = true) => {
             setPortalClient(client);
             setPortalTab(tab);
             setPortalIsViewOnly(isViewOnly);
+            setIsLockedPortalSession(false);
           }}
           isDark={isDark}
         />

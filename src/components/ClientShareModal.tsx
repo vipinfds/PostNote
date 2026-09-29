@@ -13,12 +13,13 @@ import {
   Globe,
   Link as LinkIcon,
 } from 'lucide-react';
-import { Client } from '../types';
+import { Client, Post } from '../types';
 
 interface ClientShareModalProps {
   isOpen: boolean;
   onClose: () => void;
   client: Client;
+  posts?: Post[];
   onOpenPortalPreview: () => void;
   isDark?: boolean;
 }
@@ -27,6 +28,7 @@ export const ClientShareModal: React.FC<ClientShareModalProps> = ({
   isOpen,
   onClose,
   client,
+  posts,
   onOpenPortalPreview,
   isDark,
 }) => {
@@ -53,19 +55,19 @@ export const ClientShareModal: React.FC<ClientShareModalProps> = ({
   const isDevOrigin = rawOrigin.includes('ais-dev-');
   const publicOrigin = isDevOrigin ? rawOrigin.replace('ais-dev-', 'ais-pre-') : rawOrigin;
 
-  // 1. Standard Query Param URL with resilient client payload
+  // 1. Standard Query Param URL with resilient client payload (defaulting to overview)
   const standardShareableUrl = `${publicOrigin}/?portal=${encodeURIComponent(
     client.id
   )}&name=${encodeURIComponent(client.name)}&handle=${encodeURIComponent(
     client.handle
-  )}&color=${encodeURIComponent(client.color || '#C44D34')}&view=analytics&token=${uniqueToken}`;
+  )}&color=${encodeURIComponent(client.color || '#C44D34')}&view=overview&token=${uniqueToken}`;
 
   // 2. Hash Route Alternative (100% immune to server routing configurations)
   const hashShareableUrl = `${publicOrigin}/#/portal/${encodeURIComponent(
     client.id
   )}?name=${encodeURIComponent(client.name)}&handle=${encodeURIComponent(
     client.handle
-  )}&view=analytics&token=${uniqueToken}`;
+  )}&view=overview&token=${uniqueToken}`;
 
   const currentActiveUrl = activeUrlType === 'standard' ? standardShareableUrl : hashShareableUrl;
 
@@ -79,13 +81,14 @@ export const ClientShareModal: React.FC<ClientShareModalProps> = ({
         body: JSON.stringify({
           id: client.id,
           client,
+          posts: posts ? posts.filter((p) => p.clientId === client.id) : [],
           permissions: { allowApprovals, allowAnalytics, allowFeedback },
         }),
       }).catch((e) => {
         console.warn('Portal server sync notice:', e);
       });
     } catch {}
-  }, [isOpen, client, allowApprovals, allowAnalytics, allowFeedback]);
+  }, [isOpen, client, posts, allowApprovals, allowAnalytics, allowFeedback]);
 
   if (!isOpen) return null;
 

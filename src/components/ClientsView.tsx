@@ -25,7 +25,7 @@ interface ClientsViewProps {
   onEditClient: (client: Client, e: React.MouseEvent) => void;
   onDeleteClient: (clientId: string, e: React.MouseEvent) => void;
   onNewPostForClient?: (clientId: string) => void;
-  onOpenPortalPreview?: (client: Client, initialTab?: 'approvals' | 'calendar' | 'analytics', isViewOnly?: boolean) => void;
+  onOpenPortalPreview?: (client: Client, initialTab?: 'overview' | 'upcoming' | 'analytics' | 'approvals' | 'calendar', isViewOnly?: boolean) => void;
   isDark?: boolean;
 }
 
@@ -273,9 +273,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           isOpen={true}
           onClose={() => setSharingClient(null)}
           client={sharingClient}
+          posts={posts}
           onOpenPortalPreview={() => {
             if (onOpenPortalPreview) {
-              onOpenPortalPreview(sharingClient, 'analytics', true);
+              onOpenPortalPreview(sharingClient, 'overview', true);
             }
             setSharingClient(null);
           }}
