@@ -52,6 +52,8 @@ export default function App() {
   const [activeMoreSubScreen, setActiveMoreSubScreen] = useState<MoreSubScreen | null>(null);
   const [selectedClientDetail, setSelectedClientDetail] = useState<Client | null>(null);
   const [portalClient, setPortalClient] = useState<Client | null>(null);
+  const [portalTab, setPortalTab] = useState<'approvals' | 'calendar' | 'analytics'>('analytics');
+  const [portalIsViewOnly, setPortalIsViewOnly] = useState<boolean>(true);
 
   // Post form state (for both New & Edit)
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
@@ -226,6 +228,7 @@ export default function App() {
     try {
       const params = new URLSearchParams(window.location.search);
       const portalParam = params.get('portal');
+      const viewParam = params.get('view');
       if (portalParam) {
         const found = clients.find(
           (c) =>
@@ -234,6 +237,16 @@ export default function App() {
         );
         if (found) {
           setPortalClient(found);
+          if (viewParam === 'analytics') {
+            setPortalTab('analytics');
+            setPortalIsViewOnly(true);
+          } else if (viewParam === 'calendar') {
+            setPortalTab('calendar');
+            setPortalIsViewOnly(true);
+          } else {
+            setPortalTab('approvals');
+            setPortalIsViewOnly(false);
+          }
         }
       }
     } catch {
@@ -470,6 +483,8 @@ export default function App() {
           client={portalClient}
           posts={posts}
           subscription={subscription}
+          initialTab={portalTab}
+          isViewOnly={portalIsViewOnly}
           onApprovePost={handleApprovePost}
           onRequestChanges={(postId, notes) => {
             setPosts((prev) =>
@@ -490,6 +505,8 @@ export default function App() {
             try {
               const url = new URL(window.location.href);
               url.searchParams.delete('portal');
+              url.searchParams.delete('view');
+              url.searchParams.delete('token');
               window.history.replaceState({}, '', url.toString());
             } catch {}
           }}
@@ -544,7 +561,11 @@ export default function App() {
             onBack={() => setSelectedClientDetail(null)}
             onNewPostForClient={(cId) => handleOpenNewPost(undefined, cId)}
             onEditPost={handleEditPost}
-            onOpenPortal={(client) => setPortalClient(client)}
+            onOpenPortal={(client, tab = 'analytics', isViewOnly = true) => {
+              setPortalClient(client);
+              setPortalTab(tab);
+              setPortalIsViewOnly(isViewOnly);
+            }}
             isDark={isDark}
           />
         );

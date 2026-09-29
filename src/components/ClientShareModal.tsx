@@ -33,10 +33,20 @@ export const ClientShareModal: React.FC<ClientShareModalProps> = ({
   const [allowAnalytics, setAllowAnalytics] = useState(true);
   const [allowFeedback, setAllowFeedback] = useState(true);
 
+  const uniqueToken = React.useMemo(() => {
+    let hash = 5381;
+    const str = `${client.id}-view-only-analytics`;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash * 33) ^ str.charCodeAt(i);
+    }
+    return (hash >>> 0).toString(36);
+  }, [client.id]);
+
   if (!isOpen) return null;
 
-  const portalSlug = client.handle?.replace('@', '').toLowerCase() || client.id;
-  const shareableUrl = `${window.location.origin}/?portal=${client.id}`;
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const shareableUrl = `${origin}${pathname}?portal=${client.id}&view=analytics&token=${uniqueToken}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(shareableUrl);
@@ -46,15 +56,15 @@ export const ClientShareModal: React.FC<ClientShareModalProps> = ({
 
   const handleSendWhatsApp = () => {
     const text = encodeURIComponent(
-      `Hi ${client.name}! Here is your live PostNote Client Portal to review scheduled posts, approve drafts, and track your content analytics: ${shareableUrl}`
+      `Hi ${client.name}! Here is your private link to view your live PostNote analytics and content performance: ${shareableUrl}`
     );
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };
 
   const handleSendEmail = () => {
-    const subject = encodeURIComponent(`${client.name} - Content Studio & Approvals Portal`);
+    const subject = encodeURIComponent(`${client.name} - View-Only Content Analytics`);
     const body = encodeURIComponent(
-      `Hi ${client.name} team,\n\nHere is your private PostNote Client Portal link to review drafts, approve scheduled posts, and view live content analytics:\n\n${shareableUrl}\n\nNo login required. Reviewers are free and can approve directly from the portal.\n\nBest,\nFirst Draft Studio`
+      `Hi ${client.name} team,\n\nHere is your unique view-only link to inspect your company's live content analytics, platform performance, and publication velocity:\n\n${shareableUrl}\n\nNo sign-in required. This link provides view-only access to your brand's performance metrics.\n\nBest,\nFirst Draft Studio`
     );
     window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
   };

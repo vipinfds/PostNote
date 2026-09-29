@@ -23,6 +23,8 @@ interface ClientPortalViewProps {
   client: Client;
   posts: Post[];
   subscription?: SubscriptionState;
+  initialTab?: 'approvals' | 'calendar' | 'analytics';
+  isViewOnly?: boolean;
   onApprovePost: (postId: string) => void;
   onRequestChanges: (postId: string, notes?: string) => void;
   onExit: () => void;
@@ -33,12 +35,14 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   client,
   posts,
   subscription,
+  initialTab = 'analytics',
+  isViewOnly = false,
   onApprovePost,
   onRequestChanges,
   onExit,
   isDark,
 }) => {
-  const [activeTab, setActiveTab] = useState<'approvals' | 'calendar' | 'analytics'>('approvals');
+  const [activeTab, setActiveTab] = useState<'approvals' | 'calendar' | 'analytics'>(initialTab);
   const [feedbackPostId, setFeedbackPostId] = useState<string | null>(null);
   const [feedbackNote, setFeedbackNote] = useState('');
   const [filterPlatform, setFilterPlatform] = useState<string>('all');

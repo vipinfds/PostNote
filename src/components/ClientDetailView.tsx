@@ -21,7 +21,7 @@ interface ClientDetailViewProps {
   onBack: () => void;
   onNewPostForClient: (clientId: string) => void;
   onEditPost: (post: Post) => void;
-  onOpenPortal: (client: Client) => void;
+  onOpenPortal: (client: Client, initialTab?: 'approvals' | 'calendar' | 'analytics', isViewOnly?: boolean) => void;
   isDark?: boolean;
 }
 
@@ -135,16 +135,17 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
         {/* Action Buttons: Share Portal & New Post */}
         <div className="flex items-center gap-1.5 shrink-0">
           <button
+            id="share-portal-btn"
             onClick={() => setIsShareModalOpen(true)}
-            className={`p-2 rounded-xl border transition-colors flex items-center gap-1 text-xs font-semibold ${
+            className={`px-2.5 py-1.5 rounded-xl border transition-all flex items-center gap-1.5 text-xs font-semibold ${
               isDark
-                ? 'border-stone-700 bg-stone-800 text-stone-200 hover:bg-stone-700'
-                : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-100'
+                ? 'border-stone-700 bg-stone-800 text-stone-200 hover:bg-stone-700 hover:border-[#C44D34]/60'
+                : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-100 hover:border-[#C44D34]/60'
             }`}
-            title="Share client portal link with client"
+            title="Generate unique sharable URL for client analytics"
           >
-            <Share2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Share</span>
+            <Share2 className="w-3.5 h-3.5 text-[#C44D34]" />
+            <span>Share Portal</span>
           </button>
 
           <button
@@ -498,11 +499,11 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
 
           {/* Open Client View Preview directly */}
           <button
-            onClick={() => onOpenPortal(client)}
+            onClick={() => onOpenPortal(client, 'analytics', true)}
             className="w-full py-3 rounded-xl border border-stone-300 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-800 dark:text-stone-200 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
           >
             <ExternalLink className="w-3.5 h-3.5" />
-            <span>Preview Client View as {client.name}</span>
+            <span>Preview View-Only Analytics as {client.name}</span>
           </button>
         </div>
       )}
@@ -512,7 +513,7 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
         client={client}
-        onOpenPortalPreview={() => onOpenPortal(client)}
+        onOpenPortalPreview={() => onOpenPortal(client, 'analytics', true)}
         isDark={isDark}
       />
     </div>
