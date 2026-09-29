@@ -51,10 +51,24 @@ Post draft:
 ${text}
 """`;
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
+        const generate = () => ai.models.generateContent({
+          model: 'gemini-3.1-flash-lite',
           contents: prompt,
         });
+
+        // Retry once on transient Gemini capacity errors (503/429)
+        let response;
+        try {
+          response = await generate();
+        } catch (retryableError: any) {
+          const status = retryableError?.status;
+          if (status === 503 || status === 429) {
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            response = await generate();
+          } else {
+            throw retryableError;
+          }
+        }
 
         if (response.text) {
           polished = response.text.trim();
