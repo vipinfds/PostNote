@@ -51,20 +51,17 @@ Post draft:
 ${text}
 """`;
 
-        const generate = () => ai.models.generateContent({
-          model: 'gemini-3.1-flash-lite',
-          contents: prompt,
-        });
+        const generate = (model: string) => ai.models.generateContent({ model, contents: prompt });
 
-        // Retry once on transient Gemini capacity errors (503/429)
         let response;
         try {
-          response = await generate();
+          response = await generate('gemini-3.1-flash-lite');
         } catch (retryableError: any) {
           const status = retryableError?.status;
           if (status === 503 || status === 429) {
             await new Promise((resolve) => setTimeout(resolve, 1500));
-            response = await generate();
+            // A different model can still respond when the primary is overloaded.
+            response = await generate(status === 503 ? 'gemini-3.5-flash-lite' : 'gemini-3.1-flash-lite');
           } else {
             throw retryableError;
           }
