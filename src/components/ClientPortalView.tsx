@@ -95,29 +95,32 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   return (
     <div
       id="client-portal-view"
-      className={`min-h-screen pb-24 px-4 pt-3 animate-fade-in transition-colors ${
+      className={`min-h-screen pb-24 px-4 sm:px-6 lg:px-8 pt-4 animate-fade-in transition-colors ${
         isDark ? 'bg-[#151C24] text-stone-100' : 'bg-[#FAF7F2] text-[#1E252B]'
       }`}
     >
-      {/* Agency Studio Preview Bar */}
-      <div
-        className={`mb-4 px-3.5 py-2 rounded-xl border flex items-center justify-between text-xs font-semibold ${
-          isDark
-            ? 'bg-[#1D242C] border-[#2A3440] text-amber-300'
-            : 'bg-amber-50 border-amber-200 text-amber-900'
-        }`}
-      >
-        <div className="flex items-center gap-1.5 truncate">
-          <Eye className="w-4 h-4 text-amber-600 shrink-0" />
-          <span className="truncate">Client Portal View: <strong>{client.name}</strong></span>
-        </div>
-        <button
-          onClick={onExit}
-          className="px-2.5 py-1 rounded-lg bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 text-[11px] font-bold shrink-0 hover:opacity-90 transition-opacity"
+      <div className="max-w-5xl mx-auto w-full">
+        {/* Agency Studio Preview Bar */}
+        <div
+          className={`mb-4 px-4 py-2.5 rounded-2xl border flex items-center justify-between text-xs font-semibold ${
+            isDark
+              ? 'bg-[#1D242C] border-[#2A3440] text-amber-300'
+              : 'bg-amber-50 border-amber-200 text-amber-900'
+          }`}
         >
-          Exit Preview
-        </button>
-      </div>
+          <div className="flex items-center gap-2 truncate">
+            <Eye className="w-4 h-4 text-amber-600 shrink-0" />
+            <span className="truncate">
+              {isViewOnly ? 'View-Only Analytics Portal' : 'Interactive Client Portal'}: <strong>{client.name}</strong>
+            </span>
+          </div>
+          <button
+            onClick={onExit}
+            className="px-3 py-1.5 rounded-xl bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 text-xs font-bold shrink-0 hover:opacity-90 transition-opacity"
+          >
+            Exit Portal
+          </button>
+        </div>
 
       {/* Branded Portal Header */}
       <div
@@ -235,7 +238,8 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
               </p>
             </div>
           ) : (
-            pendingApprovals.map((post) => {
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {pendingApprovals.map((post) => {
               const catColor = CATEGORY_COLORS[post.category]?.text || '#C44D34';
               const catBg = CATEGORY_COLORS[post.category]?.bg || '#FDF2F0';
 
@@ -318,7 +322,8 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                   </div>
                 </div>
               );
-            })
+            })}
+            </div>
           )}
         </div>
       )}
@@ -460,12 +465,14 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
             </div>
           </div>
 
-          {/* Platform Distribution Bar */}
-          <div
-            className={`p-4 rounded-2xl border space-y-3 ${
-              isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
-            }`}
-          >
+          {/* Responsive 2-column Grid for Charts */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Platform Distribution Bar */}
+            <div
+              className={`p-4 rounded-2xl border space-y-3 ${
+                isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
+              }`}
+            >
             <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
               Platform Distribution
             </h3>
@@ -522,6 +529,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
               })}
             </div>
           </div>
+        </div>
 
           {/* Turnaround & Collaboration Velocity */}
           <div
@@ -594,6 +602,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

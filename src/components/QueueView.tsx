@@ -93,10 +93,10 @@ export const QueueView: React.FC<QueueViewProps> = ({
         ))}
       </div>
 
-      {/* Posts List with Date Column */}
-      <div className="divide-y divide-stone-100 dark:divide-stone-800/80 mt-2">
+      {/* Posts List with Date Column (Responsive Grid on Tablet/PC) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 mt-3">
         {filteredPosts.length === 0 ? (
-          <div className="text-center py-12">
+          <div className="col-span-full text-center py-12">
             <p className="text-xs text-stone-500">No posts in this queue.</p>
           </div>
         ) : (
@@ -110,7 +110,11 @@ export const QueueView: React.FC<QueueViewProps> = ({
                 key={post.id}
                 id={`queue-item-${post.id}`}
                 onClick={() => onEditPost(post)}
-                className="py-3.5 flex items-start gap-3.5 cursor-pointer hover:bg-stone-50/70 dark:hover:bg-stone-800/30 px-2 rounded-xl transition-colors group"
+                className={`p-3.5 rounded-2xl border flex items-start gap-3.5 cursor-pointer hover:border-[#C44D34] transition-all group ${
+                  isDark
+                    ? 'bg-[#1D242C] border-[#2A3440] hover:bg-[#222B34]'
+                    : 'bg-white border-[#E8E4DC] hover:shadow-xs'
+                }`}
               >
                 {/* Left Date Column */}
                 <div className="w-10 text-center shrink-0 pt-0.5">

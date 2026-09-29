@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Copy,
@@ -10,6 +10,8 @@ import {
   Lock,
   Sparkles,
   Share2,
+  Globe,
+  Link as LinkIcon,
 } from 'lucide-react';
 import { Client } from '../types';
 
@@ -29,9 +31,11 @@ export const ClientShareModal: React.FC<ClientShareModalProps> = ({
   isDark,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [copiedHash, setCopiedHash] = useState(false);
   const [allowApprovals, setAllowApprovals] = useState(true);
   const [allowAnalytics, setAllowAnalytics] = useState(true);
   const [allowFeedback, setAllowFeedback] = useState(true);
+  const [activeUrlType, setActiveUrlType] = useState<'standard' | 'hash'>('standard');
 
   const uniqueToken = React.useMemo(() => {
     let hash = 5381;
@@ -42,21 +46,63 @@ export const ClientShareModal: React.FC<ClientShareModalProps> = ({
     return (hash >>> 0).toString(36);
   }, [client.id]);
 
+  // Determine origins:
+  // In Google AI Studio, ais-dev-*.run.app is a private authenticated developer instance.
+  // The public shared instance accessible by clients is ais-pre-*.run.app.
+  const rawOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const isDevOrigin = rawOrigin.includes('ais-dev-');
+  const publicOrigin = isDevOrigin ? rawOrigin.replace('ais-dev-', 'ais-pre-') : rawOrigin;
+
+  // 1. Standard Query Param URL with resilient client payload
+  const standardShareableUrl = `${publicOrigin}/?portal=${encodeURIComponent(
+    client.id
+  )}&name=${encodeURIComponent(client.name)}&handle=${encodeURIComponent(
+    client.handle
+  )}&color=${encodeURIComponent(client.color || '#C44D34')}&view=analytics&token=${uniqueToken}`;
+
+  // 2. Hash Route Alternative (100% immune to server routing configurations)
+  const hashShareableUrl = `${publicOrigin}/#/portal/${encodeURIComponent(
+    client.id
+  )}?name=${encodeURIComponent(client.name)}&handle=${encodeURIComponent(
+    client.handle
+  )}&view=analytics&token=${uniqueToken}`;
+
+  const currentActiveUrl = activeUrlType === 'standard' ? standardShareableUrl : hashShareableUrl;
+
+  // Register portal on server store when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    try {
+      fetch('/api/portals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: client.id,
+          client,
+          permissions: { allowApprovals, allowAnalytics, allowFeedback },
+        }),
+      }).catch((e) => {
+        console.warn('Portal server sync notice:', e);
+      });
+    } catch {}
+  }, [isOpen, client, allowApprovals, allowAnalytics, allowFeedback]);
+
   if (!isOpen) return null;
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
-  const shareableUrl = `${origin}${pathname}?portal=${client.id}&view=analytics&token=${uniqueToken}`;
-
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(shareableUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2200);
+  const handleCopyLink = (url: string, isHash = false) => {
+    navigator.clipboard.writeText(url);
+    if (isHash) {
+      setCopiedHash(true);
+      setTimeout(() => setCopiedHash(false), 2200);
+    } else {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2200);
+    }
   };
 
   const handleSendWhatsApp = () => {
     const text = encodeURIComponent(
-      `Hi ${client.name}! Here is your private link to view your live PostNote analytics and content performance: ${shareableUrl}`
+      `Hi ${client.name}! Here is your direct link to view your live PostNote analytics and content performance: ${currentActiveUrl}`
     );
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };
@@ -64,7 +110,7 @@ export const ClientShareModal: React.FC<ClientShareModalProps> = ({
   const handleSendEmail = () => {
     const subject = encodeURIComponent(`${client.name} - View-Only Content Analytics`);
     const body = encodeURIComponent(
-      `Hi ${client.name} team,\n\nHere is your unique view-only link to inspect your company's live content analytics, platform performance, and publication velocity:\n\n${shareableUrl}\n\nNo sign-in required. This link provides view-only access to your brand's performance metrics.\n\nBest,\nFirst Draft Studio`
+      `Hi ${client.name} team,\n\nHere is your unique view-only link to inspect your company's live content analytics, platform performance, and publication velocity:\n\n${currentActiveUrl}\n\nNo sign-in required. This link provides view-only access to your brand's performance metrics.\n\nBest,\nFirst Draft Studio`
     );
     window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
   };
@@ -77,7 +123,7 @@ export const ClientShareModal: React.FC<ClientShareModalProps> = ({
     >
       <div
         id="client-share-modal-container"
-        className={`w-full max-w-md rounded-t-3xl sm:rounded-3xl border shadow-2xl transition-all max-h-[90vh] flex flex-col overflow-hidden animate-slide-up ${
+        className={`w-full max-w-lg rounded-t-3xl sm:rounded-3xl border shadow-2xl transition-all max-h-[92vh] flex flex-col overflow-hidden animate-slide-up ${
           isDark
             ? 'bg-[#182028] border-[#2A3644] text-stone-100'
             : 'bg-[#FAF8F5] border-[#E5E0D8] text-[#1E252B]'
@@ -92,7 +138,7 @@ export const ClientShareModal: React.FC<ClientShareModalProps> = ({
         >
           <div className="flex items-center gap-2.5">
             <div
-              className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0"
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-xs"
               style={{ backgroundColor: client.color || '#C44D34' }}
             >
               {client.name.substring(0, 2).toUpperCase()}
@@ -123,18 +169,55 @@ export const ClientShareModal: React.FC<ClientShareModalProps> = ({
           >
             <div className="flex items-center gap-2 font-bold text-stone-900 dark:text-white mb-1">
               <Sparkles className="w-4 h-4 text-[#C44D34]" />
-              <span>Zero-Hassle Client Review & Analytics</span>
+              <span>Direct Link for {client.name}</span>
             </div>
             <p className="text-stone-600 dark:text-stone-400 text-[11px]">
-              Share this private link with <strong>{client.name}</strong>. They can view upcoming posts,
-              sign off on drafts with 1-click approvals, and track performance anytime without logging into an account.
+              Share this link with <strong>{client.name}</strong>. They can view upcoming posts,
+              sign off on drafts, and track company analytics anytime without needing a login.
             </p>
           </div>
 
-          {/* Shareable Link Box */}
+          {/* Public Access Badge */}
+          {isDevOrigin && (
+            <div className="p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2">
+              <Globe className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>
+                <strong>Public Access Fixed:</strong> Link is automatically generated for the public domain (<code>ais-pre-*.run.app</code>) so outside clients won’t see “Page not found”.
+              </span>
+            </div>
+          )}
+
+          {/* URL Mode Switcher Tabs */}
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">Format:</span>
+            <div className="flex items-center gap-1 p-0.5 rounded-lg border bg-stone-100 dark:bg-stone-800/80 border-stone-200 dark:border-stone-700">
+              <button
+                onClick={() => setActiveUrlType('standard')}
+                className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-all ${
+                  activeUrlType === 'standard'
+                    ? 'bg-[#C44D34] text-white shadow-xs'
+                    : 'text-stone-600 dark:text-stone-300 hover:text-stone-900'
+                }`}
+              >
+                Standard URL
+              </button>
+              <button
+                onClick={() => setActiveUrlType('hash')}
+                className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-all ${
+                  activeUrlType === 'hash'
+                    ? 'bg-[#C44D34] text-white shadow-xs'
+                    : 'text-stone-600 dark:text-stone-300 hover:text-stone-900'
+                }`}
+              >
+                Hash Route (#)
+              </button>
+            </div>
+          </div>
+
+          {/* Shareable Link Input Box */}
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">
-              Live Client Portal URL
+              Sharable Link (No Login Required)
             </label>
             <div
               className={`flex items-center gap-2 p-2 rounded-xl border ${
@@ -144,18 +227,18 @@ export const ClientShareModal: React.FC<ClientShareModalProps> = ({
               <input
                 type="text"
                 readOnly
-                value={shareableUrl}
+                value={currentActiveUrl}
                 className="bg-transparent flex-1 text-xs font-mono outline-hidden select-all text-stone-800 dark:text-stone-200 px-1 truncate"
               />
               <button
-                onClick={handleCopyLink}
+                onClick={() => handleCopyLink(currentActiveUrl, activeUrlType === 'hash')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shrink-0 ${
-                  copied
+                  (activeUrlType === 'standard' ? copied : copiedHash)
                     ? 'bg-emerald-600 text-white'
                     : 'bg-[#C44D34] hover:bg-[#B03E26] text-white shadow-xs'
                 }`}
               >
-                {copied ? (
+                {(activeUrlType === 'standard' ? copied : copiedHash) ? (
                   <>
                     <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                     <span>Copied!</span>
@@ -244,17 +327,33 @@ export const ClientShareModal: React.FC<ClientShareModalProps> = ({
             </label>
           </div>
 
-          {/* Live Preview Button */}
-          <button
-            onClick={() => {
-              onClose();
-              onOpenPortalPreview();
-            }}
-            className="w-full py-3 rounded-xl bg-[#181E24] hover:bg-black text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 shadow-md transition-all"
-          >
-            <Eye className="w-4 h-4" />
-            <span>Open Client View Preview</span>
-          </button>
+          {/* Actions: Test in New Window & Studio Preview */}
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={() => {
+                window.open(currentActiveUrl, '_blank');
+              }}
+              className={`flex-1 py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors ${
+                isDark
+                  ? 'border-stone-700 bg-stone-800 text-stone-200 hover:bg-stone-700'
+                  : 'border-stone-300 bg-white text-stone-800 hover:bg-stone-100'
+              }`}
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Test Link (New Tab)</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onClose();
+                onOpenPortalPreview();
+              }}
+              className="flex-1 py-2.5 px-3 rounded-xl bg-[#181E24] hover:bg-black text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md transition-all"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Preview in App</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -1,9 +1,20 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 
 dotenv.config();
+
+// In-memory store for shareable client portals
+interface SharedPortalRecord {
+  id: string;
+  client: any;
+  posts: any[];
+  permissions?: any;
+  updatedAt: string;
+}
+const sharedPortalsMap = new Map<string, SharedPortalRecord>();
 
 async function startServer() {
   const app = express();
@@ -14,6 +25,46 @@ async function startServer() {
   // Health check
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', time: new Date().toISOString() });
+  });
+
+  // Client Portal sharing endpoints
+  app.post('/api/portals', (req, res) => {
+    try {
+      const { id, client, posts, permissions } = req.body;
+      if (!id || !client) {
+        return res.status(400).json({ error: 'id and client are required' });
+      }
+      const record: SharedPortalRecord = {
+        id,
+        client,
+        posts: Array.isArray(posts) ? posts : [],
+        permissions: permissions || {},
+        updatedAt: new Date().toISOString(),
+      };
+      sharedPortalsMap.set(id, record);
+      return res.json({ success: true, id, record });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Failed to save portal' });
+    }
+  });
+
+  app.get('/api/portals/:id', (req, res) => {
+    const id = req.params.id;
+    const found = sharedPortalsMap.get(id);
+    if (found) {
+      return res.json({ portal: found });
+    }
+    // Search by client id, handle, or name
+    for (const p of sharedPortalsMap.values()) {
+      if (
+        p.client?.id === id ||
+        p.client?.handle?.replace('@', '').toLowerCase() === id.toLowerCase() ||
+        p.client?.name?.toLowerCase() === id.toLowerCase()
+      ) {
+        return res.json({ portal: p });
+      }
+    }
+    return res.status(404).json({ error: 'Portal not found' });
   });
 
   // AI Polish & Tone endpoint
@@ -85,6 +136,21 @@ ${text}
       appType: 'spa',
     });
     app.use(vite.middlewares);
+
+    // Dev SPA fallback so direct links like /portal or /?portal=... serve index.html without 404
+    app.use('*', async (req, res, next) => {
+      if (req.method !== 'GET') return next();
+      try {
+        const url = req.originalUrl;
+        const indexPath = path.resolve(process.cwd(), 'index.html');
+        let template = await fs.promises.readFile(indexPath, 'utf-8');
+        template = await vite.transformIndexHtml(url, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e) {
+        vite.ssrFixStacktrace(e as Error);
+        next(e);
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));

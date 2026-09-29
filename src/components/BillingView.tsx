@@ -312,8 +312,8 @@ export const BillingView: React.FC<BillingViewProps> = ({
           </div>
         </div>
 
-        {/* TIERS CARDS LIST */}
-        <div className="space-y-3.5 mt-2">
+        {/* TIERS CARDS LIST (Responsive Grid: 1 col mobile, 2 col tablet, 4 col PC) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
           {PLANS.map((plan) => {
             const isCurrent = subscription.planId === plan.id;
             const pricingData = plan.pricing[selectedCurrency];

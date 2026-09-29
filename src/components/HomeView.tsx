@@ -259,135 +259,249 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </div>
 
       {activeSubTab === 'calendar' ? (
-        <>
-          {/* Calendar Grid Container */}
-          <div
-            id="calendar-grid-card"
-            className={`rounded-2xl border p-2 shadow-xs transition-colors ${
-              isDark
-                ? 'bg-[#1D242C] border-[#2A3440]'
-                : 'bg-white/95 border-[#E8E4DC]'
-            }`}
-          >
-            {/* Weekday headers: M T W T F S S */}
-            <div className="grid grid-cols-7 text-center pb-2 border-b border-stone-200/60 dark:border-stone-800">
-              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, idx) => (
-                <span
-                  key={idx}
-                  className="text-[11px] font-semibold text-stone-500 dark:text-stone-400 uppercase"
-                >
-                  {day}
-                </span>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          {/* Left Column (lg:col-span-7): Calendar Grid & Legend */}
+          <div className="lg:col-span-7 space-y-4">
+            {/* Calendar Grid Container */}
+            <div
+              id="calendar-grid-card"
+              className={`rounded-2xl border p-2 shadow-xs transition-colors ${
+                isDark
+                  ? 'bg-[#1D242C] border-[#2A3440]'
+                  : 'bg-white/95 border-[#E8E4DC]'
+              }`}
+            >
+              {/* Weekday headers: M T W T F S S */}
+              <div className="grid grid-cols-7 text-center pb-2 border-b border-stone-200/60 dark:border-stone-800">
+                {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, idx) => (
+                  <span
+                    key={idx}
+                    className="text-[11px] font-semibold text-stone-500 dark:text-stone-400 uppercase"
+                  >
+                    {day}
+                  </span>
+                ))}
+              </div>
+
+              {/* Calendar Days */}
+              <div className="grid grid-cols-7 gap-y-1 pt-1.5">
+                {calendarDays.map((cell, idx) => {
+                  const dayPosts = getPostsForDate(cell.dateStr);
+                  const isSelected = selectedDayDate === cell.dateStr;
+                  const isOffMonth = cell.monthOffset !== 0;
+
+                  return (
+                    <button
+                      key={idx}
+                      id={`cal-day-${cell.dateStr}`}
+                      onClick={() => setSelectedDayDate(cell.dateStr)}
+                      className={`min-h-[52px] sm:min-h-[58px] p-1 flex flex-col items-center justify-start rounded-xl transition-all relative group ${
+                        isSelected
+                          ? isDark
+                            ? 'bg-stone-800/90 ring-2 ring-[#C44D34]'
+                            : 'bg-stone-100 ring-2 ring-[#C44D34]'
+                          : 'hover:bg-stone-100/70 dark:hover:bg-stone-800/50'
+                      }`}
+                    >
+                      {/* Day number with circular today badge */}
+                      <div className="w-6 h-6 flex items-center justify-center">
+                        {cell.isToday ? (
+                          <span className="w-6 h-6 rounded-full bg-[#181E24] dark:bg-white text-white dark:text-[#181E24] font-bold text-xs flex items-center justify-center shadow-xs">
+                            {cell.dayNum}
+                          </span>
+                        ) : (
+                          <span
+                            className={`text-xs font-medium ${
+                              isOffMonth
+                                ? 'text-stone-300 dark:text-stone-600'
+                                : isDark
+                                ? 'text-stone-200'
+                                : 'text-stone-800'
+                            }`}
+                          >
+                            {cell.dayNum}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Post dots */}
+                      <div className="flex flex-wrap items-center justify-center gap-1 mt-1 max-w-[36px]">
+                        {dayPosts.slice(0, 3).map((post, pIdx) => {
+                          const col = CATEGORY_COLORS[post.category]?.dot || '#C44D34';
+                          return (
+                            <span
+                              key={pIdx}
+                              className="w-1.5 h-1.5 rounded-full"
+                              style={{ backgroundColor: col }}
+                              title={`${post.category}: ${post.title}`}
+                            />
+                          );
+                        })}
+                        {dayPosts.length > 3 && (
+                          <span className="w-1 h-1 rounded-full bg-stone-400" />
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Categories Legend */}
+            <div
+              id="categories-legend"
+              className="flex flex-wrap items-center justify-center gap-x-3.5 gap-y-2 px-2"
+            >
+              {categoriesList.map((cat) => (
+                <div key={cat} className="flex items-center gap-1.5">
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: CATEGORY_COLORS[cat].dot }}
+                  />
+                  <span className="text-[10px] font-semibold text-stone-600 dark:text-stone-300 tracking-wider">
+                    {cat}
+                  </span>
+                </div>
               ))}
             </div>
 
-            {/* Calendar Days */}
-            <div className="grid grid-cols-7 gap-y-1 pt-1.5">
-              {calendarDays.map((cell, idx) => {
-                const dayPosts = getPostsForDate(cell.dateStr);
-                const isSelected = selectedDayDate === cell.dateStr;
-                const isOffMonth = cell.monthOffset !== 0;
-
-                return (
-                  <button
-                    key={idx}
-                    id={`cal-day-${cell.dateStr}`}
-                    onClick={() => setSelectedDayDate(cell.dateStr)}
-                    className={`min-h-[52px] sm:min-h-[58px] p-1 flex flex-col items-center justify-start rounded-xl transition-all relative group ${
-                      isSelected
-                        ? isDark
-                          ? 'bg-stone-800/90 ring-2 ring-[#C44D34]'
-                          : 'bg-stone-100 ring-2 ring-[#C44D34]'
-                        : 'hover:bg-stone-100/70 dark:hover:bg-stone-800/50'
-                    }`}
-                  >
-                    {/* Day number with circular today badge */}
-                    <div className="w-6 h-6 flex items-center justify-center">
-                      {cell.isToday ? (
-                        <span className="w-6 h-6 rounded-full bg-[#181E24] dark:bg-white text-white dark:text-[#181E24] font-bold text-xs flex items-center justify-center shadow-xs">
-                          {cell.dayNum}
-                        </span>
-                      ) : (
-                        <span
-                          className={`text-xs font-medium ${
-                            isOffMonth
-                              ? 'text-stone-300 dark:text-stone-600'
-                              : isDark
-                              ? 'text-stone-200'
-                              : 'text-stone-800'
-                          }`}
-                        >
-                          {cell.dayNum}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Post dots */}
-                    <div className="flex flex-wrap items-center justify-center gap-1 mt-1 max-w-[36px]">
-                      {dayPosts.slice(0, 3).map((post, pIdx) => {
-                        const col = CATEGORY_COLORS[post.category]?.dot || '#C44D34';
-                        return (
-                          <span
-                            key={pIdx}
-                            className="w-1.5 h-1.5 rounded-full"
-                            style={{ backgroundColor: col }}
-                            title={`${post.category}: ${post.title}`}
-                          />
-                        );
-                      })}
-                      {dayPosts.length > 3 && (
-                        <span className="w-1 h-1 rounded-full bg-stone-400" />
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Categories Legend */}
-          <div
-            id="categories-legend"
-            className="flex flex-wrap items-center justify-center gap-x-3.5 gap-y-2 mt-4 px-2"
-          >
-            {categoriesList.map((cat) => (
-              <div key={cat} className="flex items-center gap-1.5">
-                <span
-                  className="w-2 h-2 rounded-full shrink-0"
-                  style={{ backgroundColor: CATEGORY_COLORS[cat].dot }}
-                />
-                <span className="text-[10px] font-semibold text-stone-600 dark:text-stone-300 tracking-wider">
-                  {cat}
-                </span>
+            {/* Slogan Banner Card (shown on mobile / tablet) */}
+            <div
+              id="content-connects-banner-mobile"
+              className={`lg:hidden mt-4 p-4 rounded-2xl border text-center transition-colors ${
+                isDark
+                  ? 'bg-[#182028] border-[#2A3440]'
+                  : 'bg-white/90 border-[#E8E4DC]'
+              }`}
+            >
+              <p className="text-[13px] font-black tracking-tight text-[#C44D34] uppercase">
+                Content that connects. Consistency that grows.
+              </p>
+              <div className="flex items-center justify-center gap-2 text-[11px] text-stone-500 dark:text-stone-400 mt-1.5 font-medium">
+                <span>• Plan with purpose</span>
+                <span>• Stay consistent</span>
+                <span>• Create impact</span>
               </div>
-            ))}
+            </div>
           </div>
 
-          {/* Slogan Banner Card */}
-          <div
-            id="content-connects-banner"
-            className={`mt-6 p-4 rounded-2xl border text-center transition-colors ${
-              isDark
-                ? 'bg-[#182028] border-[#2A3440]'
-                : 'bg-white/90 border-[#E8E4DC]'
-            }`}
-          >
-            <p className="text-[13px] font-black tracking-tight text-[#C44D34] uppercase">
-              Content that connects. Consistency that grows.
-            </p>
-            <div className="flex items-center justify-center gap-2 text-[11px] text-stone-500 dark:text-stone-400 mt-1.5 font-medium">
-              <span>• Plan with purpose</span>
-              <span>• Stay consistent</span>
-              <span>• Create impact</span>
+          {/* Right Column (lg:col-span-5 hidden lg:block): Desktop Side Schedule & Agenda */}
+          <div className="hidden lg:block lg:col-span-5 space-y-4">
+            <div
+              className={`p-4 rounded-2xl border ${
+                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+              }`}
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-stone-200 dark:border-stone-800">
+                <div>
+                  <h3 className="text-sm font-bold tracking-tight">
+                    {selectedDayDate ? formatLongDate(selectedDayDate) : 'Today’s Schedule'}
+                  </h3>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                    {selectedDayPosts.length} post{selectedDayPosts.length === 1 ? '' : 's'} scheduled
+                  </span>
+                </div>
+
+                <button
+                  onClick={() => onOpenNewPost(selectedDayDate || undefined)}
+                  className="px-2.5 py-1 text-xs font-bold rounded-lg bg-[#C44D34] text-white hover:bg-[#B33E26] shadow-xs transition-colors flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>Schedule</span>
+                </button>
+              </div>
+
+              {/* Day's posts */}
+              <div className="space-y-2.5 mt-3 max-h-[380px] overflow-y-auto pr-1">
+                {selectedDayPosts.length === 0 ? (
+                  <div className="text-center py-10">
+                    <p className="text-xs text-stone-400">
+                      No posts queued for {selectedDayDate ? formatLongDate(selectedDayDate) : 'today'}.
+                    </p>
+                    <button
+                      onClick={() => onOpenNewPost(selectedDayDate || undefined)}
+                      className="mt-2 text-xs font-bold text-[#C44D34] hover:underline"
+                    >
+                      + Create a post for this day
+                    </button>
+                  </div>
+                ) : (
+                  selectedDayPosts.map((post) => {
+                    const catStyle = CATEGORY_COLORS[post.category] || CATEGORY_COLORS.POST;
+                    const statStyle = STATUS_STYLES[post.status] || STATUS_STYLES.Planned;
+
+                    return (
+                      <div
+                        key={post.id}
+                        onClick={() => onEditPost(post)}
+                        className={`p-3 rounded-xl border cursor-pointer hover:border-[#C44D34] transition-all ${
+                          isDark
+                            ? 'bg-[#151D25] border-[#24303E] hover:bg-[#1A2430]'
+                            : 'bg-[#FAF8F5] border-[#E8E4DC] hover:bg-stone-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="w-2 h-2 rounded-full shrink-0"
+                              style={{ backgroundColor: catStyle.dot }}
+                            />
+                            <span
+                              className="font-bold text-[9px] uppercase tracking-wider"
+                              style={{ color: catStyle.text }}
+                            >
+                              {post.category}
+                            </span>
+                            <span className="text-stone-400">•</span>
+                            <span className="text-stone-500 font-medium text-[11px]">
+                              {post.clientName}
+                            </span>
+                          </div>
+                          <span
+                            className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md ${statStyle.badge}`}
+                          >
+                            {statStyle.text}
+                          </span>
+                        </div>
+                        <h4 className="text-xs font-bold text-stone-900 dark:text-white truncate">
+                          {post.title}
+                        </h4>
+                        <p className="text-[11px] text-stone-500 line-clamp-1 mt-0.5">
+                          {post.caption}
+                        </p>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
-            <div className="mt-2.5 text-[11px] font-semibold text-stone-400 dark:text-stone-500 tracking-widest">
-              ☕ — POSTNOTE —
+
+            {/* Desktop Slogan Banner */}
+            <div
+              id="content-connects-banner-desktop"
+              className={`p-4 rounded-2xl border text-center transition-colors ${
+                isDark
+                  ? 'bg-[#182028] border-[#2A3440]'
+                  : 'bg-white/90 border-[#E8E4DC]'
+              }`}
+            >
+              <p className="text-[13px] font-black tracking-tight text-[#C44D34] uppercase">
+                Content that connects. Consistency that grows.
+              </p>
+              <div className="flex items-center justify-center gap-2 text-[11px] text-stone-500 dark:text-stone-400 mt-1.5 font-medium">
+                <span>• Plan with purpose</span>
+                <span>• Stay consistent</span>
+                <span>• Create impact</span>
+              </div>
+              <div className="mt-2 text-[10px] font-semibold text-stone-400 dark:text-stone-500 tracking-widest">
+                ☕ — POSTNOTE STUDIO —
+              </div>
             </div>
           </div>
-        </>
+        </div>
       ) : (
-        /* Agenda View */
-        <div id="agenda-view-list" className="space-y-3">
+        /* Agenda View (Responsive Grid on Tablet/PC) */
+        <div id="agenda-view-list" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {posts
             .slice()
             .sort((a, b) => a.date.localeCompare(b.date))
