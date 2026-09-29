@@ -1,0 +1,12 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/api/health",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "GEMINI_API_KEY",
+      "description": "Google Gemini API key (Google AI Studio) for the AI copy-polish feature. Optional: the app falls back to smart templates without it.",
+      "requiredAtBoot": false
+    }
+  ]
+}
