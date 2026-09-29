@@ -176,7 +176,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded-xl bg-[#181E24] hover:bg-black text-white text-xs font-bold uppercase tracking-wider shadow-sm"
+              className="px-4 py-2 rounded-xl bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-bold uppercase tracking-wider shadow-sm"
             >
               {clientToEdit ? 'Save Changes' : 'Add Client'}
             </button>

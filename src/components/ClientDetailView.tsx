@@ -1,7 +1,7 @@
 import React from 'react';
 import { ArrowLeft, Plus } from 'lucide-react';
 import { Client, Post } from '../types';
-import { CATEGORY_COLORS } from '../utils/theme';
+import { CATEGORY_COLORS, getCategoryBadgeStyle } from '../utils/theme';
 
 interface ClientDetailViewProps {
   client: Client;
@@ -83,7 +83,7 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
 
         <button
           onClick={() => onNewPostForClient(client.id)}
-          className="px-3 py-1.5 bg-[#181E24] hover:bg-black text-white text-xs font-semibold rounded-xl flex items-center gap-1 shadow-xs transition-colors"
+          className="px-3 py-1.5 bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-semibold rounded-xl flex items-center gap-1 shadow-xs transition-colors"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
           <span>New post</span>
@@ -206,8 +206,7 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
             <p className="text-xs text-stone-500 py-3 text-center">No upcoming posts.</p>
           ) : (
             upcomingPosts.map((post) => {
-              const catColor = CATEGORY_COLORS[post.category]?.text || '#C44D34';
-              const catBg = CATEGORY_COLORS[post.category]?.bg || '#FDF2F0';
+              const catStyle = getCategoryBadgeStyle(post.category, isDark);
 
               return (
                 <div
@@ -221,7 +220,7 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
                     </span>
                     <span
                       className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
-                      style={{ color: catColor, backgroundColor: catBg }}
+                      style={catStyle}
                     >
                       {post.category}
                     </span>

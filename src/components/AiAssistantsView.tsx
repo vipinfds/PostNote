@@ -63,7 +63,7 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
 
           <button
             onClick={handleCopy}
-            className="px-3 py-1 bg-[#181E24] hover:bg-black text-white text-xs font-semibold rounded-lg flex items-center gap-1 shrink-0 transition-colors"
+            className="px-3 py-1 bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-semibold rounded-lg flex items-center gap-1 shrink-0 transition-colors"
           >
             {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
             <span>{copied ? 'Copied' : 'Copy'}</span>

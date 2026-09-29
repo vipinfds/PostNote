@@ -66,7 +66,7 @@ export const QueueView: React.FC<QueueViewProps> = ({
         <button
           id="queue-new-post-btn"
           onClick={onOpenNewPost}
-          className="px-3.5 py-1.5 bg-[#181E24] hover:bg-black text-white text-xs font-semibold rounded-xl flex items-center gap-1 shadow-xs transition-colors"
+          className="px-3.5 py-1.5 bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-semibold rounded-xl flex items-center gap-1 shadow-xs transition-colors"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
           <span>New</span>
@@ -82,7 +82,7 @@ export const QueueView: React.FC<QueueViewProps> = ({
             onClick={() => setStatusFilter(opt)}
             className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all ${
               statusFilter === opt
-                ? 'bg-[#181E24] text-white shadow-xs'
+                ? 'bg-[#181E24] dark:bg-[#C44D34] text-white shadow-xs'
                 : isDark
                 ? 'text-stone-400 hover:text-stone-200'
                 : 'text-stone-500 hover:text-stone-900'

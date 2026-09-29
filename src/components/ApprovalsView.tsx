@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, CheckCircle2, RotateCcw, Film, Image as ImageIcon, Play } from 'lucide-react';
 import { Post } from '../types';
-import { CATEGORY_COLORS } from '../utils/theme';
+import { CATEGORY_COLORS, getCategoryBadgeStyle } from '../utils/theme';
 
 interface ApprovalsViewProps {
   posts: Post[];
@@ -99,7 +99,7 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
             </div>
           ) : (
             needsReviewPosts.map((post) => {
-              const catStyle = CATEGORY_COLORS[post.category] || CATEGORY_COLORS.POST;
+              const catStyle = getCategoryBadgeStyle(post.category, isDark);
 
               return (
                 <div
@@ -118,7 +118,7 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                       <span className="text-stone-300 dark:text-stone-700">•</span>
                       <span
                         className="font-bold text-[9px] uppercase px-1.5 py-0.5 rounded tracking-wider"
-                        style={{ color: catStyle.text, backgroundColor: catStyle.bg }}
+                        style={catStyle}
                       >
                         {post.category}
                       </span>
@@ -198,7 +198,7 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                   <div className="grid grid-cols-2 gap-2.5 mt-4 pt-3 border-t border-stone-100 dark:border-stone-800">
                     <button
                       onClick={() => onApprovePost(post.id)}
-                      className="py-2.5 px-3 rounded-xl bg-[#181E24] hover:bg-black text-white text-xs font-bold uppercase tracking-wider shadow-xs transition-all active:scale-[0.98]"
+                      className="py-2.5 px-3 rounded-xl bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-bold uppercase tracking-wider shadow-xs transition-all active:scale-[0.98]"
                     >
                       Approve
                     </button>

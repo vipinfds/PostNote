@@ -67,7 +67,7 @@ export const CampaignsView: React.FC<CampaignsViewProps> = ({
 
         <button
           onClick={() => setIsModalOpen(true)}
-          className="px-3.5 py-1.5 bg-[#181E24] hover:bg-black text-white text-xs font-semibold rounded-xl flex items-center gap-1 shadow-xs transition-colors"
+          className="px-3.5 py-1.5 bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-semibold rounded-xl flex items-center gap-1 shadow-xs transition-colors"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
           <span>New</span>
@@ -218,9 +218,9 @@ export const CampaignsView: React.FC<CampaignsViewProps> = ({
                       : 'bg-stone-50 border-stone-200 text-stone-900'
                   }`}
                 >
-                  <option value="">No specific client</option>
+                  <option value="" className="bg-white dark:bg-[#252E38] text-stone-800 dark:text-stone-200">No specific client</option>
                   {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
+                    <option key={c.id} value={c.id} className="bg-white dark:bg-[#252E38] text-stone-800 dark:text-stone-200">
                       {c.name}
                     </option>
                   ))}
@@ -256,7 +256,7 @@ export const CampaignsView: React.FC<CampaignsViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-[#181E24] hover:bg-black text-white text-xs font-bold uppercase tracking-wider shadow-sm"
+                  className="px-4 py-2 rounded-xl bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-bold uppercase tracking-wider shadow-sm"
                 >
                   Create Campaign
                 </button>

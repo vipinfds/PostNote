@@ -3,12 +3,14 @@ import { Calendar, Users, List, Clock, LayoutGrid } from 'lucide-react';
 import { MainTab } from '../types';
 
 interface BottomNavProps {
-  currentTab: MainTab;
+  currentTab?: MainTab;
+  activeTab?: MainTab;
   onSelectTab: (tab: MainTab) => void;
   isDark?: boolean;
 }
 
-export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, onSelectTab, isDark }) => {
+export const BottomNav: React.FC<BottomNavProps> = ({ currentTab: currentTabProp, activeTab: activeTabProp, onSelectTab, isDark }) => {
+  const currentTab = activeTabProp || currentTabProp || 'home';
   const tabs = [
     { id: 'home' as MainTab, label: 'HOME', icon: Calendar },
     { id: 'clients' as MainTab, label: 'CLIENTS', icon: Users },
