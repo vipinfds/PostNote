@@ -9,7 +9,26 @@ export type MoreSubScreen =
   | 'analytics'
   | 'settings'
   | 'team'
-  | 'ai-assistants';
+  | 'ai-assistants'
+  | 'billing';
+
+export type PlanTierId = 'free' | 'solo' | 'agency' | 'studio' | 'enterprise';
+export type BillingInterval = 'monthly' | 'annual';
+export type CurrencyCode = 'USD' | 'INR' | 'AED';
+
+export interface SubscriptionState {
+  planId: PlanTierId;
+  interval: BillingInterval;
+  currency: CurrencyCode;
+  isTrial: boolean;
+  trialDaysLeft: number;
+  isFoundingMember: boolean;
+  extraClients: number;
+  startedAt: string;
+  renewsAt: string;
+  paymentMethod?: string;
+  lastPaymentAmount?: number;
+}
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 

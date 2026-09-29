@@ -1,12 +1,14 @@
 import React from 'react';
-import { ArrowLeft, Sun, Moon, Monitor, Users, Trash2, LogOut } from 'lucide-react';
-import { ThemeMode } from '../types';
+import { ArrowLeft, Sun, Moon, Monitor, Users, Trash2, LogOut, Sparkles, ChevronRight } from 'lucide-react';
+import { ThemeMode, SubscriptionState } from '../types';
 
 interface SettingsViewProps {
   theme: ThemeMode;
   onSetTheme: (theme: ThemeMode) => void;
   onBack: () => void;
   onNavigateToTeam: () => void;
+  onNavigateToBilling: () => void;
+  subscription?: SubscriptionState;
   onSignOut: () => void;
   onDeleteAccount: () => void;
   isDark?: boolean;
@@ -17,10 +19,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onSetTheme,
   onBack,
   onNavigateToTeam,
+  onNavigateToBilling,
+  subscription,
   onSignOut,
   onDeleteAccount,
   isDark,
 }) => {
+  const planName =
+    subscription?.planId === 'free'
+      ? 'Free Tier'
+      : subscription?.planId === 'solo'
+      ? 'Solo Pro'
+      : subscription?.planId === 'studio'
+      ? 'Studio Pro'
+      : subscription?.planId === 'enterprise'
+      ? 'Enterprise'
+      : 'Agency Plan';
+
   return (
     <div
       id="settings-view"
@@ -70,6 +85,52 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Sign out</span>
+          </button>
+        </div>
+
+        {/* Subscription & Plan Card */}
+        <div
+          className={`p-4 rounded-2xl border shadow-xs transition-colors ${
+            isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#C44D34]" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                Workspace Subscription
+              </h3>
+            </div>
+            {subscription?.isTrial ? (
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold uppercase">
+                {subscription.trialDaysLeft}d Trial
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-extrabold uppercase">
+                Active Pro
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-baseline justify-between mt-1">
+            <div>
+              <h4 className="text-base font-bold text-stone-900 dark:text-white font-serif">
+                {planName}
+              </h4>
+              <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                {subscription?.isTrial
+                  ? 'Founding agency trial with full limits & review links'
+                  : `Billed ${subscription?.interval} in ${subscription?.currency}`}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={onNavigateToBilling}
+            className="w-full mt-3.5 py-2.5 rounded-xl bg-[#C44D34] hover:bg-[#B03E26] text-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs flex items-center justify-center gap-1.5"
+          >
+            <span>Manage Plans & Pricing</span>
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
 

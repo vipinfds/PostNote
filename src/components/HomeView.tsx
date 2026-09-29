@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Film, Image as ImageIcon, Play } from 'lucide-react';
-import { Post, PostCategory } from '../types';
-import { CATEGORY_COLORS, STATUS_STYLES, formatLongDate, getCategoryBadgeStyle } from '../utils/theme';
+import { Post, PostCategory, SubscriptionState } from '../types';
+import { CATEGORY_COLORS, STATUS_STYLES, formatLongDate } from '../utils/theme';
+import { Sparkles } from 'lucide-react';
 
 interface HomeViewProps {
   posts: Post[];
+  subscription?: SubscriptionState;
+  onNavigateToBilling?: () => void;
   onOpenNewPost: (initialDate?: string) => void;
   onEditPost: (post: Post) => void;
   isDark?: boolean;
@@ -12,6 +15,8 @@ interface HomeViewProps {
 
 export const HomeView: React.FC<HomeViewProps> = ({
   posts,
+  subscription,
+  onNavigateToBilling,
   onOpenNewPost,
   onEditPost,
   isDark,
@@ -141,7 +146,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       }`}
     >
       {/* Brand Header */}
-      <header className="flex flex-col items-center justify-center pt-1 pb-3">
+      <header className="flex flex-col items-center justify-center pt-1 pb-2">
         <h1
           id="brand-logo"
           className="font-serif text-[32px] sm:text-[36px] font-bold tracking-tight text-[#C44D34] select-none"
@@ -149,6 +154,21 @@ export const HomeView: React.FC<HomeViewProps> = ({
         >
           PostNote
         </h1>
+        {onNavigateToBilling && (
+          <button
+            onClick={onNavigateToBilling}
+            className="mt-0.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#C44D34]/10 text-[#C44D34] hover:bg-[#C44D34]/20 transition-colors"
+          >
+            <Sparkles className="w-3 h-3" />
+            <span>
+              {subscription?.isTrial
+                ? `Agency Trial • ${subscription.trialDaysLeft}d left`
+                : subscription?.planId === 'free'
+                ? 'Free Plan • Upgrade'
+                : `${subscription?.planId.toUpperCase()} Pro`}
+            </span>
+          </button>
+        )}
       </header>
 
       {/* Month Switcher & Today Button */}
@@ -467,7 +487,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 </div>
               ) : (
                 selectedDayPosts.map((post) => {
-                  const catStyle = getCategoryBadgeStyle(post.category, isDark);
+                  const catStyle = CATEGORY_COLORS[post.category] || CATEGORY_COLORS.POST;
                   const statStyle = STATUS_STYLES[post.status] || STATUS_STYLES.Planned;
 
                   return (
@@ -488,7 +508,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
                         <div className="flex items-center gap-2">
                           <span
                             className="font-bold text-[10px] tracking-wider uppercase px-1.5 py-0.5 rounded"
-                            style={catStyle}
+                            style={{
+                              color: catStyle.text,
+                              backgroundColor: catStyle.bg,
+                            }}
                           >
                             {post.category}
                           </span>

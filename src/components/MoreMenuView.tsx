@@ -8,27 +8,46 @@ import {
   Settings as SettingsIcon,
   Bot,
   ChevronRight,
+  CreditCard,
+  Sparkles,
 } from 'lucide-react';
-import { MoreSubScreen } from '../types';
+import { MoreSubScreen, SubscriptionState } from '../types';
 
 interface MoreMenuViewProps {
   onNavigateSubScreen: (screen: MoreSubScreen) => void;
   waitingApprovalsCount: number;
+  subscription?: SubscriptionState;
   isDark?: boolean;
 }
 
 export const MoreMenuView: React.FC<MoreMenuViewProps> = ({
   onNavigateSubScreen,
   waitingApprovalsCount,
+  subscription,
   isDark,
 }) => {
+  const billingBadge = subscription?.isTrial
+    ? `${subscription.trialDaysLeft}d Trial`
+    : subscription?.planId === 'free'
+    ? 'Upgrade'
+    : 'Pro Active';
+
   const menuItems: Array<{
     id: MoreSubScreen;
     title: string;
     description: string;
     icon: React.ElementType;
     badge?: string | number;
+    highlight?: boolean;
   }> = [
+    {
+      id: 'billing',
+      title: 'Plans & Billing',
+      description: 'Pro subscription, Founding offer & tier limits',
+      icon: Sparkles,
+      badge: billingBadge,
+      highlight: true,
+    },
     {
       id: 'ideas',
       title: 'Ideas Bank',
@@ -63,7 +82,7 @@ export const MoreMenuView: React.FC<MoreMenuViewProps> = ({
     {
       id: 'settings',
       title: 'Settings',
-      description: 'Account, theme and team',
+      description: 'Account, theme, team and plan status',
       icon: SettingsIcon,
     },
     {
@@ -108,7 +127,9 @@ export const MoreMenuView: React.FC<MoreMenuViewProps> = ({
               <div className="flex items-center gap-3.5 min-w-0">
                 <div
                   className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
-                    isDark
+                    item.highlight
+                      ? 'bg-[#C44D34]/15 text-[#C44D34]'
+                      : isDark
                       ? 'bg-stone-800 text-stone-300 group-hover:text-white group-hover:bg-stone-700'
                       : 'bg-stone-100 text-stone-700 group-hover:bg-stone-200/70'
                   }`}

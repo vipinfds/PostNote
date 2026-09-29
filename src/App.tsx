@@ -9,6 +9,7 @@ import {
   MediaItem,
   TeamMember,
   ThemeMode,
+  SubscriptionState,
 } from './types';
 import {
   INITIAL_POSTS,
@@ -18,6 +19,7 @@ import {
   INITIAL_MEDIA,
   INITIAL_TEAM,
 } from './data/initialData';
+import { INITIAL_SUBSCRIPTION_STATE } from './data/pricingData';
 
 // Component imports
 import { BottomNav } from './components/BottomNav';
@@ -41,12 +43,15 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { SettingsView } from './components/SettingsView';
 import { TeamView } from './components/TeamView';
 import { AiAssistantsView } from './components/AiAssistantsView';
+import { BillingView } from './components/BillingView';
+import { ClientPortalView } from './components/ClientPortalView';
 
 export default function App() {
   // Navigation States
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [activeMoreSubScreen, setActiveMoreSubScreen] = useState<MoreSubScreen | null>(null);
   const [selectedClientDetail, setSelectedClientDetail] = useState<Client | null>(null);
+  const [portalClient, setPortalClient] = useState<Client | null>(null);
 
   // Post form state (for both New & Edit)
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
@@ -129,6 +134,15 @@ export default function App() {
     }
   });
 
+  const [subscription, setSubscription] = useState<SubscriptionState>(() => {
+    try {
+      const cached = localStorage.getItem('postnote_subscription_v2');
+      return cached ? JSON.parse(cached) : INITIAL_SUBSCRIPTION_STATE;
+    } catch {
+      return INITIAL_SUBSCRIPTION_STATE;
+    }
+  });
+
   // Local storage caching effects
   useEffect(() => {
     localStorage.setItem('postnote_posts_v2', JSON.stringify(posts));
@@ -170,6 +184,24 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    localStorage.setItem('postnote_subscription_v2', JSON.stringify(subscription));
+  }, [subscription]);
+
+  // Subscription update handler
+  const handleUpdateSubscription = (newSub: SubscriptionState) => {
+    setSubscription(newSub);
+    showToast(`Workspace upgraded to ${newSub.planId.toUpperCase()}!`);
+  };
+
+  const handleNavigateToBilling = () => {
+    setActiveTab('more');
+    setActiveMoreSubScreen('billing');
+    setSelectedClientDetail(null);
+    setIsPostFormOpen(false);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  };
+
+  useEffect(() => {
     localStorage.setItem('postnote_theme', theme);
     const effectiveIsDark =
       theme === 'dark' || (theme === 'system' && systemPrefersDark);
@@ -189,15 +221,36 @@ export default function App() {
     }, 2500);
   };
 
+  // URL param detection for direct client portal links
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const portalParam = params.get('portal');
+      if (portalParam) {
+        const found = clients.find(
+          (c) =>
+            c.id === portalParam ||
+            c.handle.replace('@', '').toLowerCase() === portalParam.toLowerCase()
+        );
+        if (found) {
+          setPortalClient(found);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [clients]);
+
   // Tab navigation with light screen loading flash
   const handleSelectTab = (tab: TabType) => {
-    if (tab === activeTab && !activeMoreSubScreen && !selectedClientDetail && !isPostFormOpen) {
+    if (tab === activeTab && !activeMoreSubScreen && !selectedClientDetail && !isPostFormOpen && !portalClient) {
       return;
     }
     setIsLoadingScreen(true);
     setActiveTab(tab);
     setActiveMoreSubScreen(null);
     setSelectedClientDetail(null);
+    setPortalClient(null);
     setIsPostFormOpen(false);
     setEditingPost(null);
 
@@ -410,6 +463,41 @@ export default function App() {
       return <ScreenLoader isDark={isDark} />;
     }
 
+    // 0. If Client Portal View is open (live client mode)
+    if (portalClient) {
+      return (
+        <ClientPortalView
+          client={portalClient}
+          posts={posts}
+          subscription={subscription}
+          onApprovePost={handleApprovePost}
+          onRequestChanges={(postId, notes) => {
+            setPosts((prev) =>
+              prev.map((p) =>
+                p.id === postId
+                  ? {
+                      ...p,
+                      status: 'Planned',
+                      caption: notes ? `${p.caption}\n\n[Client Feedback]: ${notes}` : p.caption,
+                    }
+                  : p
+              )
+            );
+            showToast('Feedback submitted to studio team');
+          }}
+          onExit={() => {
+            setPortalClient(null);
+            try {
+              const url = new URL(window.location.href);
+              url.searchParams.delete('portal');
+              window.history.replaceState({}, '', url.toString());
+            } catch {}
+          }}
+          isDark={isDark}
+        />
+      );
+    }
+
     // 1. If Post Form is open (New or Edit)
     if (isPostFormOpen) {
       return (
@@ -437,6 +525,8 @@ export default function App() {
       return (
         <HomeView
           posts={posts}
+          subscription={subscription}
+          onNavigateToBilling={handleNavigateToBilling}
           onOpenNewPost={handleOpenNewPost}
           onEditPost={handleEditPost}
           isDark={isDark}
@@ -454,6 +544,7 @@ export default function App() {
             onBack={() => setSelectedClientDetail(null)}
             onNewPostForClient={(cId) => handleOpenNewPost(undefined, cId)}
             onEditPost={handleEditPost}
+            onOpenPortal={(client) => setPortalClient(client)}
             isDark={isDark}
           />
         );
@@ -462,6 +553,8 @@ export default function App() {
         <ClientsView
           clients={clients}
           posts={posts}
+          subscription={subscription}
+          onNavigateToBilling={handleNavigateToBilling}
           onSelectClient={(client) => setSelectedClientDetail(client)}
           onOpenNewClientModal={() => {
             setEditingClient(null);
@@ -569,11 +662,27 @@ export default function App() {
         );
       }
 
+      if (activeMoreSubScreen === 'billing') {
+        return (
+          <BillingView
+            subscription={subscription}
+            onUpdateSubscription={handleUpdateSubscription}
+            clients={clients}
+            posts={posts}
+            teamMembers={teamMembers}
+            onBack={() => setActiveMoreSubScreen(null)}
+            isDark={isDark}
+          />
+        );
+      }
+
       if (activeMoreSubScreen === 'settings') {
         return (
           <SettingsView
             theme={theme}
             onSetTheme={setTheme}
+            subscription={subscription}
+            onNavigateToBilling={() => setActiveMoreSubScreen('billing')}
             onBack={() => setActiveMoreSubScreen(null)}
             onNavigateToTeam={() => setActiveMoreSubScreen('team')}
             onSignOut={() => showToast('Signed out of session')}
@@ -615,6 +724,7 @@ export default function App() {
         <MoreMenuView
           onNavigateSubScreen={(sub) => setActiveMoreSubScreen(sub)}
           waitingApprovalsCount={waitingApprovalsCount}
+          subscription={subscription}
           isDark={isDark}
         />
       );
@@ -646,7 +756,7 @@ export default function App() {
         </main>
 
         {/* Bottom Navigation (5 tabs: Home, Clients, Content, Queue, More) */}
-        {!isPostFormOpen && (
+        {!isPostFormOpen && !portalClient && (
           <BottomNav
             activeTab={activeTab}
             onSelectTab={handleSelectTab}
