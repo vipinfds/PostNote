@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for adding a fully functional Model Context Protocol (MCP) server to PostNote with two-way read/write access for Claude (browser and desktop), live data synchronization, dynamic endpoint detection, and an interactive in-app MCP testing console.",
-  "updatedAt": "2026-09-30T11:38:49.332650806Z",
+  "summary": "Implementation plan for Claude.ai OAuth 2.0 Sign-In Service, Dynamic Client Registration (RFC 7591), 1-click instant approval, and OAuth discovery metadata to completely fix the \"Couldn't register with PostNote's sign-in service\" connector error.",
+  "updatedAt": "2026-09-30T11:49:25.440786708Z",
   "requestFeedback": true,
   "userFacing": true
 }

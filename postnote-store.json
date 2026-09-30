@@ -1,6 +1,18 @@
 {
   "posts": [
     {
+      "id": "post-muo1ztob-76va",
+      "clientId": "client-codery",
+      "clientName": "Codery",
+      "title": "Post for Codery (Sep 30)",
+      "caption": "Draft a post for Codery celebrating 10k users",
+      "platform": "Instagram",
+      "date": "2026-09-30",
+      "status": "Planned",
+      "category": "POST",
+      "createdAt": "2026-09-30T12:00:19.451Z"
+    },
+    {
       "id": "post-muo1cg1t-yxe3",
       "clientId": "client-codery",
       "clientName": "Codery",
@@ -394,7 +406,7 @@
       "handle": "@codery",
       "color": "#3B82F6",
       "notes": "Developer cloud platform & software engineering hub — tech updates, tutorials, and analytics",
-      "postsCount": 7
+      "postsCount": 8
     },
     {
       "id": "client-kudoli",
@@ -515,5 +527,5 @@
       "description": "Quick how-to reel with head barista, tie into new seasonal drink"
     }
   ],
-  "lastUpdated": "2026-09-30T11:42:08.705Z"
+  "lastUpdated": "2026-09-30T12:00:19.451Z"
 }

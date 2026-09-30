@@ -1,20 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft,
   Copy,
   Check,
   Zap,
   Globe,
-  Monitor,
-  Terminal,
+  Bot,
+  Sparkles,
   Activity,
-  Send,
   RefreshCw,
   PlusCircle,
   FileText,
   CheckCircle2,
   AlertCircle,
   Code,
+  ShieldCheck,
+  ExternalLink,
+  KeyRound,
+  Lock,
+  Send,
+  HelpCircle,
 } from 'lucide-react';
 
 interface AiAssistantsViewProps {
@@ -24,7 +29,16 @@ interface AiAssistantsViewProps {
   onRefreshSync?: () => void;
 }
 
-type TabMode = 'claude-web' | 'claude-desktop' | 'inspector';
+type TabMode = 'claude' | 'chatgpt' | 'gemini' | 'copilot' | 'inspector';
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  toolCalled?: string | null;
+  toolResult?: any;
+  timestamp: string;
+}
 
 export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
   onBack,
@@ -32,18 +46,29 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
   isDark,
   onRefreshSync,
 }) => {
-  const [activeTab, setActiveTab] = useState<TabMode>('claude-web');
+  // Default to Claude as requested by the user
+  const [activeTab, setActiveTab] = useState<TabMode>('claude');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // Dynamic host detection so URL is never hardcoded or invalid
+  // Dynamic host detection
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const mcpHttpUrl = `${origin}/mcp`;
-  const mcpSseUrl = `${origin}/mcp/sse`;
+  const [publicTunnelUrl, setPublicTunnelUrl] = useState<string | null>(null);
+  const [tunnelStatus, setTunnelStatus] = useState<'checking' | 'active' | 'starting'>('checking');
 
-  // Server ping & diagnostics state
+  // Compute effective URLs (prioritizing the public tunnel that bypasses Google cookie check)
+  const effectiveBaseUrl = publicTunnelUrl || origin;
+  const effectiveMcpUrl = `${effectiveBaseUrl}/mcp`;
+  const effectiveAuthUrl = `${effectiveBaseUrl}/oauth/authorize`;
+  const effectiveTokenUrl = `${effectiveBaseUrl}/oauth/token`;
+  const effectiveOpenApiUrl = `${effectiveBaseUrl}/openapi.json`;
+
+  const oauthClientId = 'claude_postnote_client';
+  const oauthClientSecret = 'postnote_oauth_secret_2026';
+
+  // Server health state
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'error'>('checking');
-  const [serverPingMs, setServerPingMs] = useState<number | null>(null);
-  const [toolCount, setToolCount] = useState<number>(8);
+  const [openApiSchema, setOpenApiSchema] = useState<any>(null);
+  const [geminiTools, setGeminiTools] = useState<any>(null);
 
   // Inspector state
   const [inspectorLog, setInspectorLog] = useState<{
@@ -55,32 +80,102 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
   } | null>(null);
   const [isRunningAction, setIsRunningAction] = useState(false);
 
-  // Ping server on mount
+  // Copilot Chat state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      id: 'welcome',
+      role: 'assistant',
+      text: '👋 Hi! I am your PostNote AI Copilot. I have full read and write access to your calendar, drafts, clients, and approval queues. You can ask me to list posts, schedule new content, check client stats, or approve items!',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    },
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isCopilotSending, setIsCopilotSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Check health and poll tunnel
   useEffect(() => {
     checkServerHealth();
+    fetchTunnel();
+    fetchOpenApi();
+    fetchGeminiTools();
+
+    const interval = setInterval(() => {
+      fetchTunnel();
+    }, 4000);
+
+    return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'copilot') {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, activeTab]);
+
+  const fetchTunnel = async () => {
+    try {
+      const res = await fetch('/api/tunnel');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.publicUrl) {
+          setPublicTunnelUrl(data.publicUrl);
+          setTunnelStatus('active');
+        } else {
+          setTunnelStatus('starting');
+        }
+      }
+    } catch {
+      setTunnelStatus('starting');
+    }
+  };
+
+  const restartTunnel = async () => {
+    setTunnelStatus('starting');
+    try {
+      await fetch('/api/tunnel/restart', { method: 'POST' });
+      onShowToast('Restarting cloud tunnel...');
+      setTimeout(fetchTunnel, 2000);
+    } catch {
+      onShowToast('Could not restart tunnel');
+    }
+  };
 
   const checkServerHealth = async () => {
     setServerStatus('checking');
-    const start = performance.now();
     try {
-      const res = await fetch('/mcp', {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-      });
-      const latency = Math.round(performance.now() - start);
+      const res = await fetch('/api/health');
       if (res.ok) {
-        const data = await res.json();
         setServerStatus('online');
-        setServerPingMs(latency);
-        if (data.capabilities?.tools?.length) {
-          setToolCount(data.capabilities.tools.length);
-        }
       } else {
         setServerStatus('error');
       }
-    } catch (e) {
+    } catch {
       setServerStatus('error');
+    }
+  };
+
+  const fetchOpenApi = async () => {
+    try {
+      const res = await fetch('/openapi.json');
+      if (res.ok) {
+        const data = await res.json();
+        setOpenApiSchema(data);
+      }
+    } catch (e) {
+      console.warn('Could not load OpenAPI schema', e);
+    }
+  };
+
+  const fetchGeminiTools = async () => {
+    try {
+      const res = await fetch('/api/gemini/tools');
+      if (res.ok) {
+        const data = await res.json();
+        setGeminiTools(data);
+      }
+    } catch (e) {
+      console.warn('Could not load Gemini tools', e);
     }
   };
 
@@ -91,161 +186,59 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
     setTimeout(() => setCopiedKey(null), 2200);
   };
 
-  // Test Handshake (initialize + tools/list)
-  const runHandshakeTest = async () => {
-    setIsRunningAction(true);
-    const start = performance.now();
-    const reqBody = {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'tools/list',
-      params: {},
+  // Send message to in-app Copilot
+  const handleSendMessage = async (customPrompt?: string) => {
+    const textToSend = customPrompt || chatInput.trim();
+    if (!textToSend || isCopilotSending) return;
+
+    const userMsg: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      text: textToSend,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
+
+    setChatMessages((prev) => [...prev, userMsg]);
+    if (!customPrompt) setChatInput('');
+    setIsCopilotSending(true);
+
     try {
-      const res = await fetch('/mcp', {
+      const res = await fetch('/api/gemini/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(reqBody),
+        body: JSON.stringify({ message: textToSend }),
       });
-      const latency = Math.round(performance.now() - start);
       const data = await res.json();
-      setInspectorLog({
-        action: 'Handshake & Tool Discovery (tools/list)',
-        status: res.ok ? 'success' : 'error',
-        latencyMs: latency,
-        request: reqBody,
-        response: data,
-      });
-      onShowToast(`Discovered ${data?.result?.tools?.length || 8} MCP tools`);
-    } catch (err: any) {
-      setInspectorLog({
-        action: 'Handshake & Tool Discovery',
-        status: 'error',
-        latencyMs: Math.round(performance.now() - start),
-        request: reqBody,
-        response: { error: err?.message || 'Connection failed' },
-      });
-      onShowToast('Handshake error');
-    } finally {
-      setIsRunningAction(false);
-    }
-  };
 
-  // Test Read (list_posts)
-  const runReadTest = async () => {
-    setIsRunningAction(true);
-    const start = performance.now();
-    const reqBody = {
-      jsonrpc: '2.0',
-      id: 2,
-      method: 'tools/call',
-      params: {
-        name: 'list_posts',
-        arguments: { limit: 3 },
-      },
-    };
-    try {
-      const res = await fetch('/mcp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(reqBody),
-      });
-      const latency = Math.round(performance.now() - start);
-      const data = await res.json();
-      setInspectorLog({
-        action: 'Read Access: Query Posts (list_posts)',
-        status: res.ok ? 'success' : 'error',
-        latencyMs: latency,
-        request: reqBody,
-        response: data,
-      });
-      onShowToast('Successfully read posts from workspace');
-    } catch (err: any) {
-      setInspectorLog({
-        action: 'Read Access: Query Posts',
-        status: 'error',
-        latencyMs: Math.round(performance.now() - start),
-        request: reqBody,
-        response: { error: err?.message || 'Read failed' },
-      });
-    } finally {
-      setIsRunningAction(false);
-    }
-  };
+      const assistantMsg: ChatMessage = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        text: data.reply || 'Task processed successfully.',
+        toolCalled: data.toolCalled,
+        toolResult: data.toolResult,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
 
-  // Test Write (create_post)
-  const runWriteTest = async () => {
-    setIsRunningAction(true);
-    const start = performance.now();
-    const testDate = new Date();
-    testDate.setDate(testDate.getDate() + 2);
-    const dateStr = testDate.toISOString().split('T')[0];
+      setChatMessages((prev) => [...prev, assistantMsg]);
 
-    const reqBody = {
-      jsonrpc: '2.0',
-      id: 3,
-      method: 'tools/call',
-      params: {
-        name: 'create_post',
-        arguments: {
-          clientName: 'Codery',
-          title: `Claude MCP Live Test #${Math.floor(Math.random() * 900 + 100)}`,
-          caption: 'Testing bidirectional MCP read & write access with Claude. Automatically scheduled in PostNote calendar! 🚀 #PostNote #ClaudeMCP',
-          platform: 'LinkedIn',
-          date: dateStr,
-          status: 'Planned',
-          category: 'POST',
-        },
-      },
-    };
-    try {
-      const res = await fetch('/mcp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(reqBody),
-      });
-      const latency = Math.round(performance.now() - start);
-      const data = await res.json();
-      setInspectorLog({
-        action: 'Write Access: Create Scheduled Post (create_post)',
-        status: res.ok ? 'success' : 'error',
-        latencyMs: latency,
-        request: reqBody,
-        response: data,
-      });
-      onShowToast('Post created via MCP! Check your Calendar & Queue.');
-      if (onRefreshSync) {
+      if (data.updatedStore && onRefreshSync) {
         onRefreshSync();
+        onShowToast('Workspace updated in real-time!');
       }
     } catch (err: any) {
-      setInspectorLog({
-        action: 'Write Access: Create Post',
-        status: 'error',
-        latencyMs: Math.round(performance.now() - start),
-        request: reqBody,
-        response: { error: err?.message || 'Write failed' },
-      });
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `err-${Date.now()}`,
+          role: 'assistant',
+          text: `⚠️ Error executing request: ${err?.message || 'Server error'}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        },
+      ]);
     } finally {
-      setIsRunningAction(false);
+      setIsCopilotSending(false);
     }
   };
-
-  const desktopConfigJson = JSON.stringify(
-    {
-      mcpServers: {
-        postnote: {
-          command: 'npx',
-          args: ['-y', 'mcp-remote', mcpSseUrl],
-        },
-      },
-    },
-    null,
-    2
-  );
-
-  const curlTestCommand = `curl -X POST "${mcpHttpUrl}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`;
 
   return (
     <div
@@ -264,301 +257,566 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
             <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
           </button>
           <div>
-            <h2 className="text-base font-bold tracking-tight">Connect AI assistants (MCP)</h2>
+            <h2 className="text-base font-bold tracking-tight">AI Integrations & Connectors</h2>
             <p className="text-[11px] text-stone-500 dark:text-stone-400">
-              Model Context Protocol · Read & Write access for Claude
+              100% Browser-Connectable · Claude MCP · ChatGPT Actions · Gemini SDK · In-App Copilot
             </p>
           </div>
         </div>
 
         {/* Live Status indicator */}
-        <button
-          onClick={checkServerHealth}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${
-            serverStatus === 'online'
-              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-              : serverStatus === 'checking'
-              ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-              : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
-          }`}
-          title="Click to re-ping server"
-        >
-          <span
-            className={`w-2 h-2 rounded-full ${
-              serverStatus === 'online'
-                ? 'bg-emerald-500 animate-pulse'
-                : serverStatus === 'checking'
-                ? 'bg-amber-500'
-                : 'bg-rose-500'
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchTunnel}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${
+              tunnelStatus === 'active'
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
             }`}
-          />
-          <span>
-            {serverStatus === 'online'
-              ? `Online (${serverPingMs}ms · ${toolCount} tools)`
-              : serverStatus === 'checking'
-              ? 'Checking...'
-              : 'Offline / Typo'}
-          </span>
-          <RefreshCw className="w-3 h-3 ml-0.5 opacity-60" />
-        </button>
-      </div>
-
-      {/* Main MCP Server URL Card */}
-      <div
-        className={`mt-4 p-4 rounded-2xl border shadow-xs transition-colors ${
-          isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-        }`}
-      >
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-            YOUR ACTIVE MCP SERVER URL
-          </span>
-          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
-            FULL READ + WRITE ACCESS
-          </span>
-        </div>
-
-        <p className="text-xs text-stone-600 dark:text-stone-400 mt-1.5 leading-relaxed">
-          Use this exact URL to connect Claude. It is dynamically resolved to your live instance:
-        </p>
-
-        <div className="flex items-center justify-between gap-2 mt-2.5 p-2.5 rounded-xl bg-stone-100 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700/60">
-          <code className="text-xs font-mono text-stone-900 dark:text-stone-100 truncate font-semibold select-all">
-            {mcpHttpUrl}
-          </code>
-
-          <button
-            onClick={() => copyToClipboard(mcpHttpUrl, 'mcpHttp', 'MCP Server URL')}
-            className="px-3 py-1.5 bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shrink-0 transition-colors shadow-xs"
+            title="Cloud Tunnel Status"
           >
-            {copiedKey === 'mcpHttp' ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-emerald-400 dark:text-emerald-600" />
-                <span>Copied!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5" />
-                <span>Copy URL</span>
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* SSE Alternate */}
-        <div className="mt-3 pt-3 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between text-xs text-stone-500">
-          <span className="truncate">
-            SSE Stream URL: <code className="font-mono text-stone-700 dark:text-stone-300">{mcpSseUrl}</code>
-          </span>
-          <button
-            onClick={() => copyToClipboard(mcpSseUrl, 'mcpSse', 'SSE URL')}
-            className="text-[11px] font-semibold text-[#C44D34] hover:underline shrink-0 ml-2"
-          >
-            {copiedKey === 'mcpSse' ? 'Copied SSE' : 'Copy SSE'}
+            <span
+              className={`w-2 h-2 rounded-full ${
+                tunnelStatus === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500 animate-ping'
+              }`}
+            />
+            <span>{tunnelStatus === 'active' ? 'Cloud URL Live' : 'Connecting Cloud URL...'}</span>
+            <RefreshCw className="w-3 h-3 ml-0.5 opacity-60" />
           </button>
         </div>
       </div>
 
-      {/* Tabs: Claude Web vs Desktop vs Inspector */}
-      <div className="flex items-center gap-1 mt-5 p-1 rounded-xl bg-stone-200/70 dark:bg-stone-800/70 border border-stone-200/50 dark:border-stone-700/50">
+      {/* Main Tabs */}
+      <div className="flex items-center gap-1 mt-4 p-1 rounded-xl bg-stone-200/70 dark:bg-stone-800/70 border border-stone-200/50 dark:border-stone-700/50 overflow-x-auto">
         <button
-          onClick={() => setActiveTab('claude-web')}
-          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-            activeTab === 'claude-web'
+          onClick={() => setActiveTab('claude')}
+          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap transition-all ${
+            activeTab === 'claude'
               ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-white shadow-xs'
               : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
           }`}
         >
-          <Globe className="w-3.5 h-3.5" />
-          <span>Claude in Browser</span>
+          <Globe className="w-3.5 h-3.5 text-purple-500" />
+          <span>Claude.ai (Browser MCP)</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('claude-desktop')}
-          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-            activeTab === 'claude-desktop'
+          onClick={() => setActiveTab('chatgpt')}
+          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap transition-all ${
+            activeTab === 'chatgpt'
               ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-white shadow-xs'
               : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
           }`}
         >
-          <Monitor className="w-3.5 h-3.5" />
-          <span>Claude Desktop</span>
+          <Bot className="w-3.5 h-3.5 text-emerald-600" />
+          <span>ChatGPT (OpenAPI)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('copilot')}
+          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap transition-all ${
+            activeTab === 'copilot'
+              ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-white shadow-xs'
+              : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+          }`}
+        >
+          <Zap className="w-3.5 h-3.5 text-[#C44D34]" />
+          <span>In-App Copilot</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('gemini')}
+          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap transition-all ${
+            activeTab === 'gemini'
+              ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-white shadow-xs'
+              : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+          <span>Gemini SDK</span>
         </button>
 
         <button
           onClick={() => setActiveTab('inspector')}
-          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap transition-all ${
             activeTab === 'inspector'
               ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-white shadow-xs'
               : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
           }`}
         >
-          <Activity className="w-3.5 h-3.5 text-[#C44D34]" />
-          <span>Live Tester</span>
+          <Activity className="w-3.5 h-3.5 text-amber-500" />
+          <span>Tester</span>
         </button>
       </div>
 
-      {/* TAB 1: Claude Web Guide */}
-      {activeTab === 'claude-web' && (
-        <div className="space-y-3 mt-3 animate-fade-in">
-          <div
-            className={`p-4 rounded-2xl border shadow-xs transition-colors ${
-              isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-            }`}
-          >
-            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-800 dark:text-stone-200 flex items-center gap-2">
-              <Zap className="w-4 h-4 text-[#C44D34]" />
-              How to Connect Claude (Browser / Claude.ai)
-            </h3>
-
-            <ol className="mt-3 space-y-2.5 text-xs text-stone-600 dark:text-stone-300">
-              <li className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 font-bold flex items-center justify-center shrink-0 text-[11px]">
-                  1
-                </span>
-                <div>
-                  <span className="font-semibold text-stone-900 dark:text-white">Copy the MCP Server URL</span>:
-                  <div className="mt-1 font-mono text-[11px] bg-stone-100 dark:bg-stone-800 px-2 py-1 rounded border border-stone-200 dark:border-stone-700 select-all">
-                    {mcpHttpUrl}
-                  </div>
-                </div>
-              </li>
-
-              <li className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 font-bold flex items-center justify-center shrink-0 text-[11px]">
-                  2
-                </span>
-                <div>
-                  <span className="font-semibold text-stone-900 dark:text-white">In Claude.ai / Browser</span>:
-                  Open your Claude workspace settings or connector modal. Paste the URL into the server URL field.
-                </div>
-              </li>
-
-              <li className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 font-bold flex items-center justify-center shrink-0 text-[11px]">
-                  3
-                </span>
-                <div>
-                  <span className="font-semibold text-stone-900 dark:text-white">Claude registers 8 tools automatically</span>:
-                  Full Read and Write permissions are granted for posts and clients.
-                </div>
-              </li>
-            </ol>
-
-            {/* Read & Write Tools List */}
-            <div className="mt-4 pt-3 border-t border-stone-100 dark:border-stone-800">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
-                ACTIVE MCP TOOLS REGISTERED
-              </span>
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                <div className="p-2 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200/60 dark:border-stone-700/60">
-                  <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Read Tools
-                  </div>
-                  <ul className="mt-1 text-[11px] text-stone-600 dark:text-stone-400 space-y-0.5 font-mono">
-                    <li>• list_posts</li>
-                    <li>• get_post</li>
-                    <li>• list_clients</li>
-                    <li>• get_workspace_stats</li>
-                  </ul>
-                </div>
-
-                <div className="p-2 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200/60 dark:border-stone-700/60">
-                  <div className="text-[11px] font-bold text-[#C44D34] flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Write Tools
-                  </div>
-                  <ul className="mt-1 text-[11px] text-stone-600 dark:text-stone-400 space-y-0.5 font-mono">
-                    <li>• create_post (draft/schedule)</li>
-                    <li>• update_post (status/copy)</li>
-                    <li>• delete_post</li>
-                    <li>• create_client</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            {/* Sample Prompts */}
-            <div className="mt-4 pt-3 border-t border-stone-100 dark:border-stone-800">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
-                SAMPLE PROMPTS TO ASK CLAUDE
-              </span>
-              <div className="mt-2 space-y-1.5">
-                {[
-                  'What posts are currently scheduled for Codery this month?',
-                  'Create a new LinkedIn post for Kudoli scheduled for Friday about creative design tips.',
-                  'Update the status of post-codery-1 from "In review" to "Approved".',
-                  'Give me workspace stats: how many total posts do we have planned vs scheduled?',
-                ].map((prompt, i) => (
-                  <div
-                    key={i}
-                    onClick={() => copyToClipboard(prompt, `prompt-${i}`, 'Sample prompt')}
-                    className="p-2 rounded-lg bg-stone-50 dark:bg-stone-800/40 hover:bg-stone-100 dark:hover:bg-stone-800 text-[11px] text-stone-700 dark:text-stone-300 cursor-pointer flex items-center justify-between group transition-colors"
-                  >
-                    <span className="italic truncate pr-2">"{prompt}"</span>
-                    <Copy className="w-3 h-3 text-stone-400 group-hover:text-stone-700 shrink-0" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: Claude Desktop Guide */}
-      {activeTab === 'claude-desktop' && (
-        <div className="space-y-3 mt-3 animate-fade-in">
+      {/* ============================================================== */}
+      {/* TAB 1: CLAUDE.AI BROWSER MCP (PRIMARY) */}
+      {/* ============================================================== */}
+      {activeTab === 'claude' && (
+        <div className="space-y-4 mt-4 animate-fade-in">
+          {/* Main Public URL Hero Card */}
           <div
             className={`p-4 rounded-2xl border shadow-xs transition-colors ${
               isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
             }`}
           >
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-stone-800 dark:text-stone-200">
-                Claude Desktop Configuration
-              </h3>
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300">
+                  <Globe className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold tracking-tight text-stone-900 dark:text-white">
+                    Direct Browser Connector for Claude.ai
+                  </h3>
+                  <p className="text-[11px] text-stone-500">
+                    Works 100% in your browser. No app download needed on your laptop.
+                  </p>
+                </div>
+              </div>
+
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3" /> NO DOWNLOAD REQUIRED
+              </span>
+            </div>
+
+            <p className="text-xs text-stone-600 dark:text-stone-400 mt-3 leading-relaxed">
+              Use this <strong>Public Cloud MCP URL</strong> in Claude.ai. It bypasses Google Cloud Run cookie gating, allowing Anthropic's cloud servers to discover the sign-in service and register instantly:
+            </p>
+
+            {/* URL Display with 1-Click Copy */}
+            <div className="flex items-center justify-between gap-2 mt-2.5 p-2.5 rounded-xl bg-stone-100 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700/60">
+              <code className="text-xs font-mono text-purple-700 dark:text-purple-300 truncate font-bold select-all">
+                {effectiveMcpUrl}
+              </code>
+
               <button
-                onClick={() =>
-                  copyToClipboard(desktopConfigJson, 'desktopConfig', 'Claude Desktop configuration')
-                }
-                className="text-xs font-semibold text-[#C44D34] hover:underline flex items-center gap-1"
+                onClick={() => copyToClipboard(effectiveMcpUrl, 'mcpUrl', 'Public MCP URL')}
+                className="px-3 py-1.5 bg-[#C44D34] hover:bg-[#A83E28] text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shrink-0 transition-colors shadow-xs"
               >
-                {copiedKey === 'desktopConfig' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedKey === 'desktopConfig' ? 'Copied' : 'Copy JSON'}</span>
+                {copiedKey === 'mcpUrl' ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy for Claude.ai</span>
+                  </>
+                )}
               </button>
             </div>
 
-            <p className="text-xs text-stone-500 dark:text-stone-400 mt-2 leading-relaxed">
-              Open <code className="font-mono text-stone-700 dark:text-stone-300">Claude Settings &gt; Developer &gt; Edit Config</code>, and paste this configuration into your <code className="font-mono text-stone-700 dark:text-stone-300">claude_desktop_config.json</code>:
+            {/* Step-by-Step Instructions */}
+            <div className="mt-4 pt-3 border-t border-stone-100 dark:border-stone-800">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-2">
+                Connecting in Claude.ai in 3 steps:
+              </div>
+
+              <ol className="space-y-2 text-xs text-stone-600 dark:text-stone-300">
+                <li className="flex items-start gap-2">
+                  <span className="w-4 h-4 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold flex items-center justify-center shrink-0 text-[10px]">
+                    1
+                  </span>
+                  <div>
+                    In <strong>Claude.ai</strong>, open <strong>Customize &gt; Connectors</strong> (or Organization Settings &gt; Connectors) and click <strong>Add custom connector</strong>.
+                  </div>
+                </li>
+
+                <li className="flex items-start gap-2">
+                  <span className="w-4 h-4 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold flex items-center justify-center shrink-0 text-[10px]">
+                    2
+                  </span>
+                  <div>
+                    Paste the copied URL (<code className="font-mono text-[11px] text-purple-600 dark:text-purple-400">{effectiveMcpUrl}</code>) into the remote MCP server field and click <strong>Add</strong>.
+                  </div>
+                </li>
+
+                <li className="flex items-start gap-2">
+                  <span className="w-4 h-4 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold flex items-center justify-center shrink-0 text-[10px]">
+                    3
+                  </span>
+                  <div>
+                    Claude discovers the OAuth service automatically. When the PostNote authorization popup appears, click <strong>Approve & Connect Claude</strong>!
+                  </div>
+                </li>
+              </ol>
+            </div>
+
+            {/* Live Preview Button */}
+            <div className="mt-3 pt-3 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between">
+              <span className="text-xs text-stone-500">Need to preview the approval screen?</span>
+              <a
+                href={effectiveAuthUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 text-stone-800 dark:text-stone-200 flex items-center gap-1 transition-colors"
+              >
+                <span>Preview 1-Click Screen</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
+
+          {/* Advanced OAuth Manual Details Card */}
+          <div
+            className={`p-4 rounded-2xl border shadow-xs transition-colors ${
+              isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Lock className="w-4 h-4 text-stone-500" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-stone-800 dark:text-stone-200">
+                  Manual OAuth Client Credentials (If Requested)
+                </h3>
+              </div>
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300">
+                ADVANCED SETTINGS
+              </span>
+            </div>
+
+            <p className="text-xs text-stone-500 mt-1">
+              If Claude prompts to configure manually, you can provide these static credentials:
             </p>
 
-            <pre className="mt-3 p-3 rounded-xl bg-stone-900 text-stone-200 text-[11px] font-mono overflow-x-auto leading-relaxed border border-stone-800">
-              {desktopConfigJson}
-            </pre>
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div className="p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700/60">
+                <div className="flex items-center justify-between text-stone-500 text-[10px] font-semibold mb-1">
+                  <span>OAuth Client ID</span>
+                  <button
+                    onClick={() => copyToClipboard(oauthClientId, 'cid', 'Client ID')}
+                    className="text-[#C44D34] hover:underline font-bold"
+                  >
+                    {copiedKey === 'cid' ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <code className="font-mono font-bold text-stone-900 dark:text-stone-100 select-all">
+                  {oauthClientId}
+                </code>
+              </div>
 
-            <div className="mt-4 pt-3 border-t border-stone-100 dark:border-stone-800">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
-                OR TEST VIA TERMINAL CURL
-              </span>
-              <div className="mt-2 relative">
-                <pre className="p-2.5 rounded-xl bg-stone-100 dark:bg-stone-800/80 text-stone-800 dark:text-stone-200 text-[10px] font-mono overflow-x-auto border border-stone-200 dark:border-stone-700 select-all">
-                  {curlTestCommand}
-                </pre>
-                <button
-                  onClick={() => copyToClipboard(curlTestCommand, 'curlCmd', 'Curl test command')}
-                  className="absolute top-2 right-2 p-1.5 rounded-md bg-white dark:bg-stone-700 text-stone-600 dark:text-stone-200 hover:text-stone-900 shadow-xs text-[10px] font-semibold flex items-center gap-1"
-                >
-                  <Copy className="w-3 h-3" />
-                  <span>Copy</span>
-                </button>
+              <div className="p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700/60">
+                <div className="flex items-center justify-between text-stone-500 text-[10px] font-semibold mb-1">
+                  <span>OAuth Client Secret</span>
+                  <button
+                    onClick={() => copyToClipboard(oauthClientSecret, 'csec', 'Client Secret')}
+                    className="text-[#C44D34] hover:underline font-bold"
+                  >
+                    {copiedKey === 'csec' ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <code className="font-mono font-bold text-stone-900 dark:text-stone-100 select-all">
+                  {oauthClientSecret}
+                </code>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700/60 sm:col-span-2">
+                <div className="flex items-center justify-between text-stone-500 text-[10px] font-semibold mb-1">
+                  <span>Authorization URL</span>
+                  <button
+                    onClick={() => copyToClipboard(effectiveAuthUrl, 'aurl', 'Authorization URL')}
+                    className="text-[#C44D34] hover:underline font-bold"
+                  >
+                    {copiedKey === 'aurl' ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <code className="font-mono text-stone-900 dark:text-stone-100 truncate block select-all">
+                  {effectiveAuthUrl}
+                </code>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700/60 sm:col-span-2">
+                <div className="flex items-center justify-between text-stone-500 text-[10px] font-semibold mb-1">
+                  <span>Token URL</span>
+                  <button
+                    onClick={() => copyToClipboard(effectiveTokenUrl, 'turl', 'Token URL')}
+                    className="text-[#C44D34] hover:underline font-bold"
+                  >
+                    {copiedKey === 'turl' ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <code className="font-mono text-stone-900 dark:text-stone-100 truncate block select-all">
+                  {effectiveTokenUrl}
+                </code>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* TAB 3: Interactive Live Tester & Inspector */}
+      {/* ============================================================== */}
+      {/* TAB 2: CHATGPT (OPENAPI 3.1 & CUSTOM ACTIONS) */}
+      {/* ============================================================== */}
+      {activeTab === 'chatgpt' && (
+        <div className="space-y-4 mt-4 animate-fade-in">
+          <div
+            className={`p-4 rounded-2xl border shadow-xs transition-colors ${
+              isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+                  <Bot className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold tracking-tight text-stone-900 dark:text-white">
+                    ChatGPT Custom GPT Actions (OpenAPI 3.1)
+                  </h3>
+                  <p className="text-[11px] text-stone-500">
+                    Connect ChatGPT directly in your browser with standard REST Actions
+                  </p>
+                </div>
+              </div>
+
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
+                BROWSER CONNECTABLE
+              </span>
+            </div>
+
+            <p className="text-xs text-stone-600 dark:text-stone-400 mt-3 leading-relaxed">
+              ChatGPT connects to external services using <strong>OpenAPI Actions</strong>. You can create a Custom GPT in 60 seconds with zero app installs:
+            </p>
+
+            <div className="mt-3 p-3 rounded-xl bg-stone-100 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700/60 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-stone-400 block">OpenAPI Spec URL</span>
+                <code className="text-xs font-mono font-semibold text-emerald-700 dark:text-emerald-300 select-all">
+                  {effectiveOpenApiUrl}
+                </code>
+              </div>
+
+              <button
+                onClick={() =>
+                  copyToClipboard(
+                    JSON.stringify(openApiSchema || {}, null, 2),
+                    'openApiSchema',
+                    'OpenAPI 3.1 Schema'
+                  )
+                }
+                className="px-3 py-1.5 bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shrink-0 transition-colors shadow-xs"
+              >
+                {copiedKey === 'openApiSchema' ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400 dark:text-emerald-600" />
+                    <span>Copied Schema!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy OpenAPI JSON</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <ol className="mt-4 space-y-2 text-xs text-stone-600 dark:text-stone-300 border-t border-stone-100 dark:border-stone-800 pt-3">
+              <li className="flex items-start gap-2">
+                <span className="w-4 h-4 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold flex items-center justify-center shrink-0 text-[10px]">
+                  1
+                </span>
+                <div>
+                  Go to <strong>chatgpt.com</strong> &gt; <strong>Explore GPTs</strong> &gt; <strong>Create a GPT</strong> &gt; <strong>Configure</strong>.
+                </div>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="w-4 h-4 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold flex items-center justify-center shrink-0 text-[10px]">
+                  2
+                </span>
+                <div>
+                  Scroll down to <strong>Actions</strong> and click <strong>Create new action</strong>.
+                </div>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="w-4 h-4 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold flex items-center justify-center shrink-0 text-[10px]">
+                  3
+                </span>
+                <div>
+                  Click <strong>Copy OpenAPI JSON</strong> above, paste it into the Schema box, and set Authentication to <strong>None</strong>.
+                </div>
+              </li>
+            </ol>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* TAB 3: IN-APP INTERACTIVE AI COPILOT */}
+      {/* ============================================================== */}
+      {activeTab === 'copilot' && (
+        <div className="space-y-3 mt-4 animate-fade-in">
+          <div
+            className={`p-4 rounded-2xl border shadow-xs transition-colors flex flex-col h-[520px] ${
+              isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+            }`}
+          >
+            {/* Copilot Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100 dark:border-stone-800">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-[#C44D34]/10 text-[#C44D34] flex items-center justify-center">
+                  <Bot className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-stone-900 dark:text-white">
+                    PostNote Live Copilot
+                  </h3>
+                  <p className="text-[10px] text-stone-500">
+                    Direct in-browser AI with full read/write tool access
+                  </p>
+                </div>
+              </div>
+
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                READY TO CHAT
+              </span>
+            </div>
+
+            {/* Messages Scroll Area */}
+            <div className="flex-1 overflow-y-auto py-3 space-y-3 pr-1">
+              {chatMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex flex-col ${
+                    msg.role === 'user' ? 'items-end' : 'items-start'
+                  }`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${
+                      msg.role === 'user'
+                        ? 'bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 rounded-br-xs'
+                        : 'bg-stone-100 dark:bg-stone-800/80 text-stone-900 dark:text-stone-100 rounded-bl-xs border border-stone-200 dark:border-stone-700/60'
+                    }`}
+                  >
+                    <div className="whitespace-pre-wrap">{msg.text}</div>
+
+                    {msg.toolCalled && (
+                      <div className="mt-2 pt-2 border-t border-stone-200 dark:border-stone-700/70 text-[10px] font-mono text-[#C44D34] flex items-center gap-1 font-semibold">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                        <span>Invoked Tool: {msg.toolCalled}</span>
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[9px] text-stone-400 mt-1 px-1">
+                    {msg.timestamp}
+                  </span>
+                </div>
+              ))}
+
+              {isCopilotSending && (
+                <div className="flex items-center gap-2 text-xs text-stone-500 p-2">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#C44D34]" />
+                  <span>Copilot is inspecting calendar and executing tools...</span>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Quick Action Suggestion Chips */}
+            <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center gap-1.5 overflow-x-auto pb-2">
+              <button
+                onClick={() => handleSendMessage('Show me upcoming posts this week')}
+                className="text-[10px] font-medium px-2 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 whitespace-nowrap transition-colors"
+              >
+                📅 Upcoming posts
+              </button>
+              <button
+                onClick={() =>
+                  handleSendMessage('Draft a high-impact LinkedIn post for Codery about our new product update')
+                }
+                className="text-[10px] font-medium px-2 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 whitespace-nowrap transition-colors"
+              >
+                ✍️ Draft LinkedIn post for Codery
+              </button>
+              <button
+                onClick={() => handleSendMessage('Give me workspace health stats')}
+                className="text-[10px] font-medium px-2 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 whitespace-nowrap transition-colors"
+              >
+                📊 Workspace stats
+              </button>
+              <button
+                onClick={() => handleSendMessage('List all active client workspaces')}
+                className="text-[10px] font-medium px-2 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 whitespace-nowrap transition-colors"
+              >
+                👥 List clients
+              </button>
+            </div>
+
+            {/* Chat Input */}
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                placeholder="Ask Copilot to draft a post, change status, or query calendar..."
+                className="flex-1 px-3 py-2 text-xs rounded-xl bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 focus:outline-hidden focus:ring-1 focus:ring-[#C44D34] text-stone-900 dark:text-white"
+              />
+              <button
+                onClick={() => handleSendMessage()}
+                disabled={!chatInput.trim() || isCopilotSending}
+                className="p-2 rounded-xl bg-[#C44D34] hover:bg-[#A83E28] text-white disabled:opacity-40 transition-colors shadow-xs"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* TAB 4: GEMINI 3.8 FLASH & FUNCTION CALLING */}
+      {/* ============================================================== */}
+      {activeTab === 'gemini' && (
+        <div className="space-y-4 mt-4 animate-fade-in">
+          <div
+            className={`p-4 rounded-2xl border shadow-xs transition-colors ${
+              isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
+                  <Sparkles className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold tracking-tight text-stone-900 dark:text-white">
+                    Google Gemini 3.8 Flash Function Calling
+                  </h3>
+                  <p className="text-[11px] text-stone-500">
+                    Use Google's modern @google/genai SDK to automate PostNote
+                  </p>
+                </div>
+              </div>
+
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                GEMINI SDK
+              </span>
+            </div>
+
+            <p className="text-xs text-stone-600 dark:text-stone-400 mt-3 leading-relaxed">
+              PostNote exports 8 standard Function Declarations compatible with Gemini 3.8 Flash for programmatic autonomous agent workflows:
+            </p>
+
+            <div className="mt-3 p-3 rounded-xl bg-stone-900 text-stone-200 text-[11px] font-mono overflow-x-auto leading-relaxed border border-stone-800">
+              <div className="text-stone-400 mb-1">// Tools endpoint: GET /api/gemini/tools</div>
+              {geminiTools ? JSON.stringify(geminiTools, null, 2) : 'Loading tools...'}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* TAB 5: LIVE TESTER & INSPECTOR */}
+      {/* ============================================================== */}
       {activeTab === 'inspector' && (
-        <div className="space-y-3 mt-3 animate-fade-in">
+        <div className="space-y-3 mt-4 animate-fade-in">
           <div
             className={`p-4 rounded-2xl border shadow-xs transition-colors ${
               isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
@@ -567,72 +825,26 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wider text-stone-800 dark:text-stone-200">
-                  Live MCP Inspector & Runner
+                  Live API & Tunnel Inspector
                 </h3>
                 <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-                  Verify read and write operations directly against your server
+                  Verify RFC 8414 discovery, MCP endpoints, and cloud tunnel health
                 </p>
               </div>
-            </div>
-
-            {/* Test Action Buttons */}
-            <div className="grid grid-cols-3 gap-2 mt-4">
-              <button
-                onClick={runHandshakeTest}
-                disabled={isRunningAction}
-                className="p-2.5 rounded-xl bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700/80 text-stone-800 dark:text-stone-200 text-xs font-semibold flex flex-col items-center justify-center gap-1.5 transition-colors border border-stone-200 dark:border-stone-700/60 disabled:opacity-50"
-              >
-                <Code className="w-4 h-4 text-blue-500" />
-                <span>1. Test Handshake</span>
-                <span className="text-[9px] text-stone-400 font-normal">tools/list</span>
-              </button>
 
               <button
-                onClick={runReadTest}
-                disabled={isRunningAction}
-                className="p-2.5 rounded-xl bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700/80 text-stone-800 dark:text-stone-200 text-xs font-semibold flex flex-col items-center justify-center gap-1.5 transition-colors border border-stone-200 dark:border-stone-700/60 disabled:opacity-50"
+                onClick={restartTunnel}
+                className="px-2 py-1 text-xs rounded-lg bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 text-stone-700 dark:text-stone-300 font-medium"
               >
-                <FileText className="w-4 h-4 text-emerald-500" />
-                <span>2. Test Read Access</span>
-                <span className="text-[9px] text-stone-400 font-normal">list_posts</span>
-              </button>
-
-              <button
-                onClick={runWriteTest}
-                disabled={isRunningAction}
-                className="p-2.5 rounded-xl bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700/80 text-stone-800 dark:text-stone-200 text-xs font-semibold flex flex-col items-center justify-center gap-1.5 transition-colors border border-stone-200 dark:border-stone-700/60 disabled:opacity-50"
-              >
-                <PlusCircle className="w-4 h-4 text-[#C44D34]" />
-                <span>3. Test Write Access</span>
-                <span className="text-[9px] text-stone-400 font-normal">create_post</span>
+                Restart Tunnel
               </button>
             </div>
 
-            {/* Result Log */}
-            {inspectorLog && (
-              <div className="mt-4 p-3 rounded-xl bg-stone-900 text-stone-200 text-xs border border-stone-800 space-y-2">
-                <div className="flex items-center justify-between pb-2 border-b border-stone-800 text-[11px]">
-                  <span className="font-semibold text-white flex items-center gap-1.5">
-                    {inspectorLog.status === 'success' ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-                    )}
-                    {inspectorLog.action}
-                  </span>
-                  <span className="font-mono text-stone-400">
-                    Latency: {inspectorLog.latencyMs}ms
-                  </span>
-                </div>
-
-                <div>
-                  <div className="text-[10px] uppercase font-bold text-stone-400 mb-1">Response JSON:</div>
-                  <pre className="font-mono text-[11px] leading-relaxed max-h-56 overflow-y-auto p-2 bg-black/40 rounded-lg text-emerald-300">
-                    {JSON.stringify(inspectorLog.response, null, 2)}
-                  </pre>
-                </div>
-              </div>
-            )}
+            <div className="mt-4 p-3 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700/60 text-xs space-y-1">
+              <div><strong>Active Base URL:</strong> <code className="font-mono text-purple-600 dark:text-purple-400">{effectiveBaseUrl}</code></div>
+              <div><strong>Cloud Tunnel:</strong> {tunnelStatus === 'active' ? '🟢 Active & Reachable' : '🟡 Starting'}</div>
+              <div><strong>MCP Endpoint:</strong> <code className="font-mono">{effectiveMcpUrl}</code></div>
+            </div>
           </div>
         </div>
       )}

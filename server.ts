@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { spawn, ChildProcess } from 'child_process';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { INITIAL_POSTS, INITIAL_CLIENTS, INITIAL_CAMPAIGNS, INITIAL_IDEAS } from './src/data/initialData';
@@ -69,6 +70,121 @@ function persistStore() {
   } catch (err) {
     console.error('[Store] Failed to write store to disk:', err);
   }
+}
+
+// -------------------------------------------------------------
+// OAuth 2.0 In-Memory Store & Models
+// -------------------------------------------------------------
+interface OAuthClient {
+  client_id: string;
+  client_secret?: string;
+  client_name: string;
+  redirect_uris: string[];
+  grant_types: string[];
+  response_types: string[];
+}
+
+interface AuthCodeRecord {
+  code: string;
+  clientId: string;
+  redirectUri: string;
+  codeChallenge?: string;
+  codeChallengeMethod?: string;
+  scope?: string;
+  expiresAt: number;
+}
+
+const oauthClients = new Map<string, OAuthClient>([
+  [
+    'claude_postnote_client',
+    {
+      client_id: 'claude_postnote_client',
+      client_secret: 'postnote_oauth_secret_2026',
+      client_name: 'Claude AI',
+      redirect_uris: [
+        'https://claude.ai/api/mcp/auth_callback',
+        'https://claude.com/api/mcp/auth_callback',
+        'http://localhost:3000/oauth/callback',
+      ],
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+    },
+  ],
+]);
+
+const pendingAuthCodes = new Map<string, AuthCodeRecord>();
+const validAccessTokens = new Set<string>();
+
+let publicTunnelUrl: string | null = null;
+let tunnelProcess: ChildProcess | null = null;
+
+function startCloudTunnel() {
+  const binaryPath = path.resolve(process.cwd(), 'bin/cloudflared');
+  if (!fs.existsSync(binaryPath)) {
+    console.warn('[Tunnel] cloudflared binary not found at', binaryPath);
+    return;
+  }
+
+  try {
+    if (tunnelProcess) {
+      try {
+        tunnelProcess.kill();
+      } catch {}
+      tunnelProcess = null;
+    }
+
+    const child = spawn(binaryPath, [
+      'tunnel',
+      '--protocol',
+      'http2',
+      '--url',
+      'http://localhost:3000',
+      '--no-autoupdate',
+    ]);
+
+    tunnelProcess = child;
+
+    const parseOutput = (data: Buffer) => {
+      const text = data.toString();
+      const match = text.match(/https:\/\/[a-zA-Z0-9.-]+\.trycloudflare\.com/);
+      if (match) {
+        publicTunnelUrl = match[0];
+        console.log(`[Tunnel Active] Public Claude & ChatGPT Cloud URL: ${publicTunnelUrl}`);
+      }
+    };
+
+    child.stdout.on('data', parseOutput);
+    child.stderr.on('data', parseOutput);
+
+    child.on('close', (code) => {
+      console.log(`[Tunnel] exited with code ${code}`);
+      publicTunnelUrl = null;
+      setTimeout(() => {
+        if (!publicTunnelUrl) {
+          startCloudTunnel();
+        }
+      }, 5000);
+    });
+  } catch (err) {
+    console.error('[Tunnel] Failed to spawn cloudflared:', err);
+  }
+}
+
+// Generate public base URL respecting cloud proxies & public tunnel
+function getPublicBaseUrl(req: express.Request): string {
+  const reqHost = req.headers['x-forwarded-host'] || req.headers.host || '';
+  const hostStr = Array.isArray(reqHost) ? reqHost[0] : String(reqHost);
+  if (hostStr.includes('trycloudflare.com')) {
+    return `https://${hostStr}`;
+  }
+  if (publicTunnelUrl && !hostStr.includes('localhost')) {
+    return publicTunnelUrl;
+  }
+  const forwardedProto = req.headers['x-forwarded-proto'];
+  const proto = typeof forwardedProto === 'string' ? forwardedProto.split(',')[0].trim() : req.protocol || 'https';
+  const forwardedHost = req.headers['x-forwarded-host'];
+  const host = typeof forwardedHost === 'string' ? forwardedHost.split(',')[0].trim() : req.get('host') || 'localhost:3000';
+  return `${proto}://${host}`;
 }
 
 // SSE session tracking
@@ -270,7 +386,210 @@ const MCP_TOOLS = [
   },
 ];
 
-// MCP tool execution engine
+// Gemini Function Declarations matching @google/genai SDK format
+const GEMINI_FUNCTION_DECLARATIONS = MCP_TOOLS.map((tool) => ({
+  name: tool.name,
+  description: tool.description,
+  parameters: tool.inputSchema,
+}));
+
+// OpenAPI 3.1 Specification Generator for ChatGPT Actions
+function getOpenApiSpec(baseUrl: string) {
+  return {
+    openapi: '3.1.0',
+    info: {
+      title: 'PostNote Social Media Workspace API',
+      description: 'API for ChatGPT Actions and AI agents to manage social media drafts, scheduling, approvals, and clients in PostNote.',
+      version: '1.0.0',
+    },
+    servers: [
+      {
+        url: baseUrl,
+        description: 'PostNote Live Server',
+      },
+    ],
+    paths: {
+      '/api/gpt/posts': {
+        get: {
+          operationId: 'listPosts',
+          summary: 'List and filter social media posts',
+          description: 'Retrieve posts from the PostNote calendar and queue with optional filters for client, status, platform, and limit.',
+          parameters: [
+            { name: 'clientId', in: 'query', schema: { type: 'string' }, description: 'Client name or ID filter' },
+            { name: 'status', in: 'query', schema: { type: 'string', enum: ['Planned', 'In review', 'Approved', 'Scheduled', 'Published'] }, description: 'Status filter' },
+            { name: 'platform', in: 'query', schema: { type: 'string', enum: ['Instagram', 'Facebook', 'LinkedIn', 'Twitter', 'TikTok', 'Other'] }, description: 'Platform filter' },
+            { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 }, description: 'Max posts to return' },
+          ],
+          responses: {
+            '200': {
+              description: 'List of matching posts',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      totalFound: { type: 'integer' },
+                      returned: { type: 'integer' },
+                      posts: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'string' },
+                            title: { type: 'string' },
+                            client: { type: 'string' },
+                            platform: { type: 'string' },
+                            date: { type: 'string' },
+                            status: { type: 'string' },
+                            category: { type: 'string' },
+                            caption: { type: 'string' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        post: {
+          operationId: 'createPost',
+          summary: 'Create and schedule a new social media post',
+          description: 'Draft or schedule a new post for a client brand. Automatically populates the calendar and approvals queue.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['title', 'caption'],
+                  properties: {
+                    clientName: { type: 'string', description: 'Name of the client brand (e.g. Codery, Kudoli, Cordori)' },
+                    title: { type: 'string', description: 'Headline or short title' },
+                    caption: { type: 'string', description: 'Full caption/copy text with hashtags and emojis' },
+                    platform: { type: 'string', enum: ['Instagram', 'Facebook', 'LinkedIn', 'Twitter', 'TikTok', 'Other'], default: 'Instagram' },
+                    date: { type: 'string', description: 'Scheduled date in YYYY-MM-DD format (e.g. 2026-10-05)' },
+                    status: { type: 'string', enum: ['Planned', 'In review', 'Approved', 'Scheduled', 'Published'], default: 'Planned' },
+                    category: { type: 'string', default: 'POST' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Post created successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      message: { type: 'string' },
+                      post: { type: 'object' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      '/api/gpt/posts/{postId}': {
+        get: {
+          operationId: 'getPost',
+          summary: 'Get details of a single post by ID',
+          parameters: [
+            { name: 'postId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: {
+            '200': { description: 'Post details' },
+          },
+        },
+        patch: {
+          operationId: 'updatePost',
+          summary: 'Update post caption, status, platform, or date',
+          parameters: [
+            { name: 'postId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    title: { type: 'string' },
+                    caption: { type: 'string' },
+                    status: { type: 'string', enum: ['Planned', 'In review', 'Approved', 'Scheduled', 'Published'] },
+                    date: { type: 'string' },
+                    platform: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Post updated' },
+          },
+        },
+        delete: {
+          operationId: 'deletePost',
+          summary: 'Delete a post by ID',
+          parameters: [
+            { name: 'postId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: {
+            '200': { description: 'Post removed' },
+          },
+        },
+      },
+      '/api/gpt/clients': {
+        get: {
+          operationId: 'listClients',
+          summary: 'List all active client workspaces',
+          responses: {
+            '200': { description: 'List of clients' },
+          },
+        },
+        post: {
+          operationId: 'createClient',
+          summary: 'Create a new client brand',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['name'],
+                  properties: {
+                    name: { type: 'string' },
+                    handle: { type: 'string' },
+                    color: { type: 'string' },
+                    notes: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Client created' },
+          },
+        },
+      },
+      '/api/gpt/stats': {
+        get: {
+          operationId: 'getWorkspaceStats',
+          summary: 'Get workspace health, status breakdown, and upcoming calendar posts',
+          responses: {
+            '200': { description: 'Workspace statistics' },
+          },
+        },
+      },
+    },
+  };
+}
+
+// Tool execution engine
 function executeMcpTool(name: string, args: any) {
   switch (name) {
     case 'list_posts': {
@@ -328,7 +647,6 @@ function executeMcpTool(name: string, args: any) {
         throw new Error('title and caption are required to create a post');
       }
 
-      // Determine client
       let matchedClient = workspaceStore.clients[0];
       if (args.clientId) {
         const found = workspaceStore.clients.find((c) => c.id === args.clientId);
@@ -341,14 +659,13 @@ function executeMcpTool(name: string, args: any) {
         if (found) {
           matchedClient = found;
         } else {
-          // Auto create client if brand name does not exist
           const newClientId = `client-${Date.now().toString(36)}`;
           matchedClient = {
             id: newClientId,
             name: args.clientName,
             handle: `@${args.clientName.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
             color: '#C44D34',
-            notes: 'Auto-created via Claude MCP tool',
+            notes: 'Auto-created via AI tool',
             postsCount: 0,
           };
           workspaceStore.clients.push(matchedClient);
@@ -507,7 +824,6 @@ function executeMcpTool(name: string, args: any) {
 function processJsonRpc(body: any) {
   const { jsonrpc, id, method, params } = body || {};
 
-  // Standard JSON-RPC check
   if (jsonrpc !== '2.0') {
     return {
       jsonrpc: '2.0',
@@ -516,7 +832,6 @@ function processJsonRpc(body: any) {
     };
   }
 
-  // Handle Notifications (no response required, return empty object or null)
   if (method === 'notifications/initialized' || method === 'initialized') {
     return id !== undefined ? { jsonrpc: '2.0', id, result: {} } : null;
   }
@@ -628,10 +943,10 @@ async function startServer() {
   // Global permissive CORS headers for Claude browser connections and external tools
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD');
     res.header(
       'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, x-session-id, Accept, Origin, User-Agent, mcp-session-id, cache-control'
+      'Content-Type, Authorization, x-session-id, Accept, Origin, User-Agent, mcp-session-id, cache-control, WWW-Authenticate'
     );
     res.header('Access-Control-Expose-Headers', '*');
     if (req.method === 'OPTIONS') {
@@ -640,7 +955,9 @@ async function startServer() {
     next();
   });
 
+  // Support both JSON bodies and URL-encoded form data (required for OAuth token requests)
   app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
   // Health check
   app.get('/api/health', (req, res) => {
@@ -648,9 +965,30 @@ async function startServer() {
       status: 'ok',
       time: new Date().toISOString(),
       mcp: 'ready',
+      oauth: 'active',
+      gpt: 'ready',
+      gemini: 'ready',
+      tunnel: publicTunnelUrl ? 'active' : 'starting',
       postsCount: workspaceStore.posts.length,
       clientsCount: workspaceStore.clients.length,
     });
+  });
+
+  // Public cloud tunnel discovery endpoint
+  app.get('/api/tunnel', (req, res) => {
+    res.json({
+      publicUrl: publicTunnelUrl,
+      status: publicTunnelUrl ? 'active' : 'starting',
+      mcpUrl: publicTunnelUrl ? `${publicTunnelUrl}/mcp` : null,
+      openapiUrl: publicTunnelUrl ? `${publicTunnelUrl}/openapi.json` : null,
+      oauthAuthorizeUrl: publicTunnelUrl ? `${publicTunnelUrl}/oauth/authorize` : null,
+      oauthTokenUrl: publicTunnelUrl ? `${publicTunnelUrl}/oauth/token` : null,
+    });
+  });
+
+  app.post('/api/tunnel/restart', (req, res) => {
+    startCloudTunnel();
+    res.json({ message: 'Tunnel restart initiated' });
   });
 
   // Client-server workspace state sync endpoints
@@ -700,18 +1038,682 @@ async function startServer() {
   });
 
   // -------------------------------------------------------------
+  // ChatGPT OpenAPI 3.1 & REST Action Endpoints
+  // -------------------------------------------------------------
+  app.get(['/openapi.json', '/api/openapi.json'], (req, res) => {
+    const baseUrl = getPublicBaseUrl(req);
+    res.setHeader('Content-Type', 'application/json');
+    res.json(getOpenApiSpec(baseUrl));
+  });
+
+  // ChatGPT Actions / REST: List Posts
+  app.get('/api/gpt/posts', (req, res) => {
+    try {
+      const result = executeMcpTool('list_posts', req.query);
+      return res.json(result);
+    } catch (e: any) {
+      return res.status(500).json({ error: e?.message });
+    }
+  });
+
+  // ChatGPT Actions / REST: Create Post
+  app.post('/api/gpt/posts', (req, res) => {
+    try {
+      const result = executeMcpTool('create_post', req.body);
+      return res.json(result);
+    } catch (e: any) {
+      return res.status(400).json({ error: e?.message });
+    }
+  });
+
+  // ChatGPT Actions / REST: Get Post
+  app.get('/api/gpt/posts/:postId', (req, res) => {
+    try {
+      const result = executeMcpTool('get_post', { postId: req.params.postId });
+      return res.json(result);
+    } catch (e: any) {
+      return res.status(404).json({ error: e?.message });
+    }
+  });
+
+  // ChatGPT Actions / REST: Update Post
+  app.patch('/api/gpt/posts/:postId', (req, res) => {
+    try {
+      const result = executeMcpTool('update_post', { postId: req.params.postId, ...req.body });
+      return res.json(result);
+    } catch (e: any) {
+      return res.status(400).json({ error: e?.message });
+    }
+  });
+
+  // ChatGPT Actions / REST: Delete Post
+  app.delete('/api/gpt/posts/:postId', (req, res) => {
+    try {
+      const result = executeMcpTool('delete_post', { postId: req.params.postId });
+      return res.json(result);
+    } catch (e: any) {
+      return res.status(400).json({ error: e?.message });
+    }
+  });
+
+  // ChatGPT Actions / REST: List Clients
+  app.get('/api/gpt/clients', (req, res) => {
+    try {
+      const result = executeMcpTool('list_clients', {});
+      return res.json(result);
+    } catch (e: any) {
+      return res.status(500).json({ error: e?.message });
+    }
+  });
+
+  // ChatGPT Actions / REST: Create Client
+  app.post('/api/gpt/clients', (req, res) => {
+    try {
+      const result = executeMcpTool('create_client', req.body);
+      return res.json(result);
+    } catch (e: any) {
+      return res.status(400).json({ error: e?.message });
+    }
+  });
+
+  // ChatGPT Actions / REST: Workspace Stats
+  app.get('/api/gpt/stats', (req, res) => {
+    try {
+      const result = executeMcpTool('get_workspace_stats', {});
+      return res.json(result);
+    } catch (e: any) {
+      return res.status(500).json({ error: e?.message });
+    }
+  });
+
+  // -------------------------------------------------------------
+  // Gemini Declarations & In-App AI Copilot Endpoints
+  // -------------------------------------------------------------
+  app.get('/api/gemini/tools', (req, res) => {
+    res.json({
+      model: 'gemini-3.8-flash',
+      functionDeclarations: GEMINI_FUNCTION_DECLARATIONS,
+    });
+  });
+
+  // Direct In-App Gemini Copilot (Chat + Function Calling)
+  app.post('/api/gemini/chat', async (req, res) => {
+    try {
+      const { message, history = [] } = req.body;
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ error: 'message string is required' });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+
+      // When GEMINI_API_KEY is available, use real Gemini 3.8 Flash model with tools
+      if (apiKey) {
+        const ai = new GoogleGenAI({ apiKey });
+
+        const systemInstruction = `You are PostNote AI, the intelligent social media workspace assistant for creative agencies and brand managers.
+You have tools to manage social media posts, calendar scheduling, workflow approvals (Planned, In review, Approved, Scheduled, Published), and client profiles (like Codery, Kudoli, Cordori).
+When the user asks you to list, create, update, delete posts or get stats, ALWAYS use your function calling tools.
+Be concise, friendly, and helpful.`;
+
+        // Format history for Gemini API
+        const contents: any[] = [];
+        if (Array.isArray(history)) {
+          for (const h of history.slice(-6)) {
+            if (h.role && h.text) {
+              contents.push({
+                role: h.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: h.text }],
+              });
+            }
+          }
+        }
+        contents.push({
+          role: 'user',
+          parts: [{ text: message }],
+        });
+
+        try {
+          const geminiRes = await ai.models.generateContent({
+            model: 'gemini-3.8-flash',
+            contents,
+            config: {
+              systemInstruction,
+              tools: [{ functionDeclarations: GEMINI_FUNCTION_DECLARATIONS as any }],
+            },
+          });
+
+          // Check for function calls
+          const functionCalls = geminiRes.functionCalls;
+          if (functionCalls && functionCalls.length > 0) {
+            const call = functionCalls[0];
+            console.log(`[Gemini Function Call] Invoked: ${call.name}`, call.args);
+            const toolResult = executeMcpTool(call.name, call.args);
+
+            // Second turn: pass tool execution result back to Gemini for natural response
+            const followUpContents = [
+              ...contents,
+              {
+                role: 'model',
+                parts: [{ functionCall: call }],
+              },
+              {
+                role: 'user',
+                parts: [
+                  {
+                    functionResponse: {
+                      name: call.name,
+                      response: { result: toolResult },
+                    },
+                  },
+                ],
+              },
+            ];
+
+            const secondRes = await ai.models.generateContent({
+              model: 'gemini-3.8-flash',
+              contents: followUpContents,
+              config: { systemInstruction },
+            });
+
+            return res.json({
+              reply: secondRes.text || `Action completed: ${call.name}`,
+              toolCalled: call.name,
+              toolArgs: call.args,
+              toolResult,
+              updatedStore: true,
+            });
+          }
+
+          return res.json({
+            reply: geminiRes.text || 'I processed your request.',
+            toolCalled: null,
+          });
+        } catch (apiErr: any) {
+          console.warn('[Gemini API Fallback Engaged]:', apiErr?.message || apiErr);
+          // Fall through to smart intent parser below
+        }
+      }
+
+      // Fallback intent parser when GEMINI_API_KEY is not configured
+      const lower = message.toLowerCase();
+      if (lower.includes('post') && (lower.includes('create') || lower.includes('draft') || lower.includes('schedule') || lower.includes('add'))) {
+        const client = workspaceStore.clients.find((c) => lower.includes(c.name.toLowerCase()))?.name || 'Codery';
+        const newPostResult = executeMcpTool('create_post', {
+          clientName: client,
+          title: `Post for ${client} (${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`,
+          caption: message.length > 20 ? message : `Exciting update from ${client}! Stay tuned for big news. 🚀 #Innovation #Growth`,
+          platform: lower.includes('linkedin') ? 'LinkedIn' : lower.includes('twitter') ? 'Twitter' : 'Instagram',
+          status: 'Planned',
+        });
+        return res.json({
+          reply: `I drafted and scheduled a new post for **${client}** in your PostNote calendar!`,
+          toolCalled: 'create_post',
+          toolResult: newPostResult,
+          updatedStore: true,
+        });
+      }
+
+      if (lower.includes('stat') || lower.includes('overview') || lower.includes('health') || lower.includes('summary')) {
+        const stats = executeMcpTool('get_workspace_stats', {});
+        return res.json({
+          reply: `Your workspace currently has **${stats.totalPosts} total posts** across **${stats.totalClients} clients**, with **${stats.upcomingCount} upcoming** scheduled deadlines.`,
+          toolCalled: 'get_workspace_stats',
+          toolResult: stats,
+        });
+      }
+
+      if (lower.includes('client')) {
+        const clients = executeMcpTool('list_clients', {});
+        return res.json({
+          reply: `You have **${clients.count} active clients**: ${clients.clients.map((c: any) => c.name).join(', ')}.`,
+          toolCalled: 'list_clients',
+          toolResult: clients,
+        });
+      }
+
+      const posts = executeMcpTool('list_posts', { limit: 5 });
+      return res.json({
+        reply: `Here are the latest posts in your PostNote calendar. You have ${posts.totalFound} posts in total.`,
+        toolCalled: 'list_posts',
+        toolResult: posts,
+      });
+    } catch (err: any) {
+      console.error('[Gemini Chat Error]:', err);
+      return res.status(500).json({ error: err?.message || 'Gemini processing failed' });
+    }
+  });
+
+  // -------------------------------------------------------------
+  // OAuth 2.0 RFC 8414 & RFC 9728 Discovery Endpoints
+  // -------------------------------------------------------------
+  const getAuthorizationServerMetadata = (req: express.Request) => {
+    const baseUrl = getPublicBaseUrl(req);
+    return {
+      issuer: baseUrl,
+      authorization_endpoint: `${baseUrl}/oauth/authorize`,
+      token_endpoint: `${baseUrl}/oauth/token`,
+      registration_endpoint: `${baseUrl}/oauth/register`,
+      jwks_uri: `${baseUrl}/oauth/jwks`,
+      response_types_supported: ['code'],
+      grant_types_supported: ['authorization_code', 'refresh_token'],
+      code_challenge_methods_supported: ['S256', 'plain'],
+      scopes_supported: ['read', 'write', 'mcp:all', 'offline_access'],
+      token_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic'],
+      service_documentation: `${baseUrl}/#more`,
+    };
+  };
+
+  app.get('/.well-known/oauth-authorization-server', (req, res) => {
+    res.json(getAuthorizationServerMetadata(req));
+  });
+
+  app.get('/mcp/.well-known/oauth-authorization-server', (req, res) => {
+    res.json(getAuthorizationServerMetadata(req));
+  });
+
+  // Standard OpenID configuration alias
+  app.get('/.well-known/openid-configuration', (req, res) => {
+    res.json(getAuthorizationServerMetadata(req));
+  });
+
+  // RFC 9728 OAuth 2.0 Protected Resource Metadata
+  const getProtectedResourceMetadata = (req: express.Request) => {
+    const baseUrl = getPublicBaseUrl(req);
+    return {
+      resource: `${baseUrl}/mcp`,
+      authorization_servers: [baseUrl],
+      scopes_supported: ['read', 'write', 'mcp:all'],
+    };
+  };
+
+  app.get('/.well-known/oauth-protected-resource', (req, res) => {
+    res.json(getProtectedResourceMetadata(req));
+  });
+
+  app.get('/mcp/.well-known/oauth-protected-resource', (req, res) => {
+    res.json(getProtectedResourceMetadata(req));
+  });
+
+  app.get('/oauth/jwks', (req, res) => {
+    res.json({ keys: [] });
+  });
+
+  // -------------------------------------------------------------
+  // RFC 7591 Dynamic Client Registration Endpoint
+  // -------------------------------------------------------------
+  const handleClientRegistration = (req: express.Request, res: express.Response) => {
+    try {
+      const {
+        client_name = 'Claude AI',
+        redirect_uris = [
+          'https://claude.ai/api/mcp/auth_callback',
+          'https://claude.com/api/mcp/auth_callback',
+        ],
+        grant_types = ['authorization_code', 'refresh_token'],
+        response_types = ['code'],
+        token_endpoint_auth_method = 'none',
+      } = req.body || {};
+
+      const clientId = `claude_postnote_${Date.now().toString(36)}`;
+      const clientSecret = `sec_${crypto.randomBytes(16).toString('hex')}`;
+
+      const clientRecord: OAuthClient = {
+        client_id: clientId,
+        client_secret: clientSecret,
+        client_name,
+        redirect_uris: Array.isArray(redirect_uris) && redirect_uris.length > 0
+          ? redirect_uris
+          : ['https://claude.ai/api/mcp/auth_callback', 'https://claude.com/api/mcp/auth_callback'],
+        grant_types,
+        response_types,
+      };
+
+      oauthClients.set(clientId, clientRecord);
+
+      return res.status(201).json({
+        client_id: clientId,
+        client_secret: clientSecret,
+        client_id_issued_at: Math.floor(Date.now() / 1000),
+        client_secret_expires_at: 0,
+        client_name,
+        redirect_uris: clientRecord.redirect_uris,
+        grant_types,
+        response_types,
+        token_endpoint_auth_method,
+      });
+    } catch (err: any) {
+      console.error('[OAuth Registration Error]:', err);
+      return res.status(500).json({ error: 'invalid_client_metadata', error_description: err?.message });
+    }
+  };
+
+  app.post(['/oauth/register', '/register'], handleClientRegistration);
+
+  // -------------------------------------------------------------
+  // Interactive 1-Click Authorization Screen & Endpoint
+  // -------------------------------------------------------------
+  app.get('/oauth/authorize', (req, res) => {
+    const clientId = (req.query.client_id as string) || 'claude_postnote_client';
+    const redirectUri = (req.query.redirect_uri as string) || 'https://claude.ai/api/mcp/auth_callback';
+    const responseType = req.query.response_type as string;
+    const state = (req.query.state as string) || '';
+    const codeChallenge = req.query.code_challenge as string;
+    const codeChallengeMethod = (req.query.code_challenge_method as string) || 'S256';
+    const auto = req.query.auto === 'true' || req.query.action === 'approve';
+
+    if (auto) {
+      const code = `pn_auth_${crypto.randomBytes(16).toString('hex')}`;
+      pendingAuthCodes.set(code, {
+        code,
+        clientId,
+        redirectUri,
+        codeChallenge,
+        codeChallengeMethod,
+        expiresAt: Date.now() + 10 * 60 * 1000,
+      });
+
+      const redirectUrl = new URL(redirectUri);
+      redirectUrl.searchParams.set('code', code);
+      if (state) redirectUrl.searchParams.set('state', state);
+
+      return res.redirect(redirectUrl.toString());
+    }
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connect Claude AI to PostNote</title>
+  <style>
+    :root {
+      --bg: #F7F5F0;
+      --card: #FFFFFF;
+      --border: #E8E4DC;
+      --text: #1E252B;
+      --subtext: #5A6572;
+      --primary: #C44D34;
+      --primary-hover: #A83E28;
+      --green: #10B981;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #141A1F;
+        --card: #1D242C;
+        --border: #2A3440;
+        --text: #F3F4F6;
+        --subtext: #9CA3AF;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 1.5rem;
+      max-width: 440px;
+      width: 100%;
+      padding: 2rem;
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.06);
+    }
+    .logo-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.75rem;
+      background: rgba(196, 77, 52, 0.1);
+      color: var(--primary);
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 1.25rem;
+    }
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 750;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+      line-height: 1.25;
+    }
+    p.desc {
+      font-size: 0.875rem;
+      color: var(--subtext);
+      line-height: 1.5;
+      margin-bottom: 1.5rem;
+    }
+    .permissions-box {
+      background: rgba(0,0,0,0.02);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 1rem;
+      margin-bottom: 1.75rem;
+    }
+    .perm-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--subtext);
+      margin-bottom: 0.65rem;
+    }
+    ul.perms {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+    ul.perms li {
+      font-size: 0.8125rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+      line-height: 1.4;
+    }
+    ul.perms li svg {
+      width: 16px;
+      height: 16px;
+      stroke: var(--green);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .btn-approve {
+      display: block;
+      width: 100%;
+      padding: 0.875rem 1rem;
+      background: var(--primary);
+      color: #FFFFFF;
+      border: none;
+      border-radius: 0.875rem;
+      font-size: 0.9375rem;
+      font-weight: 650;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      text-align: center;
+      text-decoration: none;
+    }
+    .btn-approve:hover {
+      background: var(--primary-hover);
+    }
+    .btn-approve:active {
+      transform: scale(0.99);
+    }
+    .footer-note {
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--subtext);
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo-badge">
+      <span>●</span> PostNote Connect
+    </div>
+    <h1>Connect Claude AI</h1>
+    <p class="desc">
+      Grant Claude full read and write permissions to manage your social media calendar, drafts, and client approvals.
+    </p>
+
+    <div class="permissions-box">
+      <div class="perm-title">Permissions Granted</div>
+      <ul class="perms">
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          <span><strong>Read access:</strong> Query scheduled posts, campaigns, client guidelines, and metrics.</span>
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          <span><strong>Write access:</strong> Draft, schedule, and update social posts directly in your calendar.</span>
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          <span><strong>Workflow controls:</strong> Move posts across review and approval stages.</span>
+        </li>
+      </ul>
+    </div>
+
+    <form method="POST" action="/oauth/authorize">
+      <input type="hidden" name="client_id" value="${clientId}">
+      <input type="hidden" name="redirect_uri" value="${redirectUri}">
+      <input type="hidden" name="response_type" value="${responseType || 'code'}">
+      <input type="hidden" name="state" value="${state}">
+      <input type="hidden" name="code_challenge" value="${codeChallenge || ''}">
+      <input type="hidden" name="code_challenge_method" value="${codeChallengeMethod}">
+      
+      <button type="submit" class="btn-approve">
+        Approve & Connect Claude
+      </button>
+    </form>
+
+    <div class="footer-note">
+      Connecting to ${redirectUri.includes('claude.ai') ? 'Claude.ai' : redirectUri}
+    </div>
+  </div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.send(html);
+  });
+
+  app.post('/oauth/authorize', (req, res) => {
+    const {
+      client_id = 'claude_postnote_client',
+      redirect_uri = 'https://claude.ai/api/mcp/auth_callback',
+      state = '',
+      code_challenge,
+      code_challenge_method = 'S256',
+    } = req.body || {};
+
+    const code = `pn_auth_${crypto.randomBytes(16).toString('hex')}`;
+    pendingAuthCodes.set(code, {
+      code,
+      clientId: client_id,
+      redirectUri: redirect_uri,
+      codeChallenge: code_challenge,
+      codeChallengeMethod: code_challenge_method,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+
+    const redirectUrl = new URL(redirect_uri);
+    redirectUrl.searchParams.set('code', code);
+    if (state) redirectUrl.searchParams.set('state', state);
+
+    return res.redirect(redirectUrl.toString());
+  });
+
+  // -------------------------------------------------------------
+  // OAuth 2.0 Token Exchange Endpoint (/oauth/token & /token)
+  // -------------------------------------------------------------
+  const handleTokenExchange = (req: express.Request, res: express.Response) => {
+    const grantType = req.body?.grant_type || req.query?.grant_type;
+    const code = req.body?.code || req.query?.code;
+    const codeVerifier = req.body?.code_verifier || req.query?.code_verifier;
+
+    if (grantType === 'authorization_code') {
+      if (!code) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'code is required' });
+      }
+
+      const codeRecord = pendingAuthCodes.get(code);
+      if (!codeRecord) {
+        return res.status(400).json({ error: 'invalid_grant', error_description: 'Authorization code expired or invalid' });
+      }
+
+      if (Date.now() > codeRecord.expiresAt) {
+        pendingAuthCodes.delete(code);
+        return res.status(400).json({ error: 'invalid_grant', error_description: 'Authorization code expired' });
+      }
+
+      if (codeRecord.codeChallenge && codeVerifier) {
+        if (codeRecord.codeChallengeMethod === 'S256') {
+          const calculatedChallenge = crypto
+            .createHash('sha256')
+            .update(codeVerifier)
+            .digest('base64url');
+          if (calculatedChallenge !== codeRecord.codeChallenge) {
+            console.warn('[PKCE Failed]: code_verifier mismatch');
+            return res.status(400).json({ error: 'invalid_grant', error_description: 'PKCE code_verifier verification failed' });
+          }
+        } else if (codeRecord.codeChallenge !== codeVerifier) {
+          return res.status(400).json({ error: 'invalid_grant', error_description: 'PKCE code_verifier verification failed' });
+        }
+      }
+
+      pendingAuthCodes.delete(code);
+
+      const accessToken = `postnote_tk_${crypto.randomBytes(24).toString('hex')}`;
+      const refreshToken = `postnote_rf_${crypto.randomBytes(24).toString('hex')}`;
+      validAccessTokens.add(accessToken);
+
+      return res.json({
+        access_token: accessToken,
+        token_type: 'Bearer',
+        expires_in: 30 * 24 * 60 * 60,
+        refresh_token: refreshToken,
+        scope: 'read write mcp:all',
+      });
+    }
+
+    if (grantType === 'refresh_token') {
+      const accessToken = `postnote_tk_${crypto.randomBytes(24).toString('hex')}`;
+      validAccessTokens.add(accessToken);
+      return res.json({
+        access_token: accessToken,
+        token_type: 'Bearer',
+        expires_in: 30 * 24 * 60 * 60,
+        scope: 'read write mcp:all',
+      });
+    }
+
+    return res.status(400).json({ error: 'unsupported_grant_type', error_description: `Grant type ${grantType} not supported` });
+  };
+
+  app.post(['/oauth/token', '/token'], handleTokenExchange);
+
+  // -------------------------------------------------------------
   // MCP (Model Context Protocol) Endpoints
   // -------------------------------------------------------------
-
-  // GET /mcp — Server discovery & diagnostic handshake
   app.get('/mcp', (req, res) => {
-    // If client requested text/event-stream or has ?sse=true, route to SSE handler
     if (
       req.headers.accept?.includes('text/event-stream') ||
       req.query.sse === 'true'
     ) {
       return handleSseConnection(req, res);
     }
+
+    const baseUrl = getPublicBaseUrl(req);
 
     return res.status(200).json({
       status: 'ok',
@@ -725,25 +1727,36 @@ async function startServer() {
         sse: '/mcp/sse',
         sse_message: '/mcp/message',
       },
+      auth: {
+        type: 'oauth2',
+        authorization_endpoint: `${baseUrl}/oauth/authorize`,
+        token_endpoint: `${baseUrl}/oauth/token`,
+        registration_endpoint: `${baseUrl}/oauth/register`,
+        client_id: 'claude_postnote_client',
+      },
       access: 'read_write',
       capabilities: {
         tools: MCP_TOOLS.map((t) => t.name),
         resources: false,
         prompts: false,
       },
-      quickStart: {
-        claudeBrowser: 'Use this URL directly in Claude custom connectors or remote tools.',
-        claudeDesktop: 'Use SSE endpoint /mcp/sse or supergateway.',
+      integrations: {
+        chatgpt: {
+          openapi: `${baseUrl}/openapi.json`,
+          docs: 'Import openapi.json into ChatGPT Custom GPT Actions.',
+        },
+        gemini: {
+          declarations: `${baseUrl}/api/gemini/tools`,
+          docs: 'Use with @google/genai SDK function declarations.',
+        },
       },
     });
   });
 
-  // HEAD /mcp — Connector pre-flight ping
   app.head('/mcp', (req, res) => {
     res.sendStatus(200);
   });
 
-  // POST /mcp — Direct Streamable HTTP JSON-RPC 2.0 Handler
   app.post('/mcp', (req, res) => {
     try {
       const payload = req.body;
@@ -769,7 +1782,6 @@ async function startServer() {
     }
   });
 
-  // GET /mcp/sse — Server-Sent Events endpoint
   function handleSseConnection(req: express.Request, res: express.Response) {
     const sessionId = crypto.randomUUID();
     res.writeHead(200, {
@@ -779,21 +1791,17 @@ async function startServer() {
       'X-Accel-Buffering': 'no',
     });
 
-    // Send initial endpoint message pointing to message handler
     res.write(`event: endpoint\ndata: /mcp/message?sessionId=${sessionId}\n\n`);
 
-    // Heartbeat every 15s to keep connection alive through proxies
     const timer = setInterval(() => {
       res.write(': ping\n\n');
     }, 15000);
 
     sseSessions.set(sessionId, { id: sessionId, res, timer });
-    console.log(`[MCP SSE] Client connected (sessionId: ${sessionId})`);
 
     req.on('close', () => {
       clearInterval(timer);
       sseSessions.delete(sessionId);
-      console.log(`[MCP SSE] Client disconnected (sessionId: ${sessionId})`);
     });
   }
 
@@ -801,7 +1809,6 @@ async function startServer() {
     handleSseConnection(req, res);
   });
 
-  // POST /mcp/message — Receives JSON-RPC requests for active SSE sessions
   app.post('/mcp/message', (req, res) => {
     try {
       const sessionId =
@@ -811,13 +1818,11 @@ async function startServer() {
 
       const response = processJsonRpc(req.body);
 
-      // If there is an active SSE session, broadcast event
       if (sessionId && sseSessions.has(sessionId) && response) {
         const session = sseSessions.get(sessionId)!;
         session.res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
       }
 
-      // Also return in direct response
       if (!response) {
         return res.status(204).end();
       }
@@ -832,9 +1837,7 @@ async function startServer() {
     }
   });
 
-  // -------------------------------------------------------------
   // Client Portal sharing endpoints
-  // -------------------------------------------------------------
   app.post('/api/portals', (req, res) => {
     try {
       const { id, client, posts, permissions } = req.body;
@@ -966,7 +1969,8 @@ ${text}
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
-    console.log(`[MCP] Server listening at /mcp and /mcp/sse with ${MCP_TOOLS.length} read/write tools`);
+    console.log(`[Multi-AI Hub] MCP (Claude/Cursor), OpenAPI (ChatGPT), and Gemini Copilot ready`);
+    startCloudTunnel();
   });
 }
 
