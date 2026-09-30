@@ -148,6 +148,57 @@ export default function App() {
     }
   });
 
+  // Bidirectional sync with backend server for Claude MCP read/write operations
+  const fetchServerSync = async () => {
+    try {
+      const res = await fetch('/api/sync');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.posts) && data.posts.length > 0) {
+        setPosts((current) => {
+          // If server has different posts count or newer items, sync
+          if (JSON.stringify(current) !== JSON.stringify(data.posts)) {
+            return data.posts;
+          }
+          return current;
+        });
+      }
+      if (Array.isArray(data.clients) && data.clients.length > 0) {
+        setClients((current) => {
+          if (JSON.stringify(current) !== JSON.stringify(data.clients)) {
+            return data.clients;
+          }
+          return current;
+        });
+      }
+    } catch {
+      // offline or local dev fallback
+    }
+  };
+
+  useEffect(() => {
+    fetchServerSync();
+    const interval = setInterval(fetchServerSync, 8000);
+    const handleFocus = () => fetchServerSync();
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
+  // Sync changes from UI back to backend for Claude MCP tools to read
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ posts, clients, campaigns, ideas }),
+      }).catch(() => {});
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [posts, clients, campaigns, ideas]);
+
   // Local storage caching effects
   useEffect(() => {
     localStorage.setItem('postnote_posts_v2', JSON.stringify(posts));
@@ -885,6 +936,7 @@ export default function App() {
             onBack={() => setActiveMoreSubScreen(null)}
             onShowToast={showToast}
             isDark={isDark}
+            onRefreshSync={fetchServerSync}
           />
         );
       }
