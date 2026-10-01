@@ -45,13 +45,18 @@ import { TeamView } from './components/TeamView';
 import { AiAssistantsView } from './components/AiAssistantsView';
 import { BillingView } from './components/BillingView';
 import { ClientPortalView } from './components/ClientPortalView';
+import { DesktopSidebar } from './components/DesktopSidebar';
 
 export default function App() {
   // Navigation States
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [activeMoreSubScreen, setActiveMoreSubScreen] = useState<MoreSubScreen | null>(null);
   const [selectedClientDetail, setSelectedClientDetail] = useState<Client | null>(null);
+  const [clientDetailTab, setClientDetailTab] = useState<'overview' | 'analytics'>('overview');
   const [portalClient, setPortalClient] = useState<Client | null>(null);
+  const [portalTab, setPortalTab] = useState<'overview' | 'upcoming' | 'analytics' | 'approvals' | 'calendar'>('overview');
+  const [portalIsViewOnly, setPortalIsViewOnly] = useState<boolean>(true);
+  const [isLockedPortalSession, setIsLockedPortalSession] = useState<boolean>(false);
 
   // Post form state (for both New & Edit)
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
@@ -143,6 +148,57 @@ export default function App() {
     }
   });
 
+  // Bidirectional sync with backend server for Claude MCP read/write operations
+  const fetchServerSync = async () => {
+    try {
+      const res = await fetch('/api/sync');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.posts) && data.posts.length > 0) {
+        setPosts((current) => {
+          // If server has different posts count or newer items, sync
+          if (JSON.stringify(current) !== JSON.stringify(data.posts)) {
+            return data.posts;
+          }
+          return current;
+        });
+      }
+      if (Array.isArray(data.clients) && data.clients.length > 0) {
+        setClients((current) => {
+          if (JSON.stringify(current) !== JSON.stringify(data.clients)) {
+            return data.clients;
+          }
+          return current;
+        });
+      }
+    } catch {
+      // offline or local dev fallback
+    }
+  };
+
+  useEffect(() => {
+    fetchServerSync();
+    const interval = setInterval(fetchServerSync, 8000);
+    const handleFocus = () => fetchServerSync();
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
+  // Sync changes from UI back to backend for Claude MCP tools to read
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ posts, clients, campaigns, ideas }),
+      }).catch(() => {});
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [posts, clients, campaigns, ideas]);
+
   // Local storage caching effects
   useEffect(() => {
     localStorage.setItem('postnote_posts_v2', JSON.stringify(posts));
@@ -213,6 +269,20 @@ export default function App() {
     }
   }, [theme, systemPrefersDark]);
 
+
+  const handleToggleTheme = () => {
+    const nextTheme: ThemeMode = theme === 'light' ? 'dark' : 'light';
+    setTheme(nextTheme);
+  };
+
+  const handleSelectSubScreen = (sub: MoreSubScreen) => {
+    setActiveTab('more');
+    setActiveMoreSubScreen(sub);
+    setSelectedClientDetail(null);
+    setPortalClient(null);
+    setIsPostFormOpen(false);
+  };
+
   // Toast trigger
   const showToast = (message: string) => {
     setToastMessage(message);
@@ -221,24 +291,147 @@ export default function App() {
     }, 2500);
   };
 
-  // URL param detection for direct client portal links
+  // URL detection for direct client portal links (supports query params, hash routes, path routes, and server API)
   useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const portalParam = params.get('portal');
-      if (portalParam) {
-        const found = clients.find(
+    const parseAndSetPortal = async () => {
+      try {
+        let portalId: string | null = null;
+        let viewParam: string | null = null;
+        let clientNameParam: string | null = null;
+        let clientHandleParam: string | null = null;
+        let clientColorParam: string | null = null;
+
+        // 1. Check window.location.search (?portal=...)
+        if (typeof window !== 'undefined' && window.location.search) {
+          const searchParams = new URLSearchParams(window.location.search);
+          portalId = searchParams.get('portal');
+          viewParam = searchParams.get('view');
+          clientNameParam = searchParams.get('name');
+          clientHandleParam = searchParams.get('handle');
+          clientColorParam = searchParams.get('color');
+        }
+
+        // 2. Check window.location.hash (#/portal/:id or #portal=:id)
+        if (!portalId && typeof window !== 'undefined' && window.location.hash) {
+          const hash = window.location.hash;
+          if (hash.includes('/portal/')) {
+            const parts = hash.split('/portal/')[1]?.split('?');
+            portalId = parts?.[0] || null;
+            if (parts?.[1]) {
+              const hashParams = new URLSearchParams(parts[1]);
+              viewParam = viewParam || hashParams.get('view');
+              clientNameParam = clientNameParam || hashParams.get('name');
+              clientHandleParam = clientHandleParam || hashParams.get('handle');
+              clientColorParam = clientColorParam || hashParams.get('color');
+            }
+          } else if (hash.includes('portal=')) {
+            const rawHash = hash.replace(/^#\/?/, '');
+            const hashParams = new URLSearchParams(rawHash);
+            portalId = hashParams.get('portal');
+            viewParam = viewParam || hashParams.get('view');
+            clientNameParam = clientNameParam || hashParams.get('name');
+            clientHandleParam = clientHandleParam || hashParams.get('handle');
+            clientColorParam = clientColorParam || hashParams.get('color');
+          }
+        }
+
+        // 3. Check window.location.pathname (/portal/:id)
+        if (!portalId && typeof window !== 'undefined' && window.location.pathname) {
+          const path = window.location.pathname;
+          if (path.startsWith('/portal/')) {
+            portalId = path.split('/portal/')[1]?.split('/')[0] || null;
+          }
+        }
+
+        if (!portalId) return;
+
+        // Clean portalId
+        const cleanPortalId = decodeURIComponent(portalId).trim();
+
+        // Find existing client in local state
+        let found = clients.find(
           (c) =>
-            c.id === portalParam ||
-            c.handle.replace('@', '').toLowerCase() === portalParam.toLowerCase()
+            c.id.toLowerCase() === cleanPortalId.toLowerCase() ||
+            c.handle.replace('@', '').toLowerCase() === cleanPortalId.toLowerCase() ||
+            c.name.toLowerCase() === cleanPortalId.toLowerCase() ||
+            c.name.toLowerCase().includes(cleanPortalId.toLowerCase()) ||
+            c.id.toLowerCase().includes(cleanPortalId.toLowerCase())
         );
+
+        // Special aliases for common names
+        if (!found) {
+          if (cleanPortalId.toLowerCase().includes('coder') || cleanPortalId.toLowerCase().includes('cordor')) {
+            found = clients.find((c) => c.id === 'client-codery' || c.id === 'client-cordori');
+          } else if (cleanPortalId.toLowerCase().includes('kudol')) {
+            found = clients.find((c) => c.id === 'client-kudoli');
+          }
+        }
+
+        // If not found in local memory, try fetching from backend portal registry
+        if (!found) {
+          try {
+            const res = await fetch(`/api/portals/${encodeURIComponent(cleanPortalId)}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data?.portal?.client) {
+                found = data.portal.client;
+                // Add to client state
+                setClients((prev) => [found!, ...prev.filter((c) => c.id !== found!.id)]);
+                if (data.portal.posts && Array.isArray(data.portal.posts) && data.portal.posts.length > 0) {
+                  setPosts((prevPosts) => {
+                    const existingIds = new Set(prevPosts.map((p) => p.id));
+                    const newPosts = data.portal.posts.filter((p: any) => !existingIds.has(p.id));
+                    return [...newPosts, ...prevPosts];
+                  });
+                }
+              }
+            }
+          } catch {}
+        }
+
+        // If still not found, construct resilient client from URL query parameters
+        if (!found) {
+          const reconstructedName =
+            clientNameParam || cleanPortalId.replace(/^client-/, '').charAt(0).toUpperCase() + cleanPortalId.replace(/^client-/, '').slice(1);
+          const reconstructedHandle = clientHandleParam || `@${cleanPortalId.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+          const reconstructedColor = clientColorParam || '#3B82F6';
+
+          found = {
+            id: cleanPortalId.startsWith('client-') ? cleanPortalId : `client-${cleanPortalId}`,
+            name: reconstructedName,
+            handle: reconstructedHandle,
+            color: reconstructedColor,
+            notes: 'Client workspace portal — analytics and live review',
+            postsCount: 5,
+          };
+
+          setClients((prev) => [found!, ...prev.filter((c) => c.id !== found!.id)]);
+        }
+
         if (found) {
           setPortalClient(found);
+          setIsLockedPortalSession(true);
+          if (viewParam === 'analytics') {
+            setPortalTab('analytics');
+            setPortalIsViewOnly(true);
+          } else if (viewParam === 'upcoming' || viewParam === 'calendar') {
+            setPortalTab('upcoming');
+            setPortalIsViewOnly(true);
+          } else {
+            setPortalTab('overview');
+            setPortalIsViewOnly(false);
+          }
         }
+      } catch (err) {
+        console.warn('Portal URL parsing error:', err);
       }
-    } catch {
-      // ignore
-    }
+    };
+
+    parseAndSetPortal();
+
+    // Listen to hash changes if client link uses hash routing
+    window.addEventListener('hashchange', parseAndSetPortal);
+    return () => window.removeEventListener('hashchange', parseAndSetPortal);
   }, [clients]);
 
   // Tab navigation with light screen loading flash
@@ -465,11 +658,17 @@ export default function App() {
 
     // 0. If Client Portal View is open (live client mode)
     if (portalClient) {
+      // STRICT CLIENT ISOLATION: Only posts belonging to this client are passed
+      const clientScopedPosts = posts.filter((p) => p.clientId === portalClient.id);
+
       return (
         <ClientPortalView
           client={portalClient}
-          posts={posts}
+          posts={clientScopedPosts}
           subscription={subscription}
+          initialTab={portalTab}
+          isViewOnly={portalIsViewOnly}
+          isLockedPortal={isLockedPortalSession}
           onApprovePost={handleApprovePost}
           onRequestChanges={(postId, notes) => {
             setPosts((prev) =>
@@ -485,14 +684,20 @@ export default function App() {
             );
             showToast('Feedback submitted to studio team');
           }}
-          onExit={() => {
-            setPortalClient(null);
-            try {
-              const url = new URL(window.location.href);
-              url.searchParams.delete('portal');
-              window.history.replaceState({}, '', url.toString());
-            } catch {}
-          }}
+          onExit={
+            isLockedPortalSession
+              ? undefined
+              : () => {
+                  setPortalClient(null);
+                  try {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('portal');
+                    url.searchParams.delete('view');
+                    url.searchParams.delete('token');
+                    window.history.replaceState({}, '', url.toString());
+                  } catch {}
+                }
+          }
           isDark={isDark}
         />
       );
@@ -541,10 +746,16 @@ export default function App() {
           <ClientDetailView
             client={selectedClientDetail}
             posts={posts}
+            initialTab={clientDetailTab}
             onBack={() => setSelectedClientDetail(null)}
             onNewPostForClient={(cId) => handleOpenNewPost(undefined, cId)}
             onEditPost={handleEditPost}
-            onOpenPortal={(client) => setPortalClient(client)}
+            onOpenPortal={(client, tab = 'overview', isViewOnly = true) => {
+              setPortalClient(client);
+              setPortalTab(tab);
+              setPortalIsViewOnly(isViewOnly);
+              setIsLockedPortalSession(false);
+            }}
             isDark={isDark}
           />
         );
@@ -555,7 +766,10 @@ export default function App() {
           posts={posts}
           subscription={subscription}
           onNavigateToBilling={handleNavigateToBilling}
-          onSelectClient={(client) => setSelectedClientDetail(client)}
+          onSelectClient={(client, initialTab = 'overview') => {
+            setSelectedClientDetail(client);
+            setClientDetailTab(initialTab);
+          }}
           onOpenNewClientModal={() => {
             setEditingClient(null);
             setIsClientModalOpen(true);
@@ -566,6 +780,13 @@ export default function App() {
             setIsClientModalOpen(true);
           }}
           onDeleteClient={handleDeleteClient}
+          onNewPostForClient={(cId) => handleOpenNewPost(undefined, cId)}
+          onOpenPortalPreview={(client, tab = 'overview', isViewOnly = true) => {
+            setPortalClient(client);
+            setPortalTab(tab);
+            setPortalIsViewOnly(isViewOnly);
+            setIsLockedPortalSession(false);
+          }}
           isDark={isDark}
         />
       );
@@ -715,6 +936,7 @@ export default function App() {
             onBack={() => setActiveMoreSubScreen(null)}
             onShowToast={showToast}
             isDark={isDark}
+            onRefreshSync={fetchServerSync}
           />
         );
       }
@@ -736,46 +958,61 @@ export default function App() {
   return (
     <div
       id="app-root-container"
-      className={`min-h-screen w-full flex justify-center selection:bg-[#C44D34]/20 transition-colors duration-200 ${
-        isDark ? 'bg-[#12171D] text-stone-100' : 'bg-[#F4EFEA] text-[#1E252B]'
+      className={`min-h-screen w-full flex selection:bg-[#C44D34]/20 transition-colors duration-200 ${
+        isDark ? 'bg-[#151C24] text-stone-100' : 'bg-[#FAF7F2] text-[#1E252B]'
       }`}
     >
-      {/* Mobile-proportioned container matching the screen recording frame */}
-      <div
-        id="phone-viewport"
-        className={`w-full max-w-md min-h-screen relative flex flex-col transition-colors ${
-          isDark ? 'bg-[#151C24]' : 'bg-[#FAF7F2]'
-        } shadow-2xl`}
-      >
-        {/* Toast alert bubble */}
-        <Toast message={toastMessage} isDark={isDark} />
+      {/* Toast alert bubble */}
+      <Toast message={toastMessage} isDark={isDark} />
 
-        {/* Main View Area */}
+      {/* Desktop Navigation Sidebar (Shown on Desktop screens lg: >= 1024px) */}
+      {!portalClient && !isPostFormOpen && (
+        <div className="hidden lg:block shrink-0">
+          <DesktopSidebar
+            activeTab={activeTab}
+            activeMoreSubScreen={activeMoreSubScreen}
+            onSelectTab={handleSelectTab}
+            onSelectSubScreen={handleSelectSubScreen}
+            onOpenNewPost={() => handleOpenNewPost()}
+            clientsCount={clients.length}
+            waitingApprovalsCount={waitingApprovalsCount}
+            subscription={subscription}
+            isDark={isDark}
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+          />
+        </div>
+      )}
+
+      {/* Main View Area */}
+      <div className="flex-1 flex flex-col min-w-0">
         <main className="flex-1 flex flex-col">
           {renderScreenContent()}
         </main>
 
-        {/* Bottom Navigation (5 tabs: Home, Clients, Content, Queue, More) */}
+        {/* Bottom Navigation (5 tabs: Home, Clients, Content, Queue, More) - visible on mobile/tablet, hidden on desktop (lg:hidden) */}
         {!isPostFormOpen && !portalClient && (
-          <BottomNav
-            activeTab={activeTab}
-            onSelectTab={handleSelectTab}
-            isDark={isDark}
-          />
+          <div className="lg:hidden">
+            <BottomNav
+              activeTab={activeTab}
+              onSelectTab={handleSelectTab}
+              isDark={isDark}
+            />
+          </div>
         )}
-
-        {/* Client Modal (New / Edit) */}
-        <ClientModal
-          isOpen={isClientModalOpen}
-          clientToEdit={editingClient}
-          onClose={() => {
-            setIsClientModalOpen(false);
-            setEditingClient(null);
-          }}
-          onSave={handleSaveClient}
-          isDark={isDark}
-        />
       </div>
+
+      {/* Client Modal (New / Edit) */}
+      <ClientModal
+        isOpen={isClientModalOpen}
+        clientToEdit={editingClient}
+        onClose={() => {
+          setIsClientModalOpen(false);
+          setEditingClient(null);
+        }}
+        onSave={handleSaveClient}
+        isDark={isDark}
+      />
     </div>
   );
 }

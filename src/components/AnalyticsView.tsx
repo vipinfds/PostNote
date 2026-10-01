@@ -115,8 +115,34 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
         </div>
       </div>
 
-      {/* Top 2 Stats */}
-      <div className="grid grid-cols-2 gap-3 mt-4">
+      {/* Top Stats in 4-column responsive grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+        <div
+          className={`p-4 rounded-2xl border text-center ${
+            isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+          }`}
+        >
+          <div className="text-2xl font-black text-stone-900 dark:text-white">
+            {totalPosts}
+          </div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mt-1">
+            TOTAL POSTS
+          </div>
+        </div>
+
+        <div
+          className={`p-4 rounded-2xl border text-center ${
+            isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+          }`}
+        >
+          <div className="text-2xl font-black text-stone-900 dark:text-white">
+            {clients.length}
+          </div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mt-1">
+            CLIENTS
+          </div>
+        </div>
+
         <div
           className={`p-4 rounded-2xl border text-center ${
             isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
@@ -144,15 +170,17 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
         </div>
       </div>
 
-      {/* Chart 1: POSTS PER CLIENT */}
-      <div
-        className={`mt-4 p-4 rounded-2xl border ${
-          isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-        }`}
-      >
-        <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-4">
-          POSTS PER CLIENT
-        </h3>
+      {/* Responsive Grid for Charts (1 col mobile, 2 col tablet, 3 col PC) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+        {/* Chart 1: POSTS PER CLIENT */}
+        <div
+          className={`p-4 rounded-2xl border ${
+            isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+          }`}
+        >
+          <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-4">
+            POSTS PER CLIENT
+          </h3>
 
         <div className="space-y-3">
           {clientData.map((item) => {
@@ -301,6 +329,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             {hoveredStatus.status} count : {hoveredStatus.count}
           </div>
         )}
+      </div>
       </div>
     </div>
   );

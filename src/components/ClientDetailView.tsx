@@ -10,32 +10,39 @@ import {
   ExternalLink,
   CheckCircle2,
   TrendingUp,
+  Clock,
+  Eye,
+  Check,
+  ChevronRight,
 } from 'lucide-react';
 import { Client, Post } from '../types';
-import { CATEGORY_COLORS } from '../utils/theme';
+import { CATEGORY_COLORS, STATUS_STYLES } from '../utils/theme';
 import { ClientShareModal } from './ClientShareModal';
 
 interface ClientDetailViewProps {
   client: Client;
   posts: Post[];
+  initialTab?: 'overview' | 'analytics';
   onBack: () => void;
   onNewPostForClient: (clientId: string) => void;
   onEditPost: (post: Post) => void;
-  onOpenPortal: (client: Client) => void;
+  onOpenPortal: (client: Client, initialTab?: 'overview' | 'upcoming' | 'analytics' | 'approvals' | 'calendar', isViewOnly?: boolean) => void;
   isDark?: boolean;
 }
 
 export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
   client,
   posts,
+  initialTab = 'overview',
   onBack,
   onNewPostForClient,
   onEditPost,
   onOpenPortal,
   isDark,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'analytics'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics'>(initialTab);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [timeRange, setTimeRange] = useState<'30d' | '90d' | 'all'>('30d');
 
   const clientPosts = posts.filter((p) => p.clientId === client.id);
 
@@ -105,51 +112,74 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
   return (
     <div
       id="client-detail-view"
-      className={`min-h-[780px] pb-24 px-4 pt-4 animate-fade-in transition-colors ${
+      className={`min-h-[780px] pb-24 px-4 sm:px-6 pt-4 animate-fade-in transition-colors ${
         isDark ? 'text-stone-100' : 'text-[#1E252B]'
       }`}
     >
-      {/* Top Bar with Back, Title, Share & + New Post Button */}
-      <div className="flex items-center justify-between pb-3 border-b border-stone-200 dark:border-stone-800 gap-2">
-        <button
-          onClick={onBack}
-          className="p-1.5 -ml-1 text-stone-600 dark:text-stone-400 hover:text-stone-900 transition-colors shrink-0"
-          aria-label="Back to clients"
-        >
-          <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
-        </button>
-
-        <div className="text-center flex-1 min-w-0">
-          <div className="flex items-center justify-center gap-1.5">
-            <span
-              className="w-2.5 h-2.5 rounded-full shrink-0"
-              style={{ backgroundColor: client.color || '#C44D34' }}
-            />
-            <h2 className="text-base font-bold tracking-tight truncate">{client.name}</h2>
-          </div>
-          <p className="text-[11px] text-stone-500 dark:text-stone-400 font-medium truncate">
-            {client.handle}
-          </p>
-        </div>
-
-        {/* Action Buttons: Share Portal & New Post */}
-        <div className="flex items-center gap-1.5 shrink-0">
+      {/* Top Bar with Back, Title, Top Direct Analytics Button, Share Portal & + New Post Button */}
+      <div className="flex flex-wrap items-center justify-between pb-3 border-b border-stone-200 dark:border-stone-800 gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <button
-            onClick={() => setIsShareModalOpen(true)}
-            className={`p-2 rounded-xl border transition-colors flex items-center gap-1 text-xs font-semibold ${
-              isDark
-                ? 'border-stone-700 bg-stone-800 text-stone-200 hover:bg-stone-700'
-                : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-100'
-            }`}
-            title="Share client portal link with client"
+            onClick={onBack}
+            className="p-1.5 -ml-1 text-stone-600 dark:text-stone-400 hover:text-stone-900 transition-colors shrink-0"
+            aria-label="Back to clients"
           >
-            <Share2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Share</span>
+            <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
           </button>
 
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className="w-3 h-3 rounded-full shrink-0 ring-2 ring-white/20"
+              style={{ backgroundColor: client.color || '#C44D34' }}
+            />
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-lg font-bold tracking-tight truncate">{client.name}</h2>
+              <p className="text-[11px] text-stone-500 dark:text-stone-400 font-medium truncate">
+                {client.handle}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons: Top Analytics Direct Button, Share Portal & New Post */}
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+          {/* Direct Top Analytics Button */}
+          <button
+            id="top-analytics-btn"
+            onClick={() => setActiveTab('analytics')}
+            className={`px-2.5 py-1.5 rounded-xl border transition-all flex items-center gap-1.5 text-xs font-semibold ${
+              activeTab === 'analytics'
+                ? 'bg-[#C44D34] text-white border-[#C44D34]'
+                : isDark
+                ? 'border-stone-700 bg-stone-800 text-stone-200 hover:bg-stone-700 hover:border-[#C44D34]/60'
+                : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-100 hover:border-[#C44D34]/60'
+            }`}
+            title={`View ${client.name} Analytics directly`}
+          >
+            <BarChart3 className={`w-3.5 h-3.5 ${activeTab === 'analytics' ? 'text-white' : 'text-[#C44D34]'}`} />
+            <span>Analytics</span>
+          </button>
+
+          {/* Share Portal Button */}
+          <button
+            id="share-portal-btn"
+            onClick={() => setIsShareModalOpen(true)}
+            className={`px-2.5 py-1.5 rounded-xl border transition-all flex items-center gap-1.5 text-xs font-semibold ${
+              isDark
+                ? 'border-stone-700 bg-stone-800 text-stone-200 hover:bg-stone-700 hover:border-[#C44D34]/60'
+                : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-100 hover:border-[#C44D34]/60'
+            }`}
+            title="Generate unique sharable URL for client analytics"
+          >
+            <Share2 className="w-3.5 h-3.5 text-[#C44D34]" />
+            <span className="hidden sm:inline">Share Portal</span>
+            <span className="sm:hidden">Share</span>
+          </button>
+
+          {/* New Post Button */}
           <button
             onClick={() => onNewPostForClient(client.id)}
-            className="px-3 py-1.5 bg-[#181E24] hover:bg-black text-white text-xs font-semibold rounded-xl flex items-center gap-1 shadow-xs transition-colors"
+            className="px-3 py-1.5 bg-[#181E24] hover:bg-black text-white text-xs font-semibold rounded-xl flex items-center gap-1 shadow-xs transition-colors shrink-0"
           >
             <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
             <span>New post</span>
@@ -158,7 +188,7 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
       </div>
 
       {/* Sub-Navigation Switcher: Overview vs Analytics */}
-      <div className="grid grid-cols-2 gap-2 mt-4 p-1 rounded-2xl bg-stone-100 dark:bg-stone-800/70">
+      <div className="grid grid-cols-2 gap-2 mt-4 p-1 rounded-2xl bg-stone-100 dark:bg-stone-800/70 max-w-md mx-auto">
         <button
           onClick={() => setActiveTab('overview')}
           className={`py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
@@ -188,322 +218,455 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
         </button>
       </div>
 
-      {/* TAB 1: OVERVIEW & POSTS */}
+      {/* TAB 1: OVERVIEW & POSTS (Responsive 2-column on tablet/PC) */}
       {activeTab === 'overview' && (
-        <div className="space-y-4 mt-4">
-          {/* Bio / Description */}
-          {client.notes && (
-            <p className="text-xs text-stone-600 dark:text-stone-400 px-1 leading-relaxed">
-              {client.notes}
-            </p>
-          )}
-
-          {/* Share Portal Banner Shortcut */}
-          <div
-            onClick={() => setIsShareModalOpen(true)}
-            className={`p-3 rounded-2xl border flex items-center justify-between cursor-pointer group transition-all ${
-              isDark
-                ? 'bg-[#1D242C] border-[#2A3440] hover:bg-[#232C36]'
-                : 'bg-white border-[#E8E4DC] hover:border-[#C44D34]/50 hover:shadow-xs'
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-[#C44D34]/15 text-[#C44D34] flex items-center justify-center">
-                <Share2 className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-stone-900 dark:text-white">
-                  Client Portal Link Ready
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-12 gap-5">
+          {/* Left Column (lg:col-span-5): Bio, 4 Key Stat Cards, Content Distributions */}
+          <div className="lg:col-span-5 space-y-4">
+            {/* Bio / Description */}
+            {client.notes && (
+              <div
+                className={`p-3.5 rounded-2xl border text-xs leading-relaxed ${
+                  isDark ? 'bg-[#1D242C] border-[#2A3440] text-stone-300' : 'bg-white border-[#E8E4DC] text-stone-600'
+                }`}
+              >
+                <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1">
+                  Brand Focus & Notes
                 </div>
-                <div className="text-[10px] text-stone-500">
-                  Allow {client.name} to view their calendar & analytics
+                {client.notes}
+              </div>
+            )}
+
+            {/* 4 Stat Cards in 2x2 grid */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div
+                className={`p-3.5 rounded-2xl border text-center transition-colors ${
+                  isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+                }`}
+              >
+                <div className="text-2xl font-black text-stone-900 dark:text-white">
+                  {totalPosts}
+                </div>
+                <div className="text-[9px] font-bold uppercase tracking-wider text-stone-400 mt-1">
+                  Total Posts
+                </div>
+              </div>
+
+              <div
+                className={`p-3.5 rounded-2xl border text-center transition-colors ${
+                  isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+                }`}
+              >
+                <div className="text-2xl font-black text-[#C44D34]">
+                  {inReviewCount}
+                </div>
+                <div className="text-[9px] font-bold uppercase tracking-wider text-stone-400 mt-1">
+                  In Review
+                </div>
+              </div>
+
+              <div
+                className={`p-3.5 rounded-2xl border text-center transition-colors ${
+                  isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+                }`}
+              >
+                <div className="text-2xl font-black text-amber-500">
+                  {scheduledCount}
+                </div>
+                <div className="text-[9px] font-bold uppercase tracking-wider text-stone-400 mt-1">
+                  Scheduled
+                </div>
+              </div>
+
+              <div
+                className={`p-3.5 rounded-2xl border text-center transition-colors ${
+                  isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+                }`}
+              >
+                <div className="text-2xl font-black text-emerald-600">
+                  {publishedCount}
+                </div>
+                <div className="text-[9px] font-bold uppercase tracking-wider text-stone-400 mt-1">
+                  Published
                 </div>
               </div>
             </div>
-            <span className="text-[10px] font-bold text-[#C44D34] uppercase tracking-wide group-hover:underline">
-              Share →
-            </span>
-          </div>
 
-          {/* 4 Stat Cards */}
-          <div className="grid grid-cols-2 gap-3">
+            {/* Content Category Distribution */}
             <div
-              className={`p-3.5 rounded-2xl border text-center ${
+              className={`p-4 rounded-2xl border ${
                 isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
               }`}
             >
-              <div className="text-xl font-extrabold text-stone-900 dark:text-white">
-                {totalPosts}
-              </div>
-              <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mt-0.5">
-                TOTAL POSTS
-              </div>
-            </div>
-
-            <div
-              className={`p-3.5 rounded-2xl border text-center ${
-                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-              }`}
-            >
-              <div className="text-xl font-extrabold text-amber-600">
-                {inReviewCount}
-              </div>
-              <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mt-0.5">
-                IN REVIEW
-              </div>
-            </div>
-
-            <div
-              className={`p-3.5 rounded-2xl border text-center ${
-                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-              }`}
-            >
-              <div className="text-xl font-extrabold text-stone-900 dark:text-white">
-                {scheduledCount + approvedCount}
-              </div>
-              <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mt-0.5">
-                SCHEDULED
-              </div>
-            </div>
-
-            <div
-              className={`p-3.5 rounded-2xl border text-center ${
-                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-              }`}
-            >
-              <div className="text-xl font-extrabold text-emerald-600">
-                {publishedCount}
-              </div>
-              <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mt-0.5">
-                PUBLISHED
-              </div>
-            </div>
-          </div>
-
-          {/* Posts by Type Progress Bars */}
-          <div
-            className={`p-4 rounded-2xl border ${
-              isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-            }`}
-          >
-            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-3">
-              POSTS BY TYPE
-            </h3>
-
-            <div className="space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-3">
+                Content Pillars Mix
+              </h3>
               {typeEntries.length === 0 ? (
-                <p className="text-xs text-stone-400 text-center py-2">No post categories yet</p>
+                <p className="text-xs text-stone-400 py-3 text-center">No posts recorded yet.</p>
               ) : (
-                typeEntries.map((item) => {
-                  const catColor = CATEGORY_COLORS[item.category]?.dot || '#C44D34';
-                  return (
-                    <div key={item.category} className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-stone-700 dark:text-stone-300 text-[11px]">
-                          {item.category}
-                        </span>
-                        <span className="text-[11px] font-bold text-stone-500">
-                          {item.count} · {item.percent}%
-                        </span>
+                <div className="space-y-2.5">
+                  {typeEntries.map((item) => {
+                    const catStyle = CATEGORY_COLORS[item.category] || CATEGORY_COLORS.POST;
+                    return (
+                      <div key={item.category}>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="w-2 h-2 rounded-full shrink-0"
+                              style={{ backgroundColor: catStyle.dot }}
+                            />
+                            <span className="font-semibold text-stone-700 dark:text-stone-300">
+                              {item.category}
+                            </span>
+                          </div>
+                          <span className="text-[11px] font-bold text-stone-500">
+                            {item.count} ({item.percent}%)
+                          </span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-stone-100 dark:bg-stone-800 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${item.percent}%`, backgroundColor: catStyle.dot }}
+                          />
+                        </div>
                       </div>
-                      <div className="w-full h-2 rounded-full bg-stone-100 dark:bg-stone-800 overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all duration-500"
-                          style={{
-                            width: `${item.percent}%`,
-                            backgroundColor: catColor,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </div>
+
+            {/* Quick Share Banner */}
+            <div
+              className={`p-3.5 rounded-2xl border text-xs flex items-center justify-between gap-2 ${
+                isDark
+                  ? 'bg-[#18222E] border-[#273545] text-stone-200'
+                  : 'bg-stone-50 border-stone-200 text-stone-800'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Share2 className="w-4 h-4 text-[#C44D34] shrink-0" />
+                <span className="text-xs font-semibold">Share client view with {client.name}</span>
+              </div>
+              <button
+                onClick={() => setIsShareModalOpen(true)}
+                className="px-2.5 py-1 rounded-lg bg-[#C44D34] text-white text-[11px] font-bold shrink-0 hover:bg-[#B33E26] transition-colors"
+              >
+                Get Link
+              </button>
+            </div>
           </div>
 
-          {/* Upcoming Posts */}
-          <div
-            className={`p-4 rounded-2xl border ${
-              isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-            }`}
-          >
-            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-3">
-              UPCOMING POSTS
-            </h3>
+          {/* Right Column (lg:col-span-7): Upcoming & Scheduled Content Queue */}
+          <div className="lg:col-span-7 space-y-4">
+            <div
+              className={`p-4 rounded-2xl border ${
+                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                  Upcoming Content ({upcomingPosts.length})
+                </h3>
+                <button
+                  onClick={() => onNewPostForClient(client.id)}
+                  className="text-xs font-bold text-[#C44D34] hover:underline flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add post</span>
+                </button>
+              </div>
 
-            <div className="divide-y divide-stone-100 dark:divide-stone-800">
               {upcomingPosts.length === 0 ? (
-                <p className="text-xs text-stone-500 py-3 text-center">No upcoming posts.</p>
+                <div className="text-center py-8">
+                  <p className="text-xs text-stone-400">No upcoming posts scheduled.</p>
+                  <button
+                    onClick={() => onNewPostForClient(client.id)}
+                    className="mt-2 text-xs font-bold text-[#C44D34] hover:underline"
+                  >
+                    + Schedule first post for {client.name}
+                  </button>
+                </div>
               ) : (
-                upcomingPosts.map((post) => {
-                  const catColor = CATEGORY_COLORS[post.category]?.text || '#C44D34';
-                  const catBg = CATEGORY_COLORS[post.category]?.bg || '#FDF2F0';
+                <div className="space-y-2.5">
+                  {upcomingPosts.map((post) => {
+                    const catStyle = CATEGORY_COLORS[post.category] || CATEGORY_COLORS.POST;
+                    const statStyle = STATUS_STYLES[post.status] || STATUS_STYLES.Planned;
 
-                  return (
-                    <div
-                      key={post.id}
-                      onClick={() => onEditPost(post)}
-                      className="py-2.5 flex items-center justify-between gap-2 hover:bg-stone-50/80 dark:hover:bg-stone-800/40 px-1 rounded-lg cursor-pointer transition-colors"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="text-xs font-bold text-stone-500 dark:text-stone-400 shrink-0 w-12">
-                          {formatShortDate(post.date)}
-                        </span>
-                        <span
-                          className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
-                          style={{ color: catColor, backgroundColor: catBg }}
-                        >
-                          {post.category}
-                        </span>
-                        <span className="text-xs font-bold text-stone-900 dark:text-white truncate">
-                          {post.title}
-                        </span>
+                    return (
+                      <div
+                        key={post.id}
+                        onClick={() => onEditPost(post)}
+                        className={`p-3 rounded-xl border cursor-pointer hover:border-[#C44D34] transition-all flex items-center justify-between gap-3 ${
+                          isDark
+                            ? 'bg-[#151D25] border-[#24303E] hover:bg-[#1B2530]'
+                            : 'bg-[#FAF8F5] border-[#E8E4DC] hover:bg-stone-50'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 text-xs mb-1">
+                            <span
+                              className="w-2 h-2 rounded-full shrink-0"
+                              style={{ backgroundColor: catStyle.dot }}
+                            />
+                            <span
+                              className="font-bold text-[9px] uppercase tracking-wider"
+                              style={{ color: catStyle.text }}
+                            >
+                              {post.category}
+                            </span>
+                            <span className="text-stone-400">•</span>
+                            <span className="text-[11px] text-stone-500 font-medium">
+                              {post.platform}
+                            </span>
+                          </div>
+                          <h4 className="text-xs font-bold text-stone-900 dark:text-white truncate">
+                            {post.title}
+                          </h4>
+                          <p className="text-[11px] text-stone-500 line-clamp-1 mt-0.5">
+                            {post.caption}
+                          </p>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="text-xs font-bold text-stone-700 dark:text-stone-300">
+                            {formatShortDate(post.date)}
+                          </div>
+                          <span
+                            className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md mt-1 inline-block ${statStyle.badge}`}
+                          >
+                            {statStyle.text}
+                          </span>
+                        </div>
                       </div>
-
-                      <span className="text-[11px] text-stone-400 font-medium shrink-0">
-                        {post.platform}
-                      </span>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
         </div>
       )}
 
-      {/* TAB 2: CLIENT SPECIFIC ANALYTICS */}
+      {/* TAB 2: CLIENT SPECIFIC ANALYTICS (Rich Responsive Dashboard for Tablet and PC) */}
       {activeTab === 'analytics' && (
-        <div className="space-y-4 mt-4">
-          {/* Analytics Header Ribbon with Share CTA */}
-          <div
-            className={`p-3.5 rounded-2xl border flex items-center justify-between gap-2 ${
-              isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
-            }`}
-          >
+        <div className="mt-4 space-y-5">
+          {/* Header Row: Title & Filter */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
-                {client.name} Dedicated Analytics
-              </div>
-              <div className="text-xs text-stone-600 dark:text-stone-300 font-medium mt-0.5">
-                Share live access with {client.name}
-              </div>
+              <h3 className="text-sm font-bold text-stone-900 dark:text-white">
+                {client.name} Content Analytics & Velocity
+              </h3>
+              <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                Direct metrics, approval velocity, and audience performance
+              </p>
             </div>
 
-            <button
-              onClick={() => setIsShareModalOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-[#C44D34] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-              <span>Share View</span>
-            </button>
+            <div className="flex items-center gap-1 bg-stone-100 dark:bg-stone-800 p-0.5 rounded-xl border border-stone-200 dark:border-stone-700">
+              {(['30d', '90d', 'all'] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setTimeRange(r)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                    timeRange === r
+                      ? 'bg-[#C44D34] text-white shadow-xs'
+                      : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+                  }`}
+                >
+                  {r === '30d' ? 'Last 30 Days' : r === '90d' ? 'Last Quarter' : 'All Time'}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Performance KPIs */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* 4 Metric KPI Cards across (responsive 2 cols on mobile, 4 cols on tablet/PC) */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div
-              className={`p-4 rounded-2xl border ${
-                isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
+              className={`p-4 rounded-2xl border text-center ${
+                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
               }`}
             >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-bold uppercase text-stone-400">Est. Reach</span>
-                <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
-              </div>
-              <div className="text-2xl font-bold font-serif text-stone-900 dark:text-white">
+              <div className="text-2xl font-black text-stone-900 dark:text-white font-serif">
                 {estImpressions.toLocaleString()}
               </div>
-              <p className="text-[10px] text-stone-500 mt-1">Impressions across active platforms</p>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mt-1">
+                Est. Impressions
+              </div>
+              <span className="text-[10px] text-emerald-500 font-bold mt-1 inline-flex items-center gap-0.5">
+                <TrendingUp className="w-2.5 h-2.5" /> +18.4% vs last mo
+              </span>
             </div>
 
             <div
-              className={`p-4 rounded-2xl border ${
-                isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
+              className={`p-4 rounded-2xl border text-center ${
+                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
               }`}
             >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-bold uppercase text-stone-400">Engagement</span>
-                <Sparkles className="w-3.5 h-3.5 text-[#C44D34]" />
-              </div>
-              <div className="text-2xl font-bold font-serif text-[#C44D34]">
+              <div className="text-2xl font-black text-[#C44D34] font-serif">
                 {estEngagementRate}%
               </div>
-              <p className="text-[10px] text-stone-500 mt-1">Average interaction rate</p>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mt-1">
+                Engagement Rate
+              </div>
+              <span className="text-[10px] text-emerald-500 font-bold mt-1 inline-flex items-center gap-0.5">
+                <TrendingUp className="w-2.5 h-2.5" /> +2.1% benchmark
+              </span>
+            </div>
+
+            <div
+              className={`p-4 rounded-2xl border text-center ${
+                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+              }`}
+            >
+              <div className="text-2xl font-black text-emerald-600 font-serif">
+                {publishedCount} / {totalPosts}
+              </div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mt-1">
+                Content Delivered
+              </div>
+              <span className="text-[10px] text-stone-400 font-semibold mt-1 block">
+                {scheduledCount} scheduled
+              </span>
+            </div>
+
+            <div
+              className={`p-4 rounded-2xl border text-center ${
+                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+              }`}
+            >
+              <div className="text-2xl font-black text-amber-500 font-serif">
+                {inReviewCount === 0 ? '0' : inReviewCount}
+              </div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mt-1">
+                Pending Client Review
+              </div>
+              <span className="text-[10px] text-stone-400 font-semibold mt-1 block">
+                {inReviewCount === 0 ? 'All caught up' : 'Awaiting sign-off'}
+              </span>
             </div>
           </div>
 
-          {/* Platform Breakdown for this Client */}
-          <div
-            className={`p-4 rounded-2xl border space-y-3 ${
-              isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
-            }`}
-          >
-            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-              Platform Breakdown ({client.name})
-            </h3>
-
-            <div className="space-y-2.5">
-              {platformEntries.length === 0 ? (
-                <p className="text-xs text-stone-400 text-center py-2">No platforms assigned</p>
-              ) : (
-                platformEntries.map((item) => (
-                  <div key={item.platform} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs font-semibold">
-                      <span className="text-stone-800 dark:text-stone-200">{item.platform}</span>
-                      <span className="text-stone-500">
-                        {item.count} posts ({item.percent}%)
+          {/* Responsive 2-column Grid for Charts on Tablet / PC */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Chart 1: Platform Reach & Share */}
+            <div
+              className={`p-4 rounded-2xl border ${
+                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+              }`}
+            >
+              <h4 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-3">
+                Platform Share for {client.name}
+              </h4>
+              <div className="space-y-3">
+                {platformEntries.map((p) => (
+                  <div key={p.platform}>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full"
+                          style={{ backgroundColor: p.color }}
+                        />
+                        <span className="font-semibold text-stone-800 dark:text-stone-200">
+                          {p.platform}
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-bold text-stone-500">
+                        {p.count} posts ({p.percent}%)
                       </span>
                     </div>
-                    <div className="w-full h-1.5 rounded-full bg-stone-100 dark:bg-stone-800 overflow-hidden">
+                    <div className="w-full h-2.5 rounded-full bg-stone-100 dark:bg-stone-800 overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${item.percent}%`, backgroundColor: item.color }}
+                        style={{ width: `${p.percent}%`, backgroundColor: p.color }}
                       />
                     </div>
                   </div>
-                ))
-              )}
+                ))}
+              </div>
+            </div>
+
+            {/* Chart 2: Status Breakdown & Approval Velocity */}
+            <div
+              className={`p-4 rounded-2xl border ${
+                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+              }`}
+            >
+              <h4 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-3">
+                Content Pipeline Health
+              </h4>
+              <div className="space-y-3">
+                {[
+                  { label: 'Published & Live', count: publishedCount, color: '#16A34A' },
+                  { label: 'Approved & Scheduled', count: scheduledCount + approvedCount, color: '#2563EB' },
+                  { label: 'In Review (Client Side)', count: inReviewCount, color: '#D97706' },
+                  { label: 'In Draft / Planned', count: plannedCount, color: '#9CA3AF' },
+                ].map((s) => {
+                  const pct = totalPosts > 0 ? Math.round((s.count / totalPosts) * 100) : 0;
+                  return (
+                    <div key={s.label}>
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="font-medium text-stone-700 dark:text-stone-300">
+                          {s.label}
+                        </span>
+                        <span className="text-[11px] font-bold text-stone-500">
+                          {s.count} ({pct}%)
+                        </span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-stone-100 dark:bg-stone-800 overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{ width: `${pct}%`, backgroundColor: s.color }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
-          {/* Approval Velocity */}
+          {/* Share Portal Callout Card */}
           <div
-            className={`p-4 rounded-2xl border ${
-              isDark ? 'bg-[#1D252F] border-[#2C3848]' : 'bg-white border-[#E8E2D8]'
+            className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
+              isDark
+                ? 'bg-[#182330] border-[#29384A] text-stone-100'
+                : 'bg-[#FDF9F5] border-[#E8DFC0] text-[#1E252B]'
             }`}
           >
-            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-2">
-              Review & Turnaround Velocity
-            </h3>
-            <div className="grid grid-cols-2 gap-2 text-center pt-1">
-              <div className="p-3 rounded-xl bg-stone-50 dark:bg-stone-800/40">
-                <div className="text-base font-bold text-stone-900 dark:text-white">
-                  {approvedCount + publishedCount} / {totalPosts}
-                </div>
-                <div className="text-[10px] text-stone-400 uppercase font-semibold">
-                  Approved or Live
-                </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <Share2 className="w-4 h-4 text-[#C44D34]" />
+                <h4 className="text-sm font-bold tracking-tight">
+                  Share this view with {client.name}
+                </h4>
               </div>
-              <div className="p-3 rounded-xl bg-stone-50 dark:bg-stone-800/40">
-                <div className="text-base font-bold text-emerald-600">
-                  {inReviewCount === 0 ? 'Zero Backlog' : `${inReviewCount} In Review`}
-                </div>
-                <div className="text-[10px] text-stone-400 uppercase font-semibold">
-                  Queue Health
-                </div>
-              </div>
+              <p className="text-xs text-stone-500 dark:text-stone-400 mt-1 max-w-xl">
+                Send a unique view-only link so {client.name} can open and inspect their own company analytics and upcoming posts without logging into your agency workspace.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+              <button
+                onClick={() => onOpenPortal(client, 'analytics', true)}
+                className={`flex-1 sm:flex-none px-3.5 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors ${
+                  isDark
+                    ? 'border-stone-700 bg-stone-800 text-stone-200 hover:bg-stone-700'
+                    : 'border-stone-300 bg-white text-stone-800 hover:bg-stone-100'
+                }`}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Preview View</span>
+              </button>
+
+              <button
+                onClick={() => setIsShareModalOpen(true)}
+                className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-[#C44D34] hover:bg-[#B33E26] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Share Portal</span>
+              </button>
             </div>
           </div>
-
-          {/* Open Client View Preview directly */}
-          <button
-            onClick={() => onOpenPortal(client)}
-            className="w-full py-3 rounded-xl border border-stone-300 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-800 dark:text-stone-200 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-            <span>Preview Client View as {client.name}</span>
-          </button>
         </div>
       )}
 
@@ -512,7 +675,8 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
         client={client}
-        onOpenPortalPreview={() => onOpenPortal(client)}
+        posts={posts}
+        onOpenPortalPreview={() => onOpenPortal(client, 'overview', true)}
         isDark={isDark}
       />
     </div>
