@@ -20,9 +20,10 @@ import {
   INITIAL_TEAM,
 } from './data/initialData';
 import { INITIAL_SUBSCRIPTION_STATE } from './data/pricingData';
+import { Menu, Plus } from 'lucide-react';
 
 // Component imports
-import { BottomNav } from './components/BottomNav';
+import { MobileNavDrawer } from './components/MobileNavDrawer';
 import { HomeView } from './components/HomeView';
 import { ClientsView } from './components/ClientsView';
 import { ClientDetailView } from './components/ClientDetailView';
@@ -33,8 +34,7 @@ import { ClientModal } from './components/ClientModal';
 import { Toast } from './components/Toast';
 import { ScreenLoader } from './components/ScreenLoader';
 
-// More sub-screens
-import { MoreMenuView } from './components/MoreMenuView';
+// Screen imports
 import { IdeasBankView } from './components/IdeasBankView';
 import { ApprovalsView } from './components/ApprovalsView';
 import { MediaLibraryView } from './components/MediaLibraryView';
@@ -44,10 +44,29 @@ import { SettingsView } from './components/SettingsView';
 import { TeamView } from './components/TeamView';
 import { AiAssistantsView } from './components/AiAssistantsView';
 import { BillingView } from './components/BillingView';
+import { MoreMenuView } from './components/MoreMenuView';
 import { ClientPortalView } from './components/ClientPortalView';
 import { DesktopSidebar } from './components/DesktopSidebar';
+import { SignInView } from './components/SignInView';
 
 export default function App() {
+  // Authentication State
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(() => {
+    try {
+      const saved = localStorage.getItem('postnote_auth_user') || sessionStorage.getItem('postnote_auth_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const handleSignOut = () => {
+    localStorage.removeItem('postnote_auth_user');
+    sessionStorage.removeItem('postnote_auth_user');
+    setCurrentUser(null);
+    showToast('Signed out of session');
+  };
+
   // Navigation States
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [activeMoreSubScreen, setActiveMoreSubScreen] = useState<MoreSubScreen | null>(null);
@@ -70,6 +89,9 @@ export default function App() {
 
   // Loading transition state (video shows clean instant screen switch with loader)
   const [isLoadingScreen, setIsLoadingScreen] = useState(false);
+
+  // Mobile drawer state
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
 
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -275,12 +297,23 @@ export default function App() {
     setTheme(nextTheme);
   };
 
+  const [previousTab, setPreviousTab] = useState<TabType>('home');
+
   const handleSelectSubScreen = (sub: MoreSubScreen) => {
+    if (activeTab !== 'more') {
+      setPreviousTab(activeTab);
+    }
     setActiveTab('more');
     setActiveMoreSubScreen(sub);
     setSelectedClientDetail(null);
     setPortalClient(null);
     setIsPostFormOpen(false);
+  };
+
+  const handleSubScreenBack = () => {
+    const target = previousTab && previousTab !== 'more' ? previousTab : 'home';
+    setActiveTab(target);
+    setActiveMoreSubScreen(null);
   };
 
   // Toast trigger
@@ -436,6 +469,10 @@ export default function App() {
 
   // Tab navigation with light screen loading flash
   const handleSelectTab = (tab: TabType) => {
+    if (tab === 'more') {
+      handleSelectSubScreen('settings');
+      return;
+    }
     if (tab === activeTab && !activeMoreSubScreen && !selectedClientDetail && !isPostFormOpen && !portalClient) {
       return;
     }
@@ -792,12 +829,14 @@ export default function App() {
       );
     }
 
-    // 4. Tab: CONTENT (Content Overview)
-    if (activeTab === 'content') {
+    // 4. Tab: CONTENT / QUEUE (Unified Content Library, Post Queue & Campaigns)
+    if (activeTab === 'content' || activeTab === 'queue') {
       return (
         <ContentOverviewView
           posts={posts}
           clients={clients}
+          campaigns={campaigns}
+          onSaveCampaign={handleSaveCampaign}
           onOpenNewPost={() => handleOpenNewPost()}
           onEditPost={handleEditPost}
           isDark={isDark}
@@ -805,26 +844,14 @@ export default function App() {
       );
     }
 
-    // 5. Tab: QUEUE (Post Queue)
-    if (activeTab === 'queue') {
-      return (
-        <QueueView
-          posts={posts}
-          onOpenNewPost={() => handleOpenNewPost()}
-          onEditPost={handleEditPost}
-          isDark={isDark}
-        />
-      );
-    }
-
-    // 6. Tab: MORE & Sub-screens
+    // 5. Tab: MORE & Sub-screens
     if (activeTab === 'more') {
       if (activeMoreSubScreen === 'ideas') {
         return (
           <IdeasBankView
             ideas={ideas}
             clients={clients}
-            onBack={() => setActiveMoreSubScreen(null)}
+            onBack={handleSubScreenBack}
             onAddToCalendar={handleAddToCalendar}
             onSaveIdea={handleSaveIdea}
             onDeleteIdea={handleDeleteIdea}
@@ -837,7 +864,7 @@ export default function App() {
         return (
           <ApprovalsView
             posts={posts}
-            onBack={() => setActiveMoreSubScreen(null)}
+            onBack={handleSubScreenBack}
             onApprovePost={handleApprovePost}
             onRequestChanges={handleRequestChanges}
             onEditPost={handleEditPost}
@@ -850,7 +877,7 @@ export default function App() {
         return (
           <MediaLibraryView
             mediaFiles={mediaFiles}
-            onBack={() => setActiveMoreSubScreen(null)}
+            onBack={handleSubScreenBack}
             onUploadMedia={handleUploadMedia}
             onDeleteMedia={handleDeleteMedia}
             isDark={isDark}
@@ -860,13 +887,14 @@ export default function App() {
 
       if (activeMoreSubScreen === 'campaigns') {
         return (
-          <CampaignsView
-            campaigns={campaigns}
-            clients={clients}
+          <ContentOverviewView
             posts={posts}
-            onBack={() => setActiveMoreSubScreen(null)}
+            clients={clients}
+            campaigns={campaigns}
             onSaveCampaign={handleSaveCampaign}
-            onSelectPost={handleEditPost}
+            onOpenNewPost={() => handleOpenNewPost()}
+            onEditPost={handleEditPost}
+            initialTab="campaigns"
             isDark={isDark}
           />
         );
@@ -877,7 +905,7 @@ export default function App() {
           <AnalyticsView
             posts={posts}
             clients={clients}
-            onBack={() => setActiveMoreSubScreen(null)}
+            onBack={handleSubScreenBack}
             isDark={isDark}
           />
         );
@@ -891,7 +919,7 @@ export default function App() {
             clients={clients}
             posts={posts}
             teamMembers={teamMembers}
-            onBack={() => setActiveMoreSubScreen(null)}
+            onBack={handleSubScreenBack}
             isDark={isDark}
           />
         );
@@ -904,9 +932,9 @@ export default function App() {
             onSetTheme={setTheme}
             subscription={subscription}
             onNavigateToBilling={() => setActiveMoreSubScreen('billing')}
-            onBack={() => setActiveMoreSubScreen(null)}
+            onBack={handleSubScreenBack}
             onNavigateToTeam={() => setActiveMoreSubScreen('team')}
-            onSignOut={() => showToast('Signed out of session')}
+            onSignOut={handleSignOut}
             onDeleteAccount={() => {
               if (window.confirm('Are you sure you want to delete your account?')) {
                 localStorage.clear();
@@ -933,7 +961,7 @@ export default function App() {
       if (activeMoreSubScreen === 'ai-assistants') {
         return (
           <AiAssistantsView
-            onBack={() => setActiveMoreSubScreen(null)}
+            onBack={handleSubScreenBack}
             onShowToast={showToast}
             isDark={isDark}
             onRefreshSync={fetchServerSync}
@@ -941,11 +969,13 @@ export default function App() {
         );
       }
 
-      // Default More Menu
+      // Default: Return directly to MoreMenuView (Studio Hub)
       return (
         <MoreMenuView
-          onNavigateSubScreen={(sub) => setActiveMoreSubScreen(sub)}
+          onNavigateSubScreen={handleSelectSubScreen}
+          onNavigateTab={handleSelectTab}
           waitingApprovalsCount={waitingApprovalsCount}
+          clientsCount={clients.length}
           subscription={subscription}
           isDark={isDark}
         />
@@ -954,6 +984,19 @@ export default function App() {
 
     return null;
   };
+
+  // Sign-in Gate: Protect workspace behind authentication
+  if (!currentUser && !isLockedPortalSession) {
+    return (
+      <SignInView
+        onSignInSuccess={(user) => {
+          setCurrentUser(user);
+          showToast(`Welcome back, ${user.name}!`);
+        }}
+        isDark={isDark}
+      />
+    );
+  }
 
   return (
     <div
@@ -986,20 +1029,67 @@ export default function App() {
 
       {/* Main View Area */}
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Sticky Mobile Top Header with Hamburger Menu (Visible on mobile/tablet, hidden on lg desktop) */}
+        {!portalClient && !isPostFormOpen && (
+          <header
+            className={`lg:hidden sticky top-0 z-30 flex items-center justify-between px-3.5 py-2.5 border-b backdrop-blur-md transition-colors ${
+              isDark
+                ? 'bg-[#151C24]/95 border-[#242E3B] text-stone-200'
+                : 'bg-[#FAF7F2]/95 border-[#E8E2D8] text-[#1E252B]'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <button
+                id="mobile-drawer-toggle"
+                onClick={() => setIsMobileDrawerOpen(true)}
+                className="p-1.5 -ml-1 rounded-xl text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-stone-800 transition-colors"
+                aria-label="Open navigation menu"
+              >
+                <Menu className="w-5 h-5 stroke-[2.2]" />
+              </button>
+
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-md bg-[#C44D34] flex items-center justify-center text-white font-bold text-xs shadow-xs">
+                  P
+                </div>
+                <span className="font-serif font-bold text-sm tracking-tight">PostNote</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleOpenNewPost()}
+                className="px-2.5 py-1.5 bg-[#C44D34] hover:bg-[#b04028] text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Post</span>
+              </button>
+            </div>
+          </header>
+        )}
+
         <main className="flex-1 flex flex-col">
           {renderScreenContent()}
         </main>
 
-        {/* Bottom Navigation (5 tabs: Home, Clients, Content, Queue, More) - visible on mobile/tablet, hidden on desktop (lg:hidden) */}
-        {!isPostFormOpen && !portalClient && (
-          <div className="lg:hidden">
-            <BottomNav
-              activeTab={activeTab}
-              onSelectTab={handleSelectTab}
-              isDark={isDark}
-            />
-          </div>
-        )}
+        {/* Slide-out Mobile Navigation Drawer (Houses all Studio, Workflow, Intelligence, and Management items) */}
+        <MobileNavDrawer
+          isOpen={isMobileDrawerOpen}
+          onClose={() => setIsMobileDrawerOpen(false)}
+          activeTab={activeTab}
+          activeMoreSubScreen={activeMoreSubScreen || undefined}
+          onSelectTab={handleSelectTab}
+          onSelectSubScreen={handleSelectSubScreen}
+          onOpenNewPost={() => handleOpenNewPost()}
+          clientsCount={clients.length}
+          waitingApprovalsCount={waitingApprovalsCount}
+          subscription={subscription}
+          currentUser={currentUser}
+          onSignOut={handleSignOut}
+          isDark={isDark}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+        />
       </div>
 
       {/* Client Modal (New / Edit) */}

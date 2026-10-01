@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Users, List, Clock, LayoutGrid } from 'lucide-react';
+import { Calendar, Users, List, Clock, Settings as SettingsIcon } from 'lucide-react';
 import { MainTab } from '../types';
 
 interface BottomNavProps {
@@ -14,19 +14,18 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentTab: currentTabProp
   const tabs = [
     { id: 'home' as MainTab, label: 'HOME', icon: Calendar },
     { id: 'clients' as MainTab, label: 'CLIENTS', icon: Users },
-    { id: 'content' as MainTab, label: 'CONTENT', icon: List },
-    { id: 'queue' as MainTab, label: 'QUEUE', icon: Clock },
-    { id: 'more' as MainTab, label: 'MORE', icon: LayoutGrid },
+    { id: 'content' as MainTab, label: 'CONTENT QUEUE', icon: List },
+    { id: 'more' as MainTab, label: 'SETTINGS', icon: SettingsIcon },
   ];
 
   return (
     <nav
       id="app-bottom-nav"
       aria-label="Main Navigation"
-      className={`sticky bottom-0 z-30 w-full px-2 py-2.5 border-t transition-colors duration-200 ${
+      className={`sticky bottom-0 z-40 w-full px-2 py-2.5 border-t backdrop-blur-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.35)] transition-colors duration-200 ${
         isDark
-          ? 'bg-[#181E24] border-[#2A343F] text-[#9BA3AF]'
-          : 'bg-[#FAF7F2] border-[#EAE5DC] text-[#8C827A]'
+          ? 'bg-[#181E24]/95 border-[#2A343F] text-[#9BA3AF]'
+          : 'bg-[#FAF7F2]/95 border-[#EAE5DC] text-[#8C827A]'
       }`}
     >
       <div className="flex items-center justify-around max-w-md mx-auto">

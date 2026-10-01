@@ -1,28 +1,35 @@
 import React from 'react';
 import {
+  Calendar,
+  Users,
+  List,
   Lightbulb,
   CheckCircle2,
   Image as ImageIcon,
-  FolderKanban,
   BarChart3,
   Settings as SettingsIcon,
   Bot,
   ChevronRight,
+  UserCheck,
   CreditCard,
   Sparkles,
 } from 'lucide-react';
-import { MoreSubScreen, SubscriptionState } from '../types';
+import { MainTab, MoreSubScreen, SubscriptionState } from '../types';
 
 interface MoreMenuViewProps {
   onNavigateSubScreen: (screen: MoreSubScreen) => void;
+  onNavigateTab?: (tab: MainTab) => void;
   waitingApprovalsCount: number;
+  clientsCount?: number;
   subscription?: SubscriptionState;
   isDark?: boolean;
 }
 
 export const MoreMenuView: React.FC<MoreMenuViewProps> = ({
   onNavigateSubScreen,
+  onNavigateTab,
   waitingApprovalsCount,
+  clientsCount = 0,
   subscription,
   isDark,
 }) => {
@@ -32,137 +39,225 @@ export const MoreMenuView: React.FC<MoreMenuViewProps> = ({
     ? 'Upgrade'
     : 'Pro Active';
 
-  const menuItems: Array<{
-    id: MoreSubScreen;
-    title: string;
-    description: string;
-    icon: React.ElementType;
-    badge?: string | number;
-    highlight?: boolean;
+  const sections: Array<{
+    category: string;
+    items: Array<{
+      type: 'tab' | 'subscreen';
+      id: string;
+      title: string;
+      description: string;
+      icon: React.ElementType;
+      badge?: string | number;
+      badgeColor?: string;
+      highlight?: boolean;
+    }>;
   }> = [
     {
-      id: 'billing',
-      title: 'Plans & Billing',
-      description: 'Pro subscription, Founding offer & tier limits',
-      icon: Sparkles,
-      badge: billingBadge,
-      highlight: true,
+      category: 'Studio',
+      items: [
+        {
+          type: 'tab',
+          id: 'home',
+          title: 'Calendar & Feed',
+          description: 'Monthly schedule, grid view and post planning',
+          icon: Calendar,
+        },
+        {
+          type: 'tab',
+          id: 'clients',
+          title: 'Clients',
+          description: 'Client profiles, portal links and social handles',
+          icon: Users,
+          badge: clientsCount > 0 ? clientsCount : undefined,
+        },
+        {
+          type: 'tab',
+          id: 'content',
+          title: 'Content Queue',
+          description: 'Unified queue timeline, statuses and campaigns',
+          icon: List,
+        },
+      ],
     },
     {
-      id: 'ideas',
-      title: 'Ideas Bank',
-      description: 'Capture and store content ideas',
-      icon: Lightbulb,
+      category: 'Workflow & Content',
+      items: [
+        {
+          type: 'subscreen',
+          id: 'approvals',
+          title: 'Approvals',
+          description: 'Review posts and client sign-offs before live',
+          icon: CheckCircle2,
+          badge: waitingApprovalsCount > 0 ? waitingApprovalsCount : undefined,
+          badgeColor: 'bg-amber-500 text-white',
+        },
+        {
+          type: 'subscreen',
+          id: 'ideas',
+          title: 'Ideas Bank',
+          description: 'Capture, categorize and convert ideas into posts',
+          icon: Lightbulb,
+        },
+        {
+          type: 'subscreen',
+          id: 'media',
+          title: 'Media Library',
+          description: 'Asset repository for high-res images and video clips',
+          icon: ImageIcon,
+        },
+      ],
     },
     {
-      id: 'approvals',
-      title: 'Approvals',
-      description: 'Review posts before they go live',
-      icon: CheckCircle2,
-      badge: waitingApprovalsCount > 0 ? waitingApprovalsCount : undefined,
+      category: 'Intelligence',
+      items: [
+        {
+          type: 'subscreen',
+          id: 'analytics',
+          title: 'Analytics',
+          description: 'Performance stats across platforms and clients',
+          icon: BarChart3,
+        },
+        {
+          type: 'subscreen',
+          id: 'ai-assistants',
+          title: 'AI Assistants & MCP',
+          description: 'MCP protocol endpoints, Claude & ChatGPT integration',
+          icon: Bot,
+          badge: 'Live',
+          badgeColor: 'bg-[#C44D34] text-white',
+          highlight: true,
+        },
+      ],
     },
     {
-      id: 'media',
-      title: 'Media Library',
-      description: 'Images and videos for your posts',
-      icon: ImageIcon,
-    },
-    {
-      id: 'campaigns',
-      title: 'Campaigns',
-      description: 'Group posts into campaigns',
-      icon: FolderKanban,
-    },
-    {
-      id: 'analytics',
-      title: 'Analytics',
-      description: 'Posts, platforms and status insights',
-      icon: BarChart3,
-    },
-    {
-      id: 'settings',
-      title: 'Settings',
-      description: 'Account, theme, team and plan status',
-      icon: SettingsIcon,
-    },
-    {
-      id: 'ai-assistants',
-      title: 'Connect AI assistants',
-      description: 'Use PostNote inside Claude, ChatGPT and more',
-      icon: Bot,
+      category: 'Management',
+      items: [
+        {
+          type: 'subscreen',
+          id: 'team',
+          title: 'Team Members',
+          description: 'Collaborate with agency creators and managers',
+          icon: UserCheck,
+        },
+        {
+          type: 'subscreen',
+          id: 'billing',
+          title: 'Plans & Billing',
+          description: 'Pro subscription, tier quotas and founding offer',
+          icon: CreditCard,
+          badge: billingBadge,
+          highlight: Boolean(subscription?.isTrial),
+        },
+        {
+          type: 'subscreen',
+          id: 'settings',
+          title: 'Settings',
+          description: 'Workspace preferences, theme and account setup',
+          icon: SettingsIcon,
+        },
+      ],
     },
   ];
+
+  const handleItemClick = (type: 'tab' | 'subscreen', id: string) => {
+    if (type === 'tab') {
+      if (onNavigateTab) {
+        onNavigateTab(id as MainTab);
+      }
+    } else {
+      onNavigateSubScreen(id as MoreSubScreen);
+    }
+  };
 
   return (
     <div
       id="more-menu-view"
-      className={`min-h-[780px] pb-24 px-4 pt-5 transition-colors ${
+      className={`min-h-[780px] pb-24 px-4 sm:px-6 pt-5 transition-colors ${
         isDark ? 'text-stone-100' : 'text-[#1E252B]'
       }`}
     >
       {/* Header */}
       <div className="pb-4 border-b border-stone-200 dark:border-stone-800">
         <span className="text-[10px] font-bold tracking-widest text-stone-400 uppercase">
-          POST NOTE
+          POST NOTE STUDIO
         </span>
-        <h2 className="text-xl font-bold tracking-tight">More</h2>
+        <h2 className="text-xl font-bold tracking-tight">Studio Hub & Menu</h2>
+        <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+          Access all studio workspaces, workflow engines, intelligence, and account tools.
+        </p>
       </div>
 
-      {/* Menu Cards */}
-      <div className="space-y-3 mt-4">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
+      {/* Categorized Sections */}
+      <div className="space-y-6 mt-6">
+        {sections.map((section) => (
+          <div key={section.category} className="space-y-2.5">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500 px-1">
+              {section.category}
+            </h3>
 
-          return (
-            <div
-              key={item.id}
-              id={`more-menu-item-${item.id}`}
-              onClick={() => onNavigateSubScreen(item.id)}
-              className={`p-4 rounded-2xl border shadow-xs cursor-pointer flex items-center justify-between transition-all group ${
-                isDark
-                  ? 'bg-[#1D242C] border-[#2A3440] hover:bg-[#222B34]'
-                  : 'bg-white border-[#E8E4DC] hover:shadow-sm'
-              }`}
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
-                    item.highlight
-                      ? 'bg-[#C44D34]/15 text-[#C44D34]'
-                      : isDark
-                      ? 'bg-stone-800 text-stone-300 group-hover:text-white group-hover:bg-stone-700'
-                      : 'bg-stone-100 text-stone-700 group-hover:bg-stone-200/70'
-                  }`}
-                >
-                  <Icon className="w-5 h-5 stroke-[2]" />
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {section.items.map((item) => {
+                const Icon = item.icon;
 
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-stone-900 dark:text-white group-hover:text-[#C44D34] transition-colors truncate">
-                      {item.title}
-                    </h3>
-                    {item.badge && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-[#C44D34] text-white text-[10px] font-extrabold leading-none">
-                        {item.badge}
-                      </span>
-                    )}
+                return (
+                  <div
+                    key={item.id}
+                    id={`menu-item-${item.id}`}
+                    onClick={() => handleItemClick(item.type, item.id)}
+                    className={`p-3.5 rounded-2xl border shadow-xs cursor-pointer flex items-center justify-between transition-all group ${
+                      isDark
+                        ? 'bg-[#1D242C] border-[#2A3440] hover:bg-[#222B34] hover:border-stone-700'
+                        : 'bg-white border-[#E8E4DC] hover:border-stone-400 hover:shadow-sm'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                          item.highlight
+                            ? 'bg-[#C44D34]/15 text-[#C44D34]'
+                            : isDark
+                            ? 'bg-stone-800 text-stone-300 group-hover:text-white group-hover:bg-stone-700'
+                            : 'bg-stone-100 text-stone-700 group-hover:bg-stone-200/70'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4 stroke-[2]" />
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-bold text-stone-900 dark:text-white group-hover:text-[#C44D34] transition-colors truncate">
+                            {item.title}
+                          </h4>
+                          {item.badge && (
+                            <span
+                              className={`px-1.5 py-0.5 rounded-full text-[9px] font-extrabold leading-none ${
+                                item.badgeColor
+                                  ? item.badgeColor
+                                  : 'bg-[#C44D34] text-white'
+                              }`}
+                            >
+                              {item.badge}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-stone-500 dark:text-stone-400 truncate mt-0.5">
+                          {item.description}
+                        </p>
+                      </div>
+                    </div>
+
+                    <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-stone-700 dark:group-hover:text-stone-200 shrink-0 ml-2 transition-transform group-hover:translate-x-0.5" />
                   </div>
-                  <p className="text-xs text-stone-500 dark:text-stone-400 truncate mt-0.5">
-                    {item.description}
-                  </p>
-                </div>
-              </div>
-
-              <ChevronRight className="w-5 h-5 text-stone-400 group-hover:text-stone-700 dark:group-hover:text-stone-200 shrink-0 ml-2 transition-transform group-hover:translate-x-0.5" />
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
 
       {/* Slogan Footer */}
-      <div className="mt-8 text-center">
-        <p className="text-[11px] font-extrabold tracking-widest text-stone-400 dark:text-stone-500 uppercase">
+      <div className="mt-10 text-center">
+        <p className="text-[10px] font-extrabold tracking-widest text-stone-400 dark:text-stone-500 uppercase">
           PLAN. CREATE. APPROVE. PUBLISH.
         </p>
       </div>

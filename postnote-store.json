@@ -527,5 +527,12 @@
       "description": "Quick how-to reel with head barista, tie into new seasonal drink"
     }
   ],
+  "tunnelConfig": {
+    "token": "",
+    "customDomain": "mcp.firstdraftstudio.in",
+    "mode": "quick",
+    "provider": "localtunnel",
+    "subdomain": "vipin-postnote"
+  },
   "lastUpdated": "2026-10-01T22:10:35.614Z"
 }
