@@ -46,8 +46,26 @@ import { AiAssistantsView } from './components/AiAssistantsView';
 import { BillingView } from './components/BillingView';
 import { ClientPortalView } from './components/ClientPortalView';
 import { DesktopSidebar } from './components/DesktopSidebar';
+import { SignInView } from './components/SignInView';
 
 export default function App() {
+  // Authentication State
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(() => {
+    try {
+      const saved = localStorage.getItem('postnote_auth_user') || sessionStorage.getItem('postnote_auth_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const handleSignOut = () => {
+    localStorage.removeItem('postnote_auth_user');
+    sessionStorage.removeItem('postnote_auth_user');
+    setCurrentUser(null);
+    showToast('Signed out of session');
+  };
+
   // Navigation States
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [activeMoreSubScreen, setActiveMoreSubScreen] = useState<MoreSubScreen | null>(null);
@@ -906,7 +924,7 @@ export default function App() {
             onNavigateToBilling={() => setActiveMoreSubScreen('billing')}
             onBack={() => setActiveMoreSubScreen(null)}
             onNavigateToTeam={() => setActiveMoreSubScreen('team')}
-            onSignOut={() => showToast('Signed out of session')}
+            onSignOut={handleSignOut}
             onDeleteAccount={() => {
               if (window.confirm('Are you sure you want to delete your account?')) {
                 localStorage.clear();
@@ -954,6 +972,19 @@ export default function App() {
 
     return null;
   };
+
+  // Sign-in Gate: Protect workspace behind authentication
+  if (!currentUser && !isLockedPortalSession) {
+    return (
+      <SignInView
+        onSignInSuccess={(user) => {
+          setCurrentUser(user);
+          showToast(`Welcome back, ${user.name}!`);
+        }}
+        isDark={isDark}
+      />
+    );
+  }
 
   return (
     <div

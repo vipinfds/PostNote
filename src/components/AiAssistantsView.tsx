@@ -20,6 +20,11 @@ import {
   Lock,
   Send,
   HelpCircle,
+  ChevronDown,
+  ChevronUp,
+  Server,
+  Link2,
+  CheckCircle,
 } from 'lucide-react';
 
 interface AiAssistantsViewProps {
@@ -46,7 +51,7 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
   isDark,
   onRefreshSync,
 }) => {
-  // Default to Claude as requested by the user
+  // Default to Claude as requested
   const [activeTab, setActiveTab] = useState<TabMode>('claude');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -54,9 +59,21 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const [publicTunnelUrl, setPublicTunnelUrl] = useState<string | null>(null);
   const [tunnelStatus, setTunnelStatus] = useState<'checking' | 'active' | 'starting'>('checking');
+  const [tunnelProvider, setTunnelProvider] = useState<'localtunnel' | 'cloudflare'>('localtunnel');
 
-  // Compute effective URLs (prioritizing the public tunnel that bypasses Google cookie check)
-  const effectiveBaseUrl = publicTunnelUrl || origin;
+  // Localtunnel Free Subdomain State (100% Free, No Credit Card, No Account)
+  const [subdomainInput, setSubdomainInput] = useState('postnote-vipin');
+  const [isUpdatingSubdomain, setIsUpdatingSubdomain] = useState(false);
+
+  // Cloudflare Tunnel state (Optional alternative)
+  const [showCloudflareSetup, setShowCloudflareSetup] = useState(false);
+  const [customDomainInput, setCustomDomainInput] = useState('mcp.firstdraftstudio.in');
+  const [tokenInput, setTokenInput] = useState('');
+  const [maskedToken, setMaskedToken] = useState<string | null>(null);
+  const [isSavingCloudflare, setIsSavingCloudflare] = useState(false);
+
+  // Effective URLs for MCP, OAuth, and OpenAPI
+  const effectiveBaseUrl = publicTunnelUrl || `https://${subdomainInput}.loca.lt`;
   const effectiveMcpUrl = `${effectiveBaseUrl}/mcp`;
   const effectiveAuthUrl = `${effectiveBaseUrl}/oauth/authorize`;
   const effectiveTokenUrl = `${effectiveBaseUrl}/oauth/token`;
@@ -69,16 +86,6 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'error'>('checking');
   const [openApiSchema, setOpenApiSchema] = useState<any>(null);
   const [geminiTools, setGeminiTools] = useState<any>(null);
-
-  // Inspector state
-  const [inspectorLog, setInspectorLog] = useState<{
-    action: string;
-    status: 'pending' | 'success' | 'error';
-    latencyMs?: number;
-    request?: any;
-    response?: any;
-  } | null>(null);
-  const [isRunningAction, setIsRunningAction] = useState(false);
 
   // Copilot Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -96,12 +103,12 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
   // Check health and poll tunnel
   useEffect(() => {
     checkServerHealth();
-    fetchTunnel();
+    fetchTunnelInfo();
     fetchOpenApi();
     fetchGeminiTools();
 
     const interval = setInterval(() => {
-      fetchTunnel();
+      fetchTunnelInfo();
     }, 4000);
 
     return () => clearInterval(interval);
@@ -113,7 +120,7 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
     }
   }, [chatMessages, activeTab]);
 
-  const fetchTunnel = async () => {
+  const fetchTunnelInfo = async () => {
     try {
       const res = await fetch('/api/tunnel');
       if (res.ok) {
@@ -124,20 +131,109 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
         } else {
           setTunnelStatus('starting');
         }
+        if (data.provider) {
+          setTunnelProvider(data.provider);
+        }
+        if (data.subdomain && !isUpdatingSubdomain) {
+          setSubdomainInput(data.subdomain);
+        }
+      }
+
+      // Also get detailed config
+      const configRes = await fetch('/api/tunnel/config');
+      if (configRes.ok) {
+        const cfg = await configRes.json();
+        setMaskedToken(cfg.tokenMasked);
+        if (cfg.provider) setTunnelProvider(cfg.provider);
+        if (cfg.subdomain) setSubdomainInput(cfg.subdomain);
       }
     } catch {
       setTunnelStatus('starting');
     }
   };
 
-  const restartTunnel = async () => {
-    setTunnelStatus('starting');
+  // Localtunnel Free Subdomain Switcher (Zero Card / Zero Signup)
+  const handleSaveLocaltunnel = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanSub = subdomainInput.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 50);
+    if (!cleanSub) {
+      onShowToast('Please enter a valid subdomain name (e.g. postnote-vipin)');
+      return;
+    }
+
+    setIsUpdatingSubdomain(true);
     try {
-      await fetch('/api/tunnel/restart', { method: 'POST' });
-      onShowToast('Restarting cloud tunnel...');
-      setTimeout(fetchTunnel, 2000);
+      const res = await fetch('/api/tunnel/localtunnel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subdomain: cleanSub }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        onShowToast(`Connected to https://${cleanSub}.loca.lt!`);
+        if (data.publicUrl) {
+          setPublicTunnelUrl(data.publicUrl);
+          setTunnelStatus('active');
+        }
+        setTunnelProvider('localtunnel');
+        fetchTunnelInfo();
+      } else {
+        onShowToast(`Failed: ${data.error || 'Server error'}`);
+      }
+    } catch (err: any) {
+      onShowToast(`Error: ${err?.message || 'Could not connect'}`);
+    } finally {
+      setIsUpdatingSubdomain(false);
+    }
+  };
+
+  // Cloudflare Tunnel token handler
+  const handleSaveCloudflare = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!tokenInput.trim() && !maskedToken) {
+      onShowToast('Please paste your Cloudflare Tunnel Token');
+      return;
+    }
+
+    setIsSavingCloudflare(true);
+    try {
+      const res = await fetch('/api/tunnel/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: tokenInput.trim() || undefined,
+          customDomain: customDomainInput.trim(),
+          mode: 'permanent',
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        onShowToast('Cloudflare Tunnel connected!');
+        setTunnelProvider('cloudflare');
+        fetchTunnelInfo();
+      } else {
+        onShowToast(`Failed: ${data.error || 'Server error'}`);
+      }
+    } catch (err: any) {
+      onShowToast(`Error: ${err?.message || 'Could not connect tunnel'}`);
+    } finally {
+      setIsSavingCloudflare(false);
+    }
+  };
+
+  const handleResetToLocaltunnel = async () => {
+    setIsUpdatingSubdomain(true);
+    try {
+      const res = await fetch('/api/tunnel/reset', { method: 'POST' });
+      if (res.ok) {
+        onShowToast('Switched to free Localtunnel');
+        setTunnelProvider('localtunnel');
+        fetchTunnelInfo();
+      }
     } catch {
-      onShowToast('Could not restart tunnel');
+      onShowToast('Failed to switch to Localtunnel');
+    } finally {
+      setIsUpdatingSubdomain(false);
     }
   };
 
@@ -259,7 +355,7 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
           <div>
             <h2 className="text-base font-bold tracking-tight">AI Integrations & Connectors</h2>
             <p className="text-[11px] text-stone-500 dark:text-stone-400">
-              100% Browser-Connectable · Claude MCP · ChatGPT Actions · Gemini SDK · In-App Copilot
+              100% Free · Zero Card / Zero Signup · Claude MCP · ChatGPT Actions · In-App Copilot
             </p>
           </div>
         </div>
@@ -267,20 +363,24 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
         {/* Live Status indicator */}
         <div className="flex items-center gap-2">
           <button
-            onClick={fetchTunnel}
+            onClick={fetchTunnelInfo}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${
               tunnelStatus === 'active'
                 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
                 : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
             }`}
-            title="Cloud Tunnel Status"
+            title="Free Tunnel Status"
           >
             <span
               className={`w-2 h-2 rounded-full ${
                 tunnelStatus === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500 animate-ping'
               }`}
             />
-            <span>{tunnelStatus === 'active' ? 'Cloud URL Live' : 'Connecting Cloud URL...'}</span>
+            <span>
+              {tunnelStatus === 'active'
+                ? `100% Free URL Active`
+                : 'Connecting Free Tunnel...'}
+            </span>
             <RefreshCw className="w-3 h-3 ml-0.5 opacity-60" />
           </button>
         </div>
@@ -297,7 +397,7 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
           }`}
         >
           <Globe className="w-3.5 h-3.5 text-purple-500" />
-          <span>Claude.ai (Browser MCP)</span>
+          <span>Claude.ai (Free MCP)</span>
         </button>
 
         <button
@@ -354,7 +454,7 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
       {/* ============================================================== */}
       {activeTab === 'claude' && (
         <div className="space-y-4 mt-4 animate-fade-in">
-          {/* Main Public URL Hero Card */}
+          {/* ZERO-CARD 100% FREE HERO CARD */}
           <div
             className={`p-4 rounded-2xl border shadow-xs transition-colors ${
               isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
@@ -362,36 +462,35 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300">
-                  <Globe className="w-4 h-4" />
+                <span className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+                  <ShieldCheck className="w-4 h-4" />
                 </span>
                 <div>
-                  <h3 className="text-sm font-bold tracking-tight text-stone-900 dark:text-white">
-                    Direct Browser Connector for Claude.ai
+                  <h3 className="text-sm font-bold tracking-tight text-stone-900 dark:text-white flex items-center gap-2">
+                    Claude.ai Connector URL
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                      100% FREE · NO CREDIT CARD
+                    </span>
                   </h3>
                   <p className="text-[11px] text-stone-500">
-                    Works 100% in your browser. No app download needed on your laptop.
+                    Works directly with your custom subdomain. Zero accounts, zero card, no downloads.
                   </p>
                 </div>
               </div>
 
-              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3" /> NO DOWNLOAD REQUIRED
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
+                ACTIVE & LIVE
               </span>
             </div>
 
-            <p className="text-xs text-stone-600 dark:text-stone-400 mt-3 leading-relaxed">
-              Use this <strong>Public Cloud MCP URL</strong> in Claude.ai. It bypasses Google Cloud Run cookie gating, allowing Anthropic's cloud servers to discover the sign-in service and register instantly:
-            </p>
-
             {/* URL Display with 1-Click Copy */}
-            <div className="flex items-center justify-between gap-2 mt-2.5 p-2.5 rounded-xl bg-stone-100 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700/60">
+            <div className="flex items-center justify-between gap-2 mt-3 p-2.5 rounded-xl bg-stone-100 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700/60">
               <code className="text-xs font-mono text-purple-700 dark:text-purple-300 truncate font-bold select-all">
                 {effectiveMcpUrl}
               </code>
 
               <button
-                onClick={() => copyToClipboard(effectiveMcpUrl, 'mcpUrl', 'Public MCP URL')}
+                onClick={() => copyToClipboard(effectiveMcpUrl, 'mcpUrl', 'Claude MCP URL')}
                 className="px-3 py-1.5 bg-[#C44D34] hover:bg-[#A83E28] text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shrink-0 transition-colors shadow-xs"
               >
                 {copiedKey === 'mcpUrl' ? (
@@ -409,9 +508,9 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
             </div>
 
             {/* Step-by-Step Instructions */}
-            <div className="mt-4 pt-3 border-t border-stone-100 dark:border-stone-800">
+            <div className="mt-3.5 pt-3 border-t border-stone-100 dark:border-stone-800">
               <div className="text-[11px] font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-2">
-                Connecting in Claude.ai in 3 steps:
+                Connecting to Claude.ai in 30 seconds:
               </div>
 
               <ol className="space-y-2 text-xs text-stone-600 dark:text-stone-300">
@@ -420,7 +519,7 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
                     1
                   </span>
                   <div>
-                    In <strong>Claude.ai</strong>, open <strong>Customize &gt; Connectors</strong> (or Organization Settings &gt; Connectors) and click <strong>Add custom connector</strong>.
+                    In <strong>Claude.ai</strong>, open <strong>Settings &gt; Connectors</strong> (or Organization Settings &gt; Connectors) and click <strong>Add custom connector</strong>.
                   </div>
                 </li>
 
@@ -438,25 +537,167 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
                     3
                   </span>
                   <div>
-                    Claude discovers the OAuth service automatically. When the PostNote authorization popup appears, click <strong>Approve & Connect Claude</strong>!
+                    Claude discovers the OAuth service automatically. When the PostNote authorization popup opens, click <strong>Approve & Connect Claude</strong>!
                   </div>
                 </li>
               </ol>
             </div>
 
-            {/* Live Preview Button */}
-            <div className="mt-3 pt-3 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between">
-              <span className="text-xs text-stone-500">Need to preview the approval screen?</span>
+            {/* Test Sign-in Link */}
+            <div className="mt-3 pt-3 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between text-xs text-stone-500">
+              <span>Want to preview the approval screen?</span>
               <a
                 href={effectiveAuthUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 text-stone-800 dark:text-stone-200 flex items-center gap-1 transition-colors"
+                className="px-2 py-0.5 rounded text-[11px] font-semibold bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 text-stone-800 dark:text-stone-200 flex items-center gap-1"
               >
-                <span>Preview 1-Click Screen</span>
+                <span>Preview 1-Click Sign-in</span>
                 <ExternalLink className="w-3 h-3" />
               </a>
             </div>
+          </div>
+
+          {/* CUSTOM SUBDOMAIN SELECTOR CARD (100% FREE, NO CARD, NO ACCOUNT) */}
+          <div
+            className={`p-4 rounded-2xl border shadow-xs transition-colors ${
+              isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
+                  <Link2 className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold tracking-tight text-stone-900 dark:text-white">
+                    Customize Your Free Subdomain
+                  </h3>
+                  <p className="text-[11px] text-stone-500">
+                    Pick your own permanent name. Powered by open-source Localtunnel (no signup or billing required).
+                  </p>
+                </div>
+              </div>
+
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                ZERO SIGNUP REQUIRED
+              </span>
+            </div>
+
+            <form onSubmit={handleSaveLocaltunnel} className="mt-3.5 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 flex items-center bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl overflow-hidden px-3 py-1.5">
+                  <span className="text-xs text-stone-400 font-mono select-none">https://</span>
+                  <input
+                    type="text"
+                    value={subdomainInput}
+                    onChange={(e) => setSubdomainInput(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                    placeholder="postnote-vipin"
+                    className="flex-1 bg-transparent text-xs font-mono font-bold text-stone-900 dark:text-white focus:outline-hidden px-1"
+                  />
+                  <span className="text-xs text-stone-400 font-mono select-none">.loca.lt</span>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isUpdatingSubdomain || !subdomainInput.trim()}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors shadow-xs disabled:opacity-40 shrink-0"
+                >
+                  {isUpdatingSubdomain ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Connecting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      <span>Claim Subdomain</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="text-[11px] text-stone-500 flex items-center gap-3">
+                <span className="flex items-center gap-1">
+                  <Check className="w-3 h-3 text-emerald-500" /> No credit card needed
+                </span>
+                <span className="flex items-center gap-1">
+                  <Check className="w-3 h-3 text-emerald-500" /> No registration or password
+                </span>
+                <span className="flex items-center gap-1">
+                  <Check className="w-3 h-3 text-emerald-500" /> Bypasses Cloud Run cookie auth
+                </span>
+              </div>
+            </form>
+          </div>
+
+          {/* ADVANCED: CLOUDFLARE ACCORDION (OPTIONAL FOR USERS WITH CLOUDFLARE) */}
+          <div
+            className={`p-3 rounded-2xl border shadow-xs transition-colors ${
+              isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+            }`}
+          >
+            <button
+              onClick={() => setShowCloudflareSetup(!showCloudflareSetup)}
+              className="w-full flex items-center justify-between text-left text-xs font-semibold text-stone-700 dark:text-stone-300"
+            >
+              <div className="flex items-center gap-2">
+                <Server className="w-3.5 h-3.5 text-stone-400" />
+                <span>Want to use Cloudflare Tunnel instead? (Requires Cloudflare Zero Trust account)</span>
+              </div>
+              {showCloudflareSetup ? <ChevronUp className="w-4 h-4 text-stone-400" /> : <ChevronDown className="w-4 h-4 text-stone-400" />}
+            </button>
+
+            {showCloudflareSetup && (
+              <form onSubmit={handleSaveCloudflare} className="mt-3 pt-3 border-t border-stone-200 dark:border-stone-700/60 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-stone-500 block mb-1">
+                      Custom Domain
+                    </label>
+                    <input
+                      type="text"
+                      value={customDomainInput}
+                      onChange={(e) => setCustomDomainInput(e.target.value)}
+                      placeholder="mcp.firstdraftstudio.in"
+                      className="w-full px-3 py-2 text-xs rounded-xl bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 focus:outline-hidden font-mono text-stone-900 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-stone-500 block mb-1">
+                      Cloudflare Tunnel Token
+                    </label>
+                    <input
+                      type="password"
+                      value={tokenInput}
+                      onChange={(e) => setTokenInput(e.target.value)}
+                      placeholder={maskedToken ? `Active: ${maskedToken}` : 'Paste eyJh... token'}
+                      className="w-full px-3 py-2 text-xs rounded-xl bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 focus:outline-hidden font-mono text-stone-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  {tunnelProvider === 'cloudflare' && (
+                    <button
+                      type="button"
+                      onClick={handleResetToLocaltunnel}
+                      className="text-xs text-stone-500 hover:text-stone-700 underline"
+                    >
+                      Switch back to free Localtunnel
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={isSavingCloudflare || (!tokenInput.trim() && !maskedToken)}
+                    className="ml-auto px-3.5 py-1.5 bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900 text-xs font-semibold rounded-xl disabled:opacity-40"
+                  >
+                    {isSavingCloudflare ? 'Connecting...' : 'Connect Cloudflare'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
 
           {/* Advanced OAuth Manual Details Card */}
@@ -832,18 +1073,22 @@ export const AiAssistantsView: React.FC<AiAssistantsViewProps> = ({
                 </p>
               </div>
 
-              <button
-                onClick={restartTunnel}
-                className="px-2 py-1 text-xs rounded-lg bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 text-stone-700 dark:text-stone-300 font-medium"
-              >
-                Restart Tunnel
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchTunnelInfo}
+                  className="px-2.5 py-1 text-xs rounded-lg bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 text-stone-700 dark:text-stone-300 font-medium"
+                >
+                  Refresh Info
+                </button>
+              </div>
             </div>
 
-            <div className="mt-4 p-3 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700/60 text-xs space-y-1">
+            <div className="mt-4 p-3 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700/60 text-xs space-y-1.5">
               <div><strong>Active Base URL:</strong> <code className="font-mono text-purple-600 dark:text-purple-400">{effectiveBaseUrl}</code></div>
-              <div><strong>Cloud Tunnel:</strong> {tunnelStatus === 'active' ? '🟢 Active & Reachable' : '🟡 Starting'}</div>
+              <div><strong>Tunnel Provider:</strong> {tunnelProvider === 'localtunnel' ? '🟢 Localtunnel (100% Free / Zero Card)' : '🟣 Cloudflare Tunnel'}</div>
+              <div><strong>Subdomain:</strong> <code className="font-mono">{subdomainInput}.loca.lt</code></div>
               <div><strong>MCP Endpoint:</strong> <code className="font-mono">{effectiveMcpUrl}</code></div>
+              <div><strong>OAuth RFC 8414:</strong> <code className="font-mono">{effectiveBaseUrl}/.well-known/oauth-authorization-server</code></div>
             </div>
           </div>
         </div>
