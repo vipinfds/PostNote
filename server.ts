@@ -1131,7 +1131,7 @@ async function startServer() {
   // -------------------------------------------------------------
   app.get('/api/gemini/tools', (req, res) => {
     res.json({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-3.1-flash-lite',
       functionDeclarations: GEMINI_FUNCTION_DECLARATIONS,
     });
   });
@@ -1174,7 +1174,7 @@ Be concise, friendly, and helpful.`;
 
         try {
           const geminiRes = await ai.models.generateContent({
-            model: 'gemini-3.8-flash',
+            model: 'gemini-3.1-flash-lite',
             contents,
             config: {
               systemInstruction,
@@ -1210,7 +1210,7 @@ Be concise, friendly, and helpful.`;
             ];
 
             const secondRes = await ai.models.generateContent({
-              model: 'gemini-3.8-flash',
+              model: 'gemini-3.1-flash-lite',
               contents: followUpContents,
               config: { systemInstruction },
             });

@@ -21,3 +21,20 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
+
+  sync-watcher:
+    image: node:22
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      - SYNC_INTERVAL_MS=${SYNC_INTERVAL_MS:-120000}
+      - SYNC_STATUS_PORT=3001
+    command: ["node", "scripts/sync-github.mjs"]
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

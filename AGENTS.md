@@ -18,5 +18,9 @@
 - `curl http://127.0.0.1:3000/` → HTML with `<script src="/PostNote/src/main.tsx">`
 - Preview should render the PostNote calendar home screen.
 
+## GitHub sync watcher
+- `sync-watcher` compose service runs `scripts/sync-github.mjs`: polls `origin` every 2 min (`SYNC_INTERVAL_MS`), merges new commits from user branches into the working branch (skips `origin/base44/*`), reports JSON status on internal port 3001 (unpublished — `docker compose -f docker-compose.base44.yml exec -T sync-watcher node -e "fetch('http://127.0.0.1:3001/').then(r=>r.json()).then(console.log)"`).
+- On a merge conflict it aborts, lists the files, and pauses until HEAD moves (a resolution commit), then resumes. Skips cycles while the worktree is dirty (e.g. mid-turn platform commits).
+
 ## Run
 `docker compose -f docker-compose.base44.yml up -d` (deps install + server start on container boot).
