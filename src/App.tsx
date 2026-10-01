@@ -37,7 +37,6 @@ import { ScreenLoader } from './components/ScreenLoader';
 // Screen imports
 import { IdeasBankView } from './components/IdeasBankView';
 import { ApprovalsView } from './components/ApprovalsView';
-import { MediaLibraryView } from './components/MediaLibraryView';
 import { CampaignsView } from './components/CampaignsView';
 import { AnalyticsView } from './components/AnalyticsView';
 import { SettingsView } from './components/SettingsView';
@@ -874,15 +873,8 @@ export default function App() {
       }
 
       if (activeMoreSubScreen === 'media') {
-        return (
-          <MediaLibraryView
-            mediaFiles={mediaFiles}
-            onBack={handleSubScreenBack}
-            onUploadMedia={handleUploadMedia}
-            onDeleteMedia={handleDeleteMedia}
-            isDark={isDark}
-          />
-        );
+        setActiveMoreSubScreen(null);
+        return null;
       }
 
       if (activeMoreSubScreen === 'campaigns') {

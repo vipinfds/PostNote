@@ -13,9 +13,12 @@ import {
   ChevronRight,
   List,
   Sparkles,
+  Download,
+  ImagePlus,
 } from 'lucide-react';
 import { Post, Client, Campaign, PostStatus } from '../types';
 import { CATEGORY_COLORS, STATUS_STYLES, formatSectionDate } from '../utils/theme';
+import { downloadMediaFile } from '../utils/mediaDownload';
 
 interface ContentOverviewViewProps {
   posts: Post[];
@@ -476,9 +479,24 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                               )}
                             </div>
                           )}
+
+                          {/* Quick Add Media button if post has no media */}
+                          {!((post.media && post.media.length > 0) || post.mediaUrl) && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEditPost(post);
+                              }}
+                              className="mt-2.5 inline-flex items-center gap-1.5 text-[10px] font-semibold text-stone-500 hover:text-[#C44D34] transition-colors"
+                            >
+                              <ImagePlus className="w-3.5 h-3.5 text-stone-400" />
+                              <span>+ Add Media</span>
+                            </button>
+                          )}
                         </div>
 
-                        {/* Footer: Campaign tag & Platform */}
+                        {/* Footer: Campaign tag & Platform + Quick Download */}
                         <div className="mt-3 pt-2 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between text-[11px] text-stone-400">
                           <div>
                             {post.campaignId ? (
@@ -490,7 +508,25 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                               <span className="text-[10px] text-stone-400">Standard Post</span>
                             )}
                           </div>
-                          <span className="font-medium">{post.platform}</span>
+
+                          <div className="flex items-center gap-2">
+                            {((post.media && post.media.length > 0) || post.mediaUrl) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const targetUrl = post.media?.[0]?.url || post.media?.[0]?.thumbnailUrl || post.mediaUrl || '';
+                                  downloadMediaFile(targetUrl, post.title);
+                                }}
+                                className="flex items-center gap-1 text-[10px] font-bold text-stone-500 hover:text-[#C44D34] transition-colors"
+                                title="Download media asset to device"
+                              >
+                                <Download className="w-3 h-3" />
+                                <span>Save</span>
+                              </button>
+                            )}
+                            <span className="font-medium">{post.platform}</span>
+                          </div>
                         </div>
                       </div>
                     );

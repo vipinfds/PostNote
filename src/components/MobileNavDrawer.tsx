@@ -89,11 +89,6 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
       label: 'Ideas Bank',
       icon: Lightbulb,
     },
-    {
-      id: 'media' as MoreSubScreen,
-      label: 'Media Library',
-      icon: ImageIcon,
-    },
   ];
 
   const intelligenceItems = [

@@ -15,8 +15,12 @@ import {
   Play,
   Eye,
   Link as LinkIcon,
+  Download,
+  ImagePlus,
+  Sparkles,
 } from 'lucide-react';
 import { Post, Client, Campaign, PostCategory, PostPlatform, PostStatus, MediaItem } from '../types';
+import { downloadMediaFile } from '../utils/mediaDownload';
 
 interface PostFormViewProps {
   initialPost?: Post | null;
@@ -91,8 +95,6 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
 
   // UI state for media features
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
-  const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>([]);
   const [isUrlInputOpen, setIsUrlInputOpen] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [urlType, setUrlType] = useState<'image' | 'video'>('image');
@@ -198,29 +200,27 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
     setIsUrlInputOpen(false);
   };
 
-  // Pick from Media Library
-  const handleOpenLibraryModal = () => {
-    const currentAttachedIds = attachedMedia.map((m) => m.id);
-    setSelectedLibraryIds(currentAttachedIds);
-    setIsLibraryModalOpen(true);
-  };
-
-  const handleToggleLibraryItem = (item: MediaItem) => {
-    if (selectedLibraryIds.includes(item.id)) {
-      setSelectedLibraryIds((prev) => prev.filter((id) => id !== item.id));
-    } else {
-      setSelectedLibraryIds((prev) => [...prev, item.id]);
-    }
-  };
-
-  const handleConfirmLibrarySelection = () => {
-    const selectedItems = mediaLibrary.filter((m) => selectedLibraryIds.includes(m.id));
-    // Merge with any freshly uploaded ones not from library
-    const notFromLibrary = attachedMedia.filter(
-      (m) => !mediaLibrary.some((lib) => lib.id === m.id)
-    );
-    setAttachedMedia([...notFromLibrary, ...selectedItems]);
-    setIsLibraryModalOpen(false);
+  const handleAddSampleMedia = () => {
+    const samples: MediaItem[] = [
+      {
+        id: `sample-${Date.now()}-1`,
+        title: 'Editorial Studio Shoot',
+        type: 'image',
+        url: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1000&auto=format&fit=crop&q=80',
+        thumbnailUrl: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80',
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: `sample-${Date.now()}-2`,
+        title: 'Minimalist Architecture Reel',
+        type: 'video',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        thumbnailUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?w=600&auto=format&fit=crop&q=80',
+        duration: '0:15',
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    setAttachedMedia((prev) => [...prev, samples[prev.length % 2]]);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -622,20 +622,20 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
           />
         </div>
 
-        {/* MEDIA UPLOAD SECTION */}
+        {/* MEDIA UPLOAD & DOWNLOAD SECTION */}
         <div className="pt-1">
-          <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center justify-between mb-2">
             <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
               MEDIA ATTACHMENTS {attachedMedia.length > 0 && `(${attachedMedia.length})`}
             </label>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={handleOpenLibraryModal}
-                className="text-[11px] font-semibold text-[#C44D34] hover:underline flex items-center gap-1"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-[11px] font-semibold text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer"
               >
-                <FolderKanban className="w-3.5 h-3.5" />
-                <span>From Library</span>
+                <ImagePlus className="w-3.5 h-3.5" />
+                <span>+ Upload Media</span>
               </button>
               <span className="text-stone-300 dark:text-stone-700">•</span>
               <button
@@ -645,6 +645,16 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
               >
                 <LinkIcon className="w-3.5 h-3.5" />
                 <span>Add URL</span>
+              </button>
+              <span className="text-stone-300 dark:text-stone-700">•</span>
+              <button
+                type="button"
+                onClick={handleAddSampleMedia}
+                className="text-[11px] font-semibold text-stone-500 hover:text-[#C44D34] flex items-center gap-1"
+                title="Add sample studio media asset"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Sample Stock</span>
               </button>
             </div>
           </div>
@@ -782,8 +792,19 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                         {isVideo ? media.duration || 'VIDEO' : 'IMAGE'}
                       </span>
 
-                      {/* Action buttons on hover */}
+                      {/* Action buttons on hover / overlay */}
                       <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            downloadMediaFile(displaySrc || '', media.title || 'post-media');
+                          }}
+                          className="p-1 rounded-full bg-black/70 hover:bg-[#C44D34] text-white transition-colors"
+                          title="Download media file to computer"
+                        >
+                          <Download className="w-3 h-3" />
+                        </button>
                         <button
                           type="button"
                           onClick={(e) => {
@@ -809,11 +830,23 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Title */}
-                    <div className="p-2">
+                    {/* Title & Quick Download Link */}
+                    <div className="p-2 flex items-center justify-between gap-1">
                       <p className="text-[11px] font-semibold text-stone-700 dark:text-stone-300 truncate">
                         {media.title}
                       </p>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          downloadMediaFile(displaySrc || '', media.title || 'post-media');
+                        }}
+                        className="text-[10px] font-bold text-[#C44D34] hover:underline flex items-center gap-0.5 shrink-0"
+                        title="Download media file"
+                      >
+                        <Download className="w-2.5 h-2.5" />
+                        <span>Save</span>
+                      </button>
                     </div>
                   </div>
                 );
@@ -833,132 +866,6 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
           </button>
         </div>
       </form>
-
-      {/* Media Library Selector Modal */}
-      {isLibraryModalOpen && (
-        <div
-          onClick={() => setIsLibraryModalOpen(false)}
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className={`w-full max-w-md max-h-[85vh] rounded-2xl border p-4 shadow-2xl flex flex-col animate-scale-up ${
-              isDark
-                ? 'bg-[#1C232B] border-[#2E3A47] text-white'
-                : 'bg-white border-[#E8E4DC] text-[#1E252B]'
-            }`}
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-stone-200 dark:border-stone-800">
-              <div>
-                <h3 className="text-sm font-bold">Select from Media Library</h3>
-                <p className="text-[11px] text-stone-400">
-                  {selectedLibraryIds.length} item{selectedLibraryIds.length === 1 ? '' : 's'} selected
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsLibraryModalOpen(false)}
-                className="p-1 rounded-lg text-stone-400 hover:text-stone-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Grid of Library assets */}
-            <div className="grid grid-cols-2 gap-2.5 overflow-y-auto my-3 pr-1 max-h-[50vh]">
-              {mediaLibrary.length === 0 ? (
-                <div className="col-span-2 text-center py-10 text-xs text-stone-400">
-                  No assets found in Media Library.
-                </div>
-              ) : (
-                mediaLibrary.map((item) => {
-                  const isSelected = selectedLibraryIds.includes(item.id);
-                  const isVideo = item.type === 'video';
-                  const displaySrc = item.url || item.thumbnailUrl || item.videoSrc;
-
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => handleToggleLibraryItem(item)}
-                      className={`relative rounded-xl border overflow-hidden cursor-pointer transition-all ${
-                        isSelected
-                          ? 'border-[#C44D34] ring-2 ring-[#C44D34]'
-                          : isDark
-                          ? 'border-[#2A3440] hover:border-stone-500'
-                          : 'border-stone-200 hover:border-stone-400'
-                      }`}
-                    >
-                      <div className="aspect-[4/3] bg-stone-900 relative">
-                        {isVideo ? (
-                          <div className="w-full h-full relative">
-                            {item.thumbnailUrl ? (
-                              <img
-                                src={item.thumbnailUrl}
-                                alt={item.title}
-                                className="w-full h-full object-cover"
-                                referrerPolicy="no-referrer"
-                              />
-                            ) : (
-                              <video
-                                src={displaySrc}
-                                className="w-full h-full object-cover"
-                                muted
-                              />
-                            )}
-                            <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
-                              <Play className="w-4 h-4 fill-white text-white" />
-                            </div>
-                          </div>
-                        ) : (
-                          <img
-                            src={displaySrc}
-                            alt={item.title}
-                            className="w-full h-full object-cover"
-                            referrerPolicy="no-referrer"
-                          />
-                        )}
-
-                        {/* Selection Checkmark */}
-                        <div
-                          className={`absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center ${
-                            isSelected
-                              ? 'bg-[#C44D34] text-white shadow-xs'
-                              : 'bg-black/50 text-transparent border border-white/60'
-                          }`}
-                        >
-                          <Check className="w-3.5 h-3.5 stroke-[3]" />
-                        </div>
-                      </div>
-
-                      <div className="p-2 text-[10px] font-semibold truncate bg-white/80 dark:bg-[#1D242C]">
-                        {item.title}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Bottom Actions */}
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-200 dark:border-stone-800">
-              <button
-                type="button"
-                onClick={() => setIsLibraryModalOpen(false)}
-                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-stone-500 hover:text-stone-800"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmLibrarySelection}
-                className="px-4 py-2 rounded-xl bg-[#181E24] hover:bg-black text-white text-xs font-bold uppercase tracking-wider"
-              >
-                Attach Selected ({selectedLibraryIds.length})
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Enlarged Full Media Preview Modal */}
       {previewMediaItem && (
@@ -994,11 +901,27 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
               />
             )}
 
+            {/* Media details bar with Download button */}
             <div className="w-full p-3 bg-stone-950 text-white text-xs font-semibold flex items-center justify-between">
               <span className="truncate">{previewMediaItem.title}</span>
-              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-white/20">
-                {previewMediaItem.type}
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-white/20">
+                  {previewMediaItem.type}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadMediaFile(
+                      previewMediaItem.url || previewMediaItem.thumbnailUrl || previewMediaItem.videoSrc || '',
+                      previewMediaItem.title
+                    )
+                  }
+                  className="px-2.5 py-1 bg-[#C44D34] hover:bg-[#b04028] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Media</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
