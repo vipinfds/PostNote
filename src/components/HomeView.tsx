@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Film, Image as ImageIcon, Play } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Film, Image as ImageIcon, Play, Download, ImagePlus, Sparkles } from 'lucide-react';
 import { Post, PostCategory, SubscriptionState } from '../types';
 import { CATEGORY_COLORS, STATUS_STYLES, formatLongDate } from '../utils/theme';
-import { Sparkles } from 'lucide-react';
+import { downloadMediaFile } from '../utils/mediaDownload';
 
 interface HomeViewProps {
   posts: Post[];
@@ -540,6 +540,43 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 <p className="text-xs text-stone-500 dark:text-stone-400 line-clamp-2 mt-1">
                   {post.caption}
                 </p>
+
+                {/* Media Preview or Add Media */}
+                {((post.media && post.media.length > 0) || post.mediaUrl) ? (
+                  <div className="mt-2.5 pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between">
+                    <span className="text-[10px] text-stone-400 font-medium">
+                      {post.media?.length || 1} asset{((post.media?.length || 1) > 1) ? 's' : ''} attached
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const targetUrl = post.media?.[0]?.url || post.media?.[0]?.thumbnailUrl || post.mediaUrl || '';
+                        downloadMediaFile(targetUrl, post.title);
+                      }}
+                      className="text-[10px] font-bold text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer"
+                      title="Download media file"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>Download</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-2.5 pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between">
+                    <span className="text-[10px] text-stone-400">No media</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditPost(post);
+                      }}
+                      className="text-[10px] font-semibold text-stone-500 hover:text-[#C44D34] flex items-center gap-1 cursor-pointer"
+                    >
+                      <ImagePlus className="w-3 h-3" />
+                      <span>+ Add Media</span>
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
         </div>
@@ -703,13 +740,42 @@ export const HomeView: React.FC<HomeViewProps> = ({
                         </div>
                       )}
 
-                      {/* Status Tag */}
+                      {/* Status Tag & Download / Add Media */}
                       <div className="mt-3 flex items-center justify-between">
                         <span
                           className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md ${statStyle.badge}`}
                         >
                           {statStyle.text}
                         </span>
+
+                        {((post.media && post.media.length > 0) || post.mediaUrl) ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const targetUrl = post.media?.[0]?.url || post.media?.[0]?.thumbnailUrl || post.mediaUrl || '';
+                              downloadMediaFile(targetUrl, post.title);
+                            }}
+                            className="flex items-center gap-1 text-[11px] font-bold text-stone-600 dark:text-stone-300 hover:text-[#C44D34] transition-colors cursor-pointer"
+                            title="Download media asset to device"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Download Media</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedDayDate(null);
+                              onEditPost(post);
+                            }}
+                            className="flex items-center gap-1 text-[11px] font-semibold text-stone-500 hover:text-[#C44D34] transition-colors cursor-pointer"
+                          >
+                            <ImagePlus className="w-3.5 h-3.5" />
+                            <span>+ Add Media</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   );

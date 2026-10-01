@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { ArrowLeft, CheckCircle2, RotateCcw, Film, Image as ImageIcon, Play } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, RotateCcw, Film, Image as ImageIcon, Play, Download } from 'lucide-react';
 import { Post } from '../types';
 import { CATEGORY_COLORS, getCategoryBadgeStyle } from '../utils/theme';
+import { downloadMediaFile } from '../utils/mediaDownload';
 
 interface ApprovalsViewProps {
   posts: Post[];
@@ -140,9 +141,31 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                     {post.caption}
                   </p>
 
-                  {/* Attached Media */}
+                  {/* Attached Media with Download Option */}
                   {((post.media && post.media.length > 0) || post.mediaUrl) && (
-                    <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1">
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                          Attached Media
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const targetUrl =
+                              post.media?.[0]?.url ||
+                              post.media?.[0]?.thumbnailUrl ||
+                              post.mediaUrl ||
+                              '';
+                            downloadMediaFile(targetUrl, post.title);
+                          }}
+                          className="text-[10px] font-bold text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer"
+                          title="Download creative media file"
+                        >
+                          <Download className="w-3 h-3" />
+                          <span>Download Media</span>
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 overflow-x-auto pb-1">
                       {post.media && post.media.length > 0 ? (
                         post.media.map((m, idx) => (
                           <div
@@ -187,6 +210,7 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                           />
                         </div>
                       ) : null}
+                      </div>
                     </div>
                   )}
 

@@ -98,13 +98,6 @@ export const MoreMenuView: React.FC<MoreMenuViewProps> = ({
           description: 'Capture, categorize and convert ideas into posts',
           icon: Lightbulb,
         },
-        {
-          type: 'subscreen',
-          id: 'media',
-          title: 'Media Library',
-          description: 'Asset repository for high-res images and video clips',
-          icon: ImageIcon,
-        },
       ],
     },
     {

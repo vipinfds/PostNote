@@ -80,11 +80,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       label: 'Ideas Bank',
       icon: Lightbulb,
     },
-    {
-      id: 'media' as MoreSubScreen,
-      label: 'Media Library',
-      icon: ImageIcon,
-    },
   ];
 
   const intelligenceNavItems = [
