@@ -99,6 +99,25 @@ async function syncOnce() {
 
   if (mergedThisCycle) {
     state.lastCommit = git(['rev-parse', '--short', 'HEAD']).trim();
+
+    // Install new/changed dependencies so the app doesn't crash on missing imports.
+    const touchedPackages = git(['diff', '--name-only', `${state.lastCommit}^`, state.lastCommit])
+      .split('\n')
+      .filter((f) => f === 'package.json' || f === 'package-lock.json');
+    if (touchedPackages.length) {
+      console.log(`[sync] ${touchedPackages.join(', ')} changed — running npm install`);
+      state.installingDeps = true;
+      try {
+        execFileSync('npm', ['install', '--no-audit', '--no-fund'], {
+          cwd: process.cwd(),
+          stdio: 'inherit',
+          env: { ...process.env, CI: 'true' },
+        });
+        console.log('[sync] dependencies installed');
+      } finally {
+        state.installingDeps = false;
+      }
+    }
   }
   state.status = 'ok';
 }

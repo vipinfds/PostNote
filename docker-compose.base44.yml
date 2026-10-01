@@ -13,7 +13,7 @@ services:
       - BASE44_PUBLIC_HOST_SUFFIX=${BASE44_PUBLIC_HOST_SUFFIX:-}
     env_file:
       - /run/base44/app.env
-    command: ["sh", "-ec", "npm ci && exec ./node_modules/.bin/tsx watch server.ts"]
+    command: ["sh", "-ec", "npm install --no-audit --no-fund && exec ./node_modules/.bin/tsx watch server.ts"]
     restart: on-failure
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]

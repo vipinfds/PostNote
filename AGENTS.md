@@ -4,7 +4,7 @@
 - Single-server fullstack app: `server.ts` (tsx) runs Express on port 3000 and mounts **Vite in middleware mode** for the React frontend (no separate frontend process).
 - Dev command: `npx tsx server.ts`. Production build: `vite build` + esbuild bundle (not used in this dev setup).
 - No database — data lives in `src/data/initialData.ts` (client-side state only).
-- `package-lock.json` is present; compose runs `npm ci` on startup against the current checkout.
+- Compose runs `npm install` on startup (not `npm ci` — the merged lockfile can be out of sync, e.g. `ms@2.1.2` missing). `scripts/sync-github.mjs` re-runs `npm install` after any merge that touches `package.json`/`package-lock.json`.
 
 ## Quirks
 - `vite.config.ts` sets `base: '/PostNote/'` (for GitHub Pages). In dev middleware mode this works fine — Vite rewrites module URLs to `/PostNote/...` and serves them; don't "fix" it.
