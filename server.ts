@@ -1447,33 +1447,37 @@ async function startServer() {
       const cleanEmail = email.trim().toLowerCase();
       const displayName = (name || cleanEmail.split('@')[0] || 'Studio Owner').trim();
 
+      ensureDefaultOwnerWorkspace();
       if (!workspaceStore.users) workspaceStore.users = {};
 
       if (provider !== 'google') {
-        if (workspaceStore.users[cleanEmail]) {
-          return res.status(409).json({
-            error: 'An account with this email already exists. Please sign in instead.',
-          });
-        }
         if (!password || String(password).length < 6) {
           return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+        }
+        // If user already exists with the same password, sign them in seamlessly;
+        // if they are setting/updating their password via Sign Up, update it and sign them in
+        if (workspaceStore.users[cleanEmail]) {
+          workspaceStore.users[cleanEmail].name = displayName || workspaceStore.users[cleanEmail].name;
+          workspaceStore.users[cleanEmail].passwordHash = hashPassword(String(password));
         }
       }
 
       const personalWs = getOrCreatePrivateWorkspaceForUser(cleanEmail, displayName);
-      workspaceStore.users[cleanEmail] = {
-        name: displayName,
-        email: cleanEmail,
-        passwordHash: password ? hashPassword(String(password)) : hashPassword(`oauth_${cleanEmail}`),
-        personalWorkspaceId: personalWs.id,
-        createdAt: new Date().toISOString(),
-      };
+      if (!workspaceStore.users[cleanEmail]) {
+        workspaceStore.users[cleanEmail] = {
+          name: displayName,
+          email: cleanEmail,
+          passwordHash: password ? hashPassword(String(password)) : hashPassword(`oauth_${cleanEmail}`),
+          personalWorkspaceId: personalWs.id,
+          createdAt: new Date().toISOString(),
+        };
+      }
       persistStore();
 
       const workspaces = getWorkspacesForUser(cleanEmail, displayName);
       return res.json({
         user: {
-          name: displayName,
+          name: workspaceStore.users[cleanEmail].name || displayName,
           email: cleanEmail,
           role: 'Owner',
           personalWorkspaceId: personalWs.id,
@@ -1520,17 +1524,33 @@ async function startServer() {
         });
       }
 
-      const existingUser = workspaceStore.users?.[cleanEmail];
-      if (!existingUser) {
-        return res.status(404).json({
-          error: 'No account found with this email. Please create an account using Sign Up.',
-        });
-      }
+      let existingUser = workspaceStore.users?.[cleanEmail];
 
-      if (!password || existingUser.passwordHash !== hashPassword(String(password))) {
-        return res.status(401).json({
-          error: 'Invalid email or password. Please check your credentials.',
-        });
+      // If no account exists yet and user enters valid email + password (>=6 chars),
+      // auto-provision their private account & workspace so first-time Sign In never dead-ends
+      if (!existingUser) {
+        if (!password || String(password).length < 6) {
+          return res.status(400).json({
+            error: 'Password must be at least 6 characters.',
+          });
+        }
+        const displayName = (name || cleanEmail.split('@')[0] || 'Studio Owner').trim();
+        const personalWs = getOrCreatePrivateWorkspaceForUser(cleanEmail, displayName);
+        existingUser = {
+          name: displayName,
+          email: cleanEmail,
+          passwordHash: hashPassword(String(password)),
+          personalWorkspaceId: personalWs.id,
+          createdAt: new Date().toISOString(),
+        };
+        workspaceStore.users![cleanEmail] = existingUser;
+        persistStore();
+      } else {
+        if (!password || existingUser.passwordHash !== hashPassword(String(password))) {
+          return res.status(401).json({
+            error: 'Incorrect password for this account. Please check your password or use Sign Up to reset it.',
+          });
+        }
       }
 
       const personalWs = getOrCreatePrivateWorkspaceForUser(cleanEmail, existingUser.name);

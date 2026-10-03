@@ -1102,6 +1102,28 @@
         }
       ],
       "lastUpdated": "2026-10-03T17:21:26.968Z"
+    },
+    "ws_testuser_example_com": {
+      "id": "ws_testuser_example_com",
+      "name": "Test Studio's Studio",
+      "ownerEmail": "testuser@example.com",
+      "ownerName": "Test Studio",
+      "posts": [],
+      "clients": [],
+      "campaigns": [],
+      "ideas": [],
+      "teamMembers": [
+        {
+          "id": "member-owner-1791062592182",
+          "name": "Test Studio",
+          "email": "testuser@example.com",
+          "role": "Owner",
+          "status": "active",
+          "avatar": "TE",
+          "addedAt": "2026-10-03T21:23:12.182Z"
+        }
+      ],
+      "lastUpdated": "2026-10-03T21:23:12.182Z"
     }
   },
   "users": {
@@ -1118,7 +1140,14 @@
       "passwordHash": "1cbcd13654145e8097e22ef8b22a315009c0de45ce0a100eea08661a10298a42",
       "personalWorkspaceId": "ws_privatecheck_example_com",
       "createdAt": "2026-10-03T17:21:26.968Z"
+    },
+    "testuser@example.com": {
+      "name": "Test Studio",
+      "email": "testuser@example.com",
+      "passwordHash": "1cbcd13654145e8097e22ef8b22a315009c0de45ce0a100eea08661a10298a42",
+      "personalWorkspaceId": "ws_testuser_example_com",
+      "createdAt": "2026-10-03T21:23:12.183Z"
     }
   },
-  "lastUpdated": "2026-10-03T21:19:54.348Z"
+  "lastUpdated": "2026-10-03T21:23:12.199Z"
 }

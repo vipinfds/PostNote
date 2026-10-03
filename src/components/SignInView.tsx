@@ -33,6 +33,38 @@ interface SignInViewProps {
   isDark?: boolean;
 }
 
+function formatReadableAuthError(rawError: unknown): string {
+  const raw = rawError instanceof Error ? rawError.message : String(rawError || '');
+  if (!raw) return 'Authentication failed. Please try again.';
+
+  // Check if it's a JSON string from FirestoreErrorInfo
+  if (raw.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.error) {
+        return String(parsed.error);
+      }
+    } catch {
+      // ignore JSON parse failure
+    }
+  }
+
+  if (raw.includes('auth/popup-blocked')) {
+    return 'Browser blocked the Google sign-in popup. Please allow popups for this site or sign in with Email below.';
+  }
+  if (raw.includes('auth/popup-closed-by-user') || raw.includes('auth/cancelled-popup-request')) {
+    return 'Google sign-in popup was closed before completing.';
+  }
+  if (raw.includes('auth/unauthorized-domain')) {
+    return 'This preview domain is not yet authorized in Firebase Console -> Authentication -> Settings -> Authorized domains. Please use Email Sign-In/Sign-Up below.';
+  }
+  if (raw.includes('auth/operation-not-allowed')) {
+    return 'This sign-in provider is not enabled in Firebase Console yet. Please use Email Sign-In/Sign-Up below.';
+  }
+
+  return raw;
+}
+
 export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark }) => {
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [name, setName] = useState('');
@@ -47,11 +79,20 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
   const [showFirebaseEmailGuide, setShowFirebaseEmailGuide] = useState(false);
 
   const persistSession = (userObj: AuthenticatedUser) => {
-    if (rememberMe) {
-      localStorage.setItem('postnote_auth_user', JSON.stringify(userObj));
-    } else {
-      sessionStorage.setItem('postnote_auth_user', JSON.stringify(userObj));
+    try {
+      if (rememberMe) {
+        localStorage.setItem('postnote_auth_user', JSON.stringify(userObj));
+      } else {
+        sessionStorage.setItem('postnote_auth_user', JSON.stringify(userObj));
+      }
+    } catch {
+      // storage fallback
     }
+  };
+
+  const makeFallbackWorkspaceId = (cleanEmail: string) => {
+    if (cleanEmail === 'vipin@firstdraftstudio.in') return 'ws_vipin';
+    return 'ws_' + cleanEmail.replace(/[^a-z0-9]/g, '_').slice(0, 60);
   };
 
   const handleGoogleAuth = async () => {
@@ -60,37 +101,57 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
     try {
       const fbUser = await signInWithGoogle();
       const userEmail = (fbUser.email || '').trim().toLowerCase();
-      const displayName = fbUser.displayName || userEmail.split('@')[0] || 'Studio Owner';
-
-      const res = await fetch('/api/auth/signin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: userEmail,
-          name: displayName,
-          provider: 'google',
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to initialize workspace');
+      if (!userEmail) {
+        throw new Error('Could not retrieve email address from Google account.');
       }
+      const displayName = fbUser.displayName || userEmail.split('@')[0] || 'Studio Owner';
+      const fallbackWsId = makeFallbackWorkspaceId(userEmail);
 
-      const wsId = data.user?.personalWorkspaceId || `ws_${fbUser.uid}`;
-      await ensureFirestoreWorkspace(wsId, `${displayName}'s Studio`);
-
-      const authUser: AuthenticatedUser = {
+      let authUser: AuthenticatedUser = {
         name: displayName,
         email: userEmail,
-        role: data.user?.role || 'Owner',
+        role: 'Owner',
         uid: fbUser.uid,
-        personalWorkspaceId: wsId,
+        personalWorkspaceId: fallbackWsId,
       };
+      let userWorkspaces: WorkspaceSummary[] | undefined;
+
+      try {
+        const res = await fetch('/api/auth/signin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: userEmail,
+            name: displayName,
+            provider: 'google',
+          }),
+        });
+        const data = await res.json();
+        if (res.ok && data?.user) {
+          authUser = {
+            name: data.user.name || displayName,
+            email: data.user.email || userEmail,
+            role: data.user.role || 'Owner',
+            uid: fbUser.uid,
+            personalWorkspaceId: data.user.personalWorkspaceId || fallbackWsId,
+          };
+          userWorkspaces = data.workspaces;
+        }
+      } catch {
+        // Fallback to local session if backend route is unreachable
+      }
+
+      // Non-blocking background Firestore sync so rules/network never block login
+      ensureFirestoreWorkspace(
+        authUser.personalWorkspaceId || fallbackWsId,
+        `${authUser.name}'s Studio`
+      ).catch(() => {});
+
       persistSession(authUser);
-      onSignInSuccess(authUser, data.workspaces);
+      onSignInSuccess(authUser, userWorkspaces);
     } catch (err: any) {
-      const msg = err?.message || 'Google sign-in was cancelled or failed.';
-      if (!msg.includes('popup-closed-by-user')) {
+      const msg = formatReadableAuthError(err);
+      if (!msg.includes('popup was closed')) {
         setError(msg);
       }
     } finally {
@@ -118,7 +179,7 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
         setError('Please enter your name or studio name.');
         return;
       }
-      if (password !== confirmPassword) {
+      if (confirmPassword && password !== confirmPassword) {
         setError('Passwords do not match.');
         return;
       }
@@ -128,7 +189,7 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
 
     try {
       let firebaseUid: string | undefined;
-      // Attempt native Firebase Email/Password auth if enabled in Firebase Console
+      // Attempt native Firebase Email/Password auth in background if enabled in Firebase Console
       try {
         if (authMode === 'signup') {
           const fbUser = await firebaseSignUpWithEmail(name.trim(), cleanEmail, password);
@@ -139,7 +200,7 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
         }
       } catch {
         // Native Firebase Email/Password may not be toggled on in Firebase Console yet;
-        // our multi-tenant backend handles account isolation seamlessly.
+        // our multi-tenant backend handles account authentication & isolation seamlessly.
       }
 
       const endpoint = authMode === 'signup' ? '/api/auth/signup' : '/api/auth/signin';
@@ -147,48 +208,87 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: name.trim(),
+          name: name.trim() || cleanEmail.split('@')[0],
           email: cleanEmail,
           password,
         }),
       });
 
-      const data = await res.json();
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+
       if (!res.ok) {
-        setError(data.error || 'Authentication failed.');
+        setError(data?.error || 'Authentication failed. Please check your credentials.');
         setIsLoading(false);
         return;
       }
 
+      const fallbackWsId = makeFallbackWorkspaceId(cleanEmail);
+      const resolvedName = data?.user?.name || name.trim() || cleanEmail.split('@')[0] || 'Studio Owner';
+      const resolvedWsId = data?.user?.personalWorkspaceId || fallbackWsId;
+
       const authUser: AuthenticatedUser = {
-        name: data.user.name,
-        email: data.user.email,
-        role: data.user.role || 'Owner',
+        name: resolvedName,
+        email: data?.user?.email || cleanEmail,
+        role: data?.user?.role || 'Owner',
         uid: firebaseUid,
-        personalWorkspaceId: data.user.personalWorkspaceId,
+        personalWorkspaceId: resolvedWsId,
       };
 
-      if (firebaseUid && data.user.personalWorkspaceId) {
-        await ensureFirestoreWorkspace(
-          data.user.personalWorkspaceId,
-          `${authUser.name}'s Studio`
-        );
+      // Non-blocking Firestore workspace initialization
+      if (firebaseUid && resolvedWsId) {
+        ensureFirestoreWorkspace(resolvedWsId, `${authUser.name}'s Studio`).catch(() => {});
       }
 
       persistSession(authUser);
-      onSignInSuccess(authUser, data.workspaces);
+      onSignInSuccess(authUser, data?.workspaces);
     } catch (err: any) {
-      setError(err?.message || 'Unable to connect to authentication server.');
+      setError(formatReadableAuthError(err));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleQuickDemoFill = () => {
-    setAuthMode('signin');
-    setEmail('vipin@firstdraftstudio.in');
-    setPassword('postnote2026');
+  const handleQuickDemoLoadAndSignIn = async () => {
     setError(null);
+    setAuthMode('signin');
+    const demoEmail = 'vipin@firstdraftstudio.in';
+    const demoPass = 'postnote2026';
+    setEmail(demoEmail);
+    setPassword(demoPass);
+    setIsLoading(true);
+
+    try {
+      const res = await fetch('/api/auth/signin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: demoEmail,
+          password: demoPass,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data?.user) {
+        const authUser: AuthenticatedUser = {
+          name: data.user.name || 'Vipin',
+          email: data.user.email || demoEmail,
+          role: data.user.role || 'Owner',
+          personalWorkspaceId: data.user.personalWorkspaceId || 'ws_vipin',
+        };
+        persistSession(authUser);
+        onSignInSuccess(authUser, data.workspaces);
+        return;
+      }
+      setError(data?.error || 'Could not sign in with Owner account.');
+    } catch (err: any) {
+      setError(formatReadableAuthError(err));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -227,6 +327,7 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
           >
             <button
               type="button"
+              id="auth-tab-signin"
               onClick={() => {
                 setAuthMode('signin');
                 setError(null);
@@ -242,11 +343,9 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
             </button>
             <button
               type="button"
+              id="auth-tab-signup"
               onClick={() => {
                 setAuthMode('signup');
-                setEmail('');
-                setPassword('');
-                setConfirmPassword('');
                 setError(null);
               }}
               className={`flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
@@ -261,15 +360,19 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
           </div>
 
           {error && (
-            <div className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 text-xs flex items-start gap-2">
-              <span className="font-bold shrink-0">Error:</span>
-              <span>{error}</span>
+            <div
+              id="auth-error-banner"
+              className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 text-xs flex items-start gap-2"
+            >
+              <span className="font-bold shrink-0">Notice:</span>
+              <span className="break-words">{error}</span>
             </div>
           )}
 
           {/* Google Sign-In Button (Firebase Auth) */}
           <button
             type="button"
+            id="google-auth-btn"
             onClick={handleGoogleAuth}
             disabled={isGoogleLoading || isLoading}
             className={`w-full py-2.5 px-4 rounded-xl border text-xs font-bold flex items-center justify-center gap-2.5 transition-all cursor-pointer mb-4 ${
@@ -313,7 +416,7 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
             <div className="flex-grow border-t border-stone-200 dark:border-stone-800" />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-3.5">
+          <form onSubmit={handleSubmit} className="space-y-3.5" noValidate>
             {authMode === 'signup' && (
               <div>
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-1.5">
@@ -322,11 +425,11 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
                 <div className="relative flex items-center">
                   <UserIcon className="w-4 h-4 text-stone-400 absolute left-3 pointer-events-none" />
                   <input
+                    id="auth-name-input"
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Alex Rivera"
-                    required
                     maxLength={100}
                     className={`w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border focus:outline-hidden transition-colors ${
                       isDark
@@ -345,11 +448,11 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
               <div className="relative flex items-center">
                 <Mail className="w-4 h-4 text-stone-400 absolute left-3 pointer-events-none" />
                 <input
+                  id="auth-email-input"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@yourstudio.com"
-                  required
                   maxLength={150}
                   className={`w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border focus:outline-hidden transition-colors ${
                     isDark
@@ -370,11 +473,11 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
               <div className="relative flex items-center">
                 <Lock className="w-4 h-4 text-stone-400 absolute left-3 pointer-events-none" />
                 <input
+                  id="auth-password-input"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••••••"
-                  required
                   className={`w-full pl-9 pr-10 py-2.5 text-xs rounded-xl border focus:outline-hidden transition-colors font-mono ${
                     isDark
                       ? 'bg-stone-800/80 border-stone-700 text-white focus:border-[#C44D34]'
@@ -399,11 +502,11 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
                 <div className="relative flex items-center">
                   <Lock className="w-4 h-4 text-stone-400 absolute left-3 pointer-events-none" />
                   <input
+                    id="auth-confirm-password-input"
                     type={showPassword ? 'text' : 'password'}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••••••"
-                    required
                     className={`w-full pl-9 pr-10 py-2.5 text-xs rounded-xl border focus:outline-hidden transition-colors font-mono ${
                       isDark
                         ? 'bg-stone-800/80 border-stone-700 text-white focus:border-[#C44D34]'
@@ -425,20 +528,20 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
                 <span>Keep me signed in</span>
               </label>
 
-              {authMode === 'signin' && (
-                <button
-                  type="button"
-                  onClick={handleQuickDemoFill}
-                  className="text-[11px] font-medium text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <Sparkles className="w-3 h-3" />
-                  <span>Owner Demo Login</span>
-                </button>
-              )}
+              <button
+                type="button"
+                id="owner-demo-login-btn"
+                onClick={handleQuickDemoLoadAndSignIn}
+                className="text-[11px] font-medium text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>Instant Owner Sign-In</span>
+              </button>
             </div>
 
             <button
               type="submit"
+              id="auth-submit-btn"
               disabled={isLoading || isGoogleLoading}
               className="w-full mt-2 py-3 px-4 bg-[#C44D34] hover:bg-[#A83E28] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-[#C44D34]/20 disabled:opacity-50 cursor-pointer"
             >

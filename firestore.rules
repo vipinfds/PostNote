@@ -176,6 +176,7 @@ service cloud.firestore {
     // =========================================================================
     match /workspaces/{workspaceId} {
       allow get: if isVerifiedUser() && isValidId(workspaceId) && (
+        resource == null ||
         existing().ownerId == request.auth.uid ||
         hasActiveMemberDoc(workspaceId) ||
         isAdmin()
