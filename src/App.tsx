@@ -19,9 +19,9 @@ import {
 import { INITIAL_SUBSCRIPTION_STATE } from './data/pricingData';
 import { getTodayDateStr } from './utils/theme';
 import { Menu, Plus, Building2, Shield, ArrowRight, Lock, Users, LogOut } from 'lucide-react';
-import { onAuthStateChanged } from 'firebase/auth';
 import {
   auth,
+  subscribeToAuthChanges,
   signOutFirebase,
   makeWorkspaceIdForEmail,
   ensureFirestoreWorkspace,
@@ -31,6 +31,14 @@ import {
   syncMemberToFirestore,
   deleteMemberFromFirestore,
 } from './firebase';
+import {
+  staticGetWorkspaceSync,
+  staticSaveWorkspaceSync,
+  staticInviteTeamMember,
+  staticUpdateTeamMemberRole,
+  staticRemoveTeamMember,
+  getStaticWorkspacesForUser,
+} from './utils/staticWorkspaceStore';
 
 // Component imports
 import { MobileNavDrawer } from './components/MobileNavDrawer';
@@ -86,7 +94,7 @@ export default function App() {
 
   // Synchronize Firebase Auth state with isolated tenant session & auto-restore on reload
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+    const unsubscribe = subscribeToAuthChanges(async (fbUser) => {
       if (!fbUser || !fbUser.email) return;
       const cleanEmail = fbUser.email.trim().toLowerCase();
       const displayName = fbUser.displayName || cleanEmail.split('@')[0] || 'Studio User';
@@ -126,7 +134,7 @@ export default function App() {
 
       setActiveWorkspaceId((prevWs) => prevWs || personalWsId);
 
-      // Hydrate backend multi-tenant store for this Firebase user
+      // Hydrate backend multi-tenant store (or static fallback) for this Firebase user
       try {
         const res = await fetch('/api/auth/signin', {
           method: 'POST',
@@ -137,15 +145,18 @@ export default function App() {
             provider: 'google',
           }),
         });
-        if (res.ok) {
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
           const data = await res.json();
           if (Array.isArray(data?.workspaces) && data.workspaces.length > 0) {
             setWorkspaces(data.workspaces);
+            return;
           }
         }
       } catch {
-        // Offline or local fallback
+        // Static host fallback below
       }
+      setWorkspaces(getStaticWorkspacesForUser(cleanEmail, displayName));
     });
     return () => unsubscribe();
   }, []);
@@ -232,18 +243,12 @@ export default function App() {
     }
   });
 
-  // Bidirectional multi-tenant sync with backend server (strictly isolated by user email & workspaceId)
+  // Bidirectional multi-tenant sync with backend server or static GitHub Pages store
   const fetchServerSync = async (overrideWsId?: string) => {
     if (!currentUser?.email) return;
-    try {
-      const targetWs = overrideWsId ?? activeWorkspaceId;
-      const params = new URLSearchParams({ email: currentUser.email });
-      if (targetWs) params.set('workspaceId', targetWs);
+    const targetWs = overrideWsId ?? activeWorkspaceId;
 
-      const res = await fetch(`/api/sync?${params.toString()}`);
-      if (!res.ok) return;
-      const data = await res.json();
-
+    const applyWorkspaceData = (data: any) => {
       if (data.workspaceId) {
         setActiveWorkspaceId(data.workspaceId);
       }
@@ -279,8 +284,27 @@ export default function App() {
         );
       }
       hasLoadedWorkspaceRef.current = true;
+    };
+
+    try {
+      const params = new URLSearchParams({ email: currentUser.email });
+      if (targetWs) params.set('workspaceId', targetWs);
+
+      const res = await fetch(`/api/sync?${params.toString()}`);
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        applyWorkspaceData(data);
+        return;
+      }
     } catch {
-      // offline or local dev fallback
+      // Fall through to static store fallback (e.g., GitHub Pages)
+    }
+
+    // Standalone static host fallback (GitHub Pages / offline)
+    if (!hasLoadedWorkspaceRef.current || overrideWsId) {
+      const staticData = staticGetWorkspaceSync(currentUser.email, targetWs || undefined);
+      applyWorkspaceData(staticData);
     }
   };
 
@@ -302,10 +326,20 @@ export default function App() {
     };
   }, [currentUser?.email, activeWorkspaceId]);
 
-  // Sync changes from UI back to isolated tenant workspace
+  // Sync changes from UI back to isolated tenant workspace (both backend API & static store)
   useEffect(() => {
     if (!currentUser?.email || !activeWorkspaceId || !hasLoadedWorkspaceRef.current) return;
     if (myRole === 'Viewer') return;
+
+    // Immediately persist in static store so GitHub Pages / reloads never lose edits
+    staticSaveWorkspaceSync({
+      email: currentUser.email,
+      workspaceId: activeWorkspaceId,
+      posts,
+      clients,
+      campaigns,
+      ideas,
+    });
 
     const timer = setTimeout(() => {
       fetch('/api/sync', {
@@ -798,7 +832,7 @@ export default function App() {
     showToast('Campaign created');
   };
 
-  // Team & RBAC handlers
+  // Team & RBAC handlers (with static GitHub Pages fallback)
   const handleInviteMember = async (
     inviteEmail: string,
     role: WorkspaceRole = 'Editor',
@@ -820,20 +854,36 @@ export default function App() {
           role,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Failed to invite team member');
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || 'Failed to invite team member');
+          return;
+        }
+        if (Array.isArray(data.teamMembers)) {
+          setTeamMembers(data.teamMembers);
+        }
+        if (auth.currentUser && activeWorkspaceId && data.member) {
+          syncMemberToFirestore(activeWorkspaceId, data.member, role, true).catch(() => {});
+        }
+        showToast(`Added ${inviteEmail} as ${role}`);
         return;
       }
-      if (Array.isArray(data.teamMembers)) {
-        setTeamMembers(data.teamMembers);
-      }
-      if (auth.currentUser && activeWorkspaceId && data.member) {
-        syncMemberToFirestore(activeWorkspaceId, data.member, role, true).catch(() => {});
-      }
-      showToast(`Added ${inviteEmail} as ${role}`);
     } catch {
-      showToast('Failed to invite team member');
+      // Static fallback below
+    }
+
+    if (currentUser?.email && activeWorkspaceId) {
+      const fallback = staticInviteTeamMember({
+        workspaceId: activeWorkspaceId,
+        actorEmail: currentUser.email,
+        inviteEmail,
+        inviteName,
+        role,
+      });
+      setTeamMembers(fallback.teamMembers);
+      showToast(`Added ${inviteEmail} as ${role}`);
     }
   };
 
@@ -853,19 +903,32 @@ export default function App() {
           role,
         }),
       });
-      const data = await res.json();
-      if (res.ok && Array.isArray(data.teamMembers)) {
-        setTeamMembers(data.teamMembers);
-        const updatedMember = data.teamMembers.find((m: TeamMember) => m.id === memberId);
-        if (auth.currentUser && activeWorkspaceId && updatedMember) {
-          syncMemberToFirestore(activeWorkspaceId, updatedMember, role, false).catch(() => {});
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        if (res.ok && Array.isArray(data.teamMembers)) {
+          setTeamMembers(data.teamMembers);
+          const updatedMember = data.teamMembers.find((m: TeamMember) => m.id === memberId);
+          if (auth.currentUser && activeWorkspaceId && updatedMember) {
+            syncMemberToFirestore(activeWorkspaceId, updatedMember, role, false).catch(() => {});
+          }
+          showToast(`Updated role to ${role}`);
+          return;
         }
-        showToast(`Updated role to ${role}`);
-      } else {
-        showToast(data.error || 'Could not update role');
       }
     } catch {
-      showToast('Could not update role');
+      // Static fallback below
+    }
+
+    if (currentUser?.email && activeWorkspaceId) {
+      const updatedList = staticUpdateTeamMemberRole({
+        workspaceId: activeWorkspaceId,
+        actorEmail: currentUser.email,
+        memberId,
+        role,
+      });
+      setTeamMembers(updatedList);
+      showToast(`Updated role to ${role}`);
     }
   };
 
@@ -884,18 +947,30 @@ export default function App() {
           memberId,
         }),
       });
-      const data = await res.json();
-      if (res.ok && Array.isArray(data.teamMembers)) {
-        setTeamMembers(data.teamMembers);
-        if (auth.currentUser && activeWorkspaceId) {
-          deleteMemberFromFirestore(activeWorkspaceId, memberId).catch(() => {});
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        if (res.ok && Array.isArray(data.teamMembers)) {
+          setTeamMembers(data.teamMembers);
+          if (auth.currentUser && activeWorkspaceId) {
+            deleteMemberFromFirestore(activeWorkspaceId, memberId).catch(() => {});
+          }
+          showToast('Member access revoked');
+          return;
         }
-        showToast('Member access revoked');
-      } else {
-        showToast(data.error || 'Could not remove member');
       }
     } catch {
-      showToast('Could not remove member');
+      // Static fallback below
+    }
+
+    if (currentUser?.email && activeWorkspaceId) {
+      const updatedList = staticRemoveTeamMember({
+        workspaceId: activeWorkspaceId,
+        actorEmail: currentUser.email,
+        memberId,
+      });
+      setTeamMembers(updatedList);
+      showToast('Member access revoked');
     }
   };
 

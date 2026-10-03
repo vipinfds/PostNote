@@ -18,6 +18,7 @@ import {
   firebaseSignInWithEmail,
   ensureFirestoreWorkspace,
 } from '../firebase';
+import { staticAuthenticateUser } from '../utils/staticWorkspaceStore';
 import { WorkspaceSummary } from '../types';
 
 export interface AuthenticatedUser {
@@ -141,19 +142,40 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
             provider: 'google',
           }),
         });
-        const data = await res.json();
-        if (res.ok && data?.user) {
-          authUser = {
-            name: data.user.name || displayName,
-            email: data.user.email || userEmail,
-            role: data.user.role || 'Owner',
-            uid: fbUser.uid,
-            personalWorkspaceId: data.user.personalWorkspaceId || fallbackWsId,
-          };
-          userWorkspaces = data.workspaces;
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const data = await res.json();
+          if (data?.user) {
+            authUser = {
+              name: data.user.name || displayName,
+              email: data.user.email || userEmail,
+              role: data.user.role || 'Owner',
+              uid: fbUser.uid,
+              personalWorkspaceId: data.user.personalWorkspaceId || fallbackWsId,
+            };
+            userWorkspaces = data.workspaces;
+          }
+        } else {
+          const localAuth = staticAuthenticateUser({
+            mode: 'signin',
+            email: userEmail,
+            name: displayName,
+            provider: 'google',
+          });
+          if (localAuth.ok && localAuth.user) {
+            userWorkspaces = localAuth.workspaces;
+          }
         }
       } catch {
-        // Fallback to local session if backend route is unreachable
+        const localAuth = staticAuthenticateUser({
+          mode: 'signin',
+          email: userEmail,
+          name: displayName,
+          provider: 'google',
+        });
+        if (localAuth.ok && localAuth.user) {
+          userWorkspaces = localAuth.workspaces;
+        }
       }
 
       // Non-blocking background Firestore sync so rules/network never block login
@@ -237,27 +259,52 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
       }
 
       const endpoint = authMode === 'signup' ? '/api/auth/signup' : '/api/auth/signin';
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim() || cleanEmail.split('@')[0],
-          email: cleanEmail,
-          password,
-        }),
-      });
-
       let data: any = null;
+      let usedStaticFallback = false;
+
       try {
-        data = await res.json();
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name.trim() || cleanEmail.split('@')[0],
+            email: cleanEmail,
+            password,
+          }),
+        });
+
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          data = await res.json();
+          if (!res.ok) {
+            setError(data?.error || 'Authentication failed. Please check your credentials.');
+            setIsLoading(false);
+            return;
+          }
+        } else {
+          // Running on a static host (e.g., GitHub Pages) where /api/* returns 404 HTML
+          usedStaticFallback = true;
+        }
       } catch {
-        data = null;
+        usedStaticFallback = true;
       }
 
-      if (!res.ok) {
-        setError(data?.error || 'Authentication failed. Please check your credentials.');
-        setIsLoading(false);
-        return;
+      if (usedStaticFallback) {
+        const localResult = staticAuthenticateUser({
+          mode: authMode,
+          email: cleanEmail,
+          password,
+          name: name.trim() || cleanEmail.split('@')[0],
+        });
+        if (!localResult.ok) {
+          setError(localResult.error || 'Authentication failed.');
+          setIsLoading(false);
+          return;
+        }
+        data = {
+          user: localResult.user,
+          workspaces: localResult.workspaces,
+        };
       }
 
       const fallbackWsId = makeFallbackWorkspaceId(cleanEmail);
@@ -271,6 +318,14 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
         uid: firebaseUid,
         personalWorkspaceId: resolvedWsId,
       };
+
+      // Also keep static store warm for offline/static resilience
+      staticAuthenticateUser({
+        mode: authMode,
+        email: cleanEmail,
+        password,
+        name: resolvedName,
+      });
 
       // Non-blocking Firestore workspace initialization
       if (firebaseUid && resolvedWsId) {
@@ -296,27 +351,45 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/auth/signin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let data: any = null;
+      try {
+        const res = await fetch('/api/auth/signin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: demoEmail,
+            password: demoPass,
+          }),
+        });
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          data = await res.json();
+        }
+      } catch {
+        // Static host fallback below
+      }
+
+      if (!data?.user) {
+        const localDemo = staticAuthenticateUser({
+          mode: 'signin',
           email: demoEmail,
           password: demoPass,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data?.user) {
-        const authUser: AuthenticatedUser = {
-          name: data.user.name || 'Vipin',
-          email: data.user.email || demoEmail,
-          role: data.user.role || 'Owner',
-          personalWorkspaceId: data.user.personalWorkspaceId || 'ws_vipin',
+          name: 'Vipin',
+        });
+        data = {
+          user: localDemo.user,
+          workspaces: localDemo.workspaces,
         };
-        persistSession(authUser);
-        onSignInSuccess(authUser, data.workspaces);
-        return;
       }
-      setError(data?.error || 'Could not sign in with Owner account.');
+
+      const authUser: AuthenticatedUser = {
+        name: data?.user?.name || 'Vipin',
+        email: data?.user?.email || demoEmail,
+        role: data?.user?.role || 'Owner',
+        personalWorkspaceId: data?.user?.personalWorkspaceId || 'ws_vipin',
+      };
+      persistSession(authUser);
+      onSignInSuccess(authUser, data?.workspaces);
     } catch (err: any) {
       setError(formatReadableAuthError(err));
     } finally {

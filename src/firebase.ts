@@ -1,15 +1,19 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, FirebaseApp } from 'firebase/app';
 import {
   getAuth,
+  Auth,
+  User as FirebaseUser,
   GoogleAuthProvider,
   signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
+  onAuthStateChanged,
   signOut as firebaseSignOut,
 } from 'firebase/auth';
 import {
   getFirestore,
+  Firestore,
   doc,
   getDoc,
   getDocFromServer,
@@ -74,10 +78,41 @@ const resolvedFirebaseConfig = {
     'ai-studio-postnote-9d760058-4b8e-4fe6-91df-425feb1c7ee9',
 };
 
-const app = initializeApp(resolvedFirebaseConfig);
-export const db = getFirestore(app, resolvedFirebaseConfig.firestoreDatabaseId);
-export const auth = getAuth(app);
+export const isFirebaseConfigured = Boolean(
+  resolvedFirebaseConfig.apiKey && resolvedFirebaseConfig.apiKey.trim().length > 5
+);
+
+let appInstance: FirebaseApp | null = null;
+let dbInstance: Firestore | null = null;
+let authInstance: Auth | null = null;
+
+if (isFirebaseConfigured) {
+  try {
+    appInstance = initializeApp(resolvedFirebaseConfig);
+    dbInstance = getFirestore(appInstance, resolvedFirebaseConfig.firestoreDatabaseId);
+    authInstance = getAuth(appInstance);
+  } catch (initErr) {
+    console.warn('Firebase initialization skipped (static environment):', initErr);
+  }
+}
+
+// Export safe references so callers never crash on static hosts (e.g., GitHub Pages)
+export const db = dbInstance as Firestore;
+export const auth = (authInstance || ({ currentUser: null } as unknown)) as Auth;
 export const googleProvider = new GoogleAuthProvider();
+
+export function subscribeToAuthChanges(
+  callback: (user: FirebaseUser | null) => void
+): () => void {
+  if (!authInstance) {
+    return () => {};
+  }
+  try {
+    return onAuthStateChanged(authInstance, callback);
+  } catch {
+    return () => {};
+  }
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -113,13 +148,13 @@ export function handleFirestoreError(
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
+      userId: authInstance?.currentUser?.uid,
+      email: authInstance?.currentUser?.email,
+      emailVerified: authInstance?.currentUser?.emailVerified,
+      isAnonymous: authInstance?.currentUser?.isAnonymous,
+      tenantId: authInstance?.currentUser?.tenantId,
       providerInfo:
-        auth.currentUser?.providerData?.map((provider) => ({
+        authInstance?.currentUser?.providerData?.map((provider) => ({
           providerId: provider.providerId,
           email: provider.email,
         })) || [],
@@ -131,10 +166,11 @@ export function handleFirestoreError(
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Validate connection to Firestore on boot
+// Validate connection to Firestore on boot (only when Firebase is configured)
 async function testConnection() {
+  if (!dbInstance) return;
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    await getDocFromServer(doc(dbInstance, 'test', 'connection'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
       console.error('Please check your Firebase configuration.');
@@ -163,12 +199,20 @@ function truncateString(val: string | undefined, max: number, fallback = ''): st
 }
 
 export async function signInWithGoogle() {
-  const result = await signInWithPopup(auth, googleProvider);
+  if (!authInstance) {
+    throw new Error(
+      'Google Sign-In requires Firebase Auth credentials. On GitHub Pages, please use Email Sign-In/Sign-Up or Instant Owner Sign-In below.'
+    );
+  }
+  const result = await signInWithPopup(authInstance, googleProvider);
   return result.user;
 }
 
 export async function firebaseSignUpWithEmail(name: string, email: string, pass: string) {
-  const cred = await createUserWithEmailAndPassword(auth, email, pass);
+  if (!authInstance) {
+    throw new Error('Firebase Auth not configured in static build.');
+  }
+  const cred = await createUserWithEmailAndPassword(authInstance, email, pass);
   if (name.trim()) {
     await updateProfile(cred.user, { displayName: name.trim() });
   }
@@ -176,13 +220,17 @@ export async function firebaseSignUpWithEmail(name: string, email: string, pass:
 }
 
 export async function firebaseSignInWithEmail(email: string, pass: string) {
-  const cred = await signInWithEmailAndPassword(auth, email, pass);
+  if (!authInstance) {
+    throw new Error('Firebase Auth not configured in static build.');
+  }
+  const cred = await signInWithEmailAndPassword(authInstance, email, pass);
   return cred.user;
 }
 
 export async function signOutFirebase() {
+  if (!authInstance) return;
   try {
-    await firebaseSignOut(auth);
+    await firebaseSignOut(authInstance);
   } catch (e) {
     console.warn('Sign out warning:', e);
   }
@@ -192,12 +240,13 @@ export async function signOutFirebase() {
  * Ensures the signed-in Firebase user (Google or Email/Password) has a Workspace document in Firestore
  */
 export async function ensureFirestoreWorkspace(workspaceId: string, name: string) {
-  const user = auth.currentUser;
+  if (!authInstance || !dbInstance) return;
+  const user = authInstance.currentUser;
   if (!user || !user.email) return;
 
   const safeWsId = sanitizeFirestoreId(workspaceId);
   const path = `workspaces/${safeWsId}`;
-  const wsRef = doc(db, 'workspaces', safeWsId);
+  const wsRef = doc(dbInstance, 'workspaces', safeWsId);
 
   try {
     const snap = await getDoc(wsRef);
@@ -221,13 +270,14 @@ export async function syncClientToFirestore(
   client: Client,
   isNew: boolean
 ) {
-  const user = auth.currentUser;
+  if (!authInstance || !dbInstance) return;
+  const user = authInstance.currentUser;
   if (!user || !user.email) return;
 
   const safeWsId = sanitizeFirestoreId(workspaceId);
   const safeClientId = sanitizeFirestoreId(client.id);
   const path = `workspaces/${safeWsId}/clients/${safeClientId}`;
-  const clientRef = doc(db, 'workspaces', safeWsId, 'clients', safeClientId);
+  const clientRef = doc(dbInstance, 'workspaces', safeWsId, 'clients', safeClientId);
 
   try {
     await ensureFirestoreWorkspace(safeWsId, `${user.displayName || user.email.split('@')[0]}'s Studio`);
@@ -279,20 +329,20 @@ export async function syncPostToFirestore(
   post: Post,
   isNew: boolean
 ) {
-  const user = auth.currentUser;
+  if (!authInstance || !dbInstance) return;
+  const user = authInstance.currentUser;
   if (!user || !user.email) return;
 
   const safeWsId = sanitizeFirestoreId(workspaceId);
   const safePostId = sanitizeFirestoreId(post.id);
   const safeClientId = sanitizeFirestoreId(post.clientId);
   const path = `workspaces/${safeWsId}/posts/${safePostId}`;
-  const postRef = doc(db, 'workspaces', safeWsId, 'posts', safePostId);
-  const clientRef = doc(db, 'workspaces', safeWsId, 'clients', safeClientId);
+  const postRef = doc(dbInstance, 'workspaces', safeWsId, 'posts', safePostId);
+  const clientRef = doc(dbInstance, 'workspaces', safeWsId, 'clients', safeClientId);
 
   try {
     await ensureFirestoreWorkspace(safeWsId, `${user.displayName || user.email.split('@')[0]}'s Studio`);
 
-    // Ensure referenced client exists in Firestore so the relational rule passes
     const clientSnap = await getDoc(clientRef);
     if (!clientSnap.exists()) {
       await setDoc(clientRef, {
@@ -375,14 +425,15 @@ export async function syncPostToFirestore(
 }
 
 export async function deletePostFromFirestore(workspaceId: string, postId: string) {
-  const user = auth.currentUser;
+  if (!authInstance || !dbInstance) return;
+  const user = authInstance.currentUser;
   if (!user || !user.email) return;
 
   const safeWsId = sanitizeFirestoreId(workspaceId);
   const safePostId = sanitizeFirestoreId(postId);
   const path = `workspaces/${safeWsId}/posts/${safePostId}`;
   try {
-    await deleteDoc(doc(db, 'workspaces', safeWsId, 'posts', safePostId));
+    await deleteDoc(doc(dbInstance, 'workspaces', safeWsId, 'posts', safePostId));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -394,13 +445,14 @@ export async function syncMemberToFirestore(
   role: WorkspaceRole,
   isNew: boolean
 ) {
-  const user = auth.currentUser;
+  if (!authInstance || !dbInstance) return;
+  const user = authInstance.currentUser;
   if (!user || !user.email) return;
 
   const safeWsId = sanitizeFirestoreId(workspaceId);
   const safeMemberId = sanitizeFirestoreId(member.id);
   const path = `workspaces/${safeWsId}/members/${safeMemberId}`;
-  const memberRef = doc(db, 'workspaces', safeWsId, 'members', safeMemberId);
+  const memberRef = doc(dbInstance, 'workspaces', safeWsId, 'members', safeMemberId);
 
   try {
     await ensureFirestoreWorkspace(safeWsId, `${user.displayName || user.email.split('@')[0]}'s Studio`);
@@ -431,14 +483,15 @@ export async function syncMemberToFirestore(
 }
 
 export async function deleteMemberFromFirestore(workspaceId: string, memberId: string) {
-  const user = auth.currentUser;
+  if (!authInstance || !dbInstance) return;
+  const user = authInstance.currentUser;
   if (!user || !user.email) return;
 
   const safeWsId = sanitizeFirestoreId(workspaceId);
   const safeMemberId = sanitizeFirestoreId(memberId);
   const path = `workspaces/${safeWsId}/members/${safeMemberId}`;
   try {
-    await deleteDoc(doc(db, 'workspaces', safeWsId, 'members', safeMemberId));
+    await deleteDoc(doc(dbInstance, 'workspaces', safeWsId, 'members', safeMemberId));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
