@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for adding a native-style touch pull-to-refresh gesture to the Home and Queue views, triggering fetchServerSync() with an elastic pull spinner and a toast notification upon completion.",
-  "updatedAt":  "2026-10-03T21:15:07.473597028Z",
+  "summary":  "Implementation plan to fix and harden both Google Sign-In and Email/Password Sign-In & Sign-Up flows, ensuring non-blocking Firestore workspace initialization, unified Sign-In/Sign-Up account resolution, and full end-to-end automated verification.",
+  "updatedAt":  "2026-10-03T21:21:10.775539498Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
