@@ -151,6 +151,12 @@ export function sanitizeFirestoreId(rawId: string): string {
   return cleaned && ID_REGEX.test(cleaned) ? cleaned : `id_${Date.now()}`;
 }
 
+export function makeWorkspaceIdForEmail(email: string): string {
+  const clean = email.trim().toLowerCase();
+  if (clean === 'vipin@firstdraftstudio.in') return 'ws_vipin';
+  return 'ws_' + clean.replace(/[^a-z0-9]/g, '_').slice(0, 60);
+}
+
 function truncateString(val: string | undefined, max: number, fallback = ''): string {
   const str = (val ?? fallback).trim();
   return str.slice(0, max);
@@ -183,11 +189,11 @@ export async function signOutFirebase() {
 }
 
 /**
- * Ensures the signed-in Firebase user (with verified email) has a Workspace document in Firestore
+ * Ensures the signed-in Firebase user (Google or Email/Password) has a Workspace document in Firestore
  */
 export async function ensureFirestoreWorkspace(workspaceId: string, name: string) {
   const user = auth.currentUser;
-  if (!user || !user.emailVerified || !user.email) return;
+  if (!user || !user.email) return;
 
   const safeWsId = sanitizeFirestoreId(workspaceId);
   const path = `workspaces/${safeWsId}`;
@@ -199,7 +205,7 @@ export async function ensureFirestoreWorkspace(workspaceId: string, name: string
       await setDoc(wsRef, {
         name: truncateString(name, 100, 'My Studio Workspace'),
         ownerId: sanitizeFirestoreId(user.uid),
-        ownerEmail: truncateString(user.email, 150, user.email),
+        ownerEmail: truncateString(user.email.toLowerCase(), 150, user.email.toLowerCase()),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -216,7 +222,7 @@ export async function syncClientToFirestore(
   isNew: boolean
 ) {
   const user = auth.currentUser;
-  if (!user || !user.emailVerified) return;
+  if (!user || !user.email) return;
 
   const safeWsId = sanitizeFirestoreId(workspaceId);
   const safeClientId = sanitizeFirestoreId(client.id);
@@ -224,6 +230,8 @@ export async function syncClientToFirestore(
   const clientRef = doc(db, 'workspaces', safeWsId, 'clients', safeClientId);
 
   try {
+    await ensureFirestoreWorkspace(safeWsId, `${user.displayName || user.email.split('@')[0]}'s Studio`);
+
     if (isNew) {
       await setDoc(clientRef, {
         workspaceId: safeWsId,
@@ -237,13 +245,28 @@ export async function syncClientToFirestore(
         updatedAt: serverTimestamp(),
       });
     } else {
-      await updateDoc(clientRef, {
-        name: truncateString(client.name, 100, 'Client'),
-        handle: truncateString(client.handle, 100, '@client'),
-        color: truncateString(client.color, 20, '#C44D34'),
-        notes: truncateString(client.notes || '', 1000, ''),
-        updatedAt: serverTimestamp(),
-      });
+      const existingSnap = await getDoc(clientRef);
+      if (!existingSnap.exists()) {
+        await setDoc(clientRef, {
+          workspaceId: safeWsId,
+          ownerId: sanitizeFirestoreId(ownerUid),
+          authorId: sanitizeFirestoreId(user.uid),
+          name: truncateString(client.name, 100, 'Client'),
+          handle: truncateString(client.handle, 100, '@client'),
+          color: truncateString(client.color, 20, '#C44D34'),
+          notes: truncateString(client.notes || '', 1000, ''),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        await updateDoc(clientRef, {
+          name: truncateString(client.name, 100, 'Client'),
+          handle: truncateString(client.handle, 100, '@client'),
+          color: truncateString(client.color, 20, '#C44D34'),
+          notes: truncateString(client.notes || '', 1000, ''),
+          updatedAt: serverTimestamp(),
+        });
+      }
     }
   } catch (error) {
     handleFirestoreError(error, isNew ? OperationType.CREATE : OperationType.UPDATE, path);
@@ -257,15 +280,38 @@ export async function syncPostToFirestore(
   isNew: boolean
 ) {
   const user = auth.currentUser;
-  if (!user || !user.emailVerified) return;
+  if (!user || !user.email) return;
 
   const safeWsId = sanitizeFirestoreId(workspaceId);
   const safePostId = sanitizeFirestoreId(post.id);
   const safeClientId = sanitizeFirestoreId(post.clientId);
   const path = `workspaces/${safeWsId}/posts/${safePostId}`;
   const postRef = doc(db, 'workspaces', safeWsId, 'posts', safePostId);
+  const clientRef = doc(db, 'workspaces', safeWsId, 'clients', safeClientId);
 
   try {
+    await ensureFirestoreWorkspace(safeWsId, `${user.displayName || user.email.split('@')[0]}'s Studio`);
+
+    // Ensure referenced client exists in Firestore so the relational rule passes
+    const clientSnap = await getDoc(clientRef);
+    if (!clientSnap.exists()) {
+      await setDoc(clientRef, {
+        workspaceId: safeWsId,
+        ownerId: sanitizeFirestoreId(ownerUid),
+        authorId: sanitizeFirestoreId(user.uid),
+        name: truncateString(post.clientName, 100, 'Client'),
+        handle: truncateString(
+          `@${(post.clientName || 'client').toLowerCase().replace(/[^a-z0-9]/g, '')}`,
+          100,
+          '@client'
+        ),
+        color: '#C44D34',
+        notes: '',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
     const mediaUrl = truncateString(
       post.mediaUrl || post.media?.[0]?.url || post.media?.[0]?.thumbnailUrl || '',
       2000,
@@ -290,18 +336,38 @@ export async function syncPostToFirestore(
         updatedAt: serverTimestamp(),
       });
     } else {
-      await updateDoc(postRef, {
-        clientId: safeClientId,
-        clientName: truncateString(post.clientName, 100, 'Client'),
-        date: post.date.slice(0, 10),
-        status: post.status,
-        category: post.category,
-        platform: post.platform,
-        title: truncateString(post.title, 200, 'Untitled Post'),
-        caption: truncateString(post.caption, 5000, ''),
-        mediaUrl,
-        updatedAt: serverTimestamp(),
-      });
+      const existingSnap = await getDoc(postRef);
+      if (!existingSnap.exists()) {
+        await setDoc(postRef, {
+          workspaceId: safeWsId,
+          ownerId: sanitizeFirestoreId(ownerUid),
+          authorId: sanitizeFirestoreId(user.uid),
+          clientId: safeClientId,
+          clientName: truncateString(post.clientName, 100, 'Client'),
+          date: post.date.slice(0, 10),
+          status: post.status,
+          category: post.category,
+          platform: post.platform,
+          title: truncateString(post.title, 200, 'Untitled Post'),
+          caption: truncateString(post.caption, 5000, ''),
+          mediaUrl,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        await updateDoc(postRef, {
+          clientId: safeClientId,
+          clientName: truncateString(post.clientName, 100, 'Client'),
+          date: post.date.slice(0, 10),
+          status: post.status,
+          category: post.category,
+          platform: post.platform,
+          title: truncateString(post.title, 200, 'Untitled Post'),
+          caption: truncateString(post.caption, 5000, ''),
+          mediaUrl,
+          updatedAt: serverTimestamp(),
+        });
+      }
     }
   } catch (error) {
     handleFirestoreError(error, isNew ? OperationType.CREATE : OperationType.UPDATE, path);
@@ -310,7 +376,7 @@ export async function syncPostToFirestore(
 
 export async function deletePostFromFirestore(workspaceId: string, postId: string) {
   const user = auth.currentUser;
-  if (!user || !user.emailVerified) return;
+  if (!user || !user.email) return;
 
   const safeWsId = sanitizeFirestoreId(workspaceId);
   const safePostId = sanitizeFirestoreId(postId);
@@ -329,7 +395,7 @@ export async function syncMemberToFirestore(
   isNew: boolean
 ) {
   const user = auth.currentUser;
-  if (!user || !user.emailVerified) return;
+  if (!user || !user.email) return;
 
   const safeWsId = sanitizeFirestoreId(workspaceId);
   const safeMemberId = sanitizeFirestoreId(member.id);
@@ -337,11 +403,13 @@ export async function syncMemberToFirestore(
   const memberRef = doc(db, 'workspaces', safeWsId, 'members', safeMemberId);
 
   try {
+    await ensureFirestoreWorkspace(safeWsId, `${user.displayName || user.email.split('@')[0]}'s Studio`);
+
     if (isNew) {
       await setDoc(memberRef, {
         workspaceId: safeWsId,
         userId: safeMemberId,
-        email: truncateString(member.email, 150, member.email),
+        email: truncateString(member.email.toLowerCase(), 150, member.email.toLowerCase()),
         name: truncateString(member.name || member.email.split('@')[0], 100, 'Member'),
         role,
         status: member.status,
@@ -364,7 +432,7 @@ export async function syncMemberToFirestore(
 
 export async function deleteMemberFromFirestore(workspaceId: string, memberId: string) {
   const user = auth.currentUser;
-  if (!user || !user.emailVerified) return;
+  if (!user || !user.email) return;
 
   const safeWsId = sanitizeFirestoreId(workspaceId);
   const safeMemberId = sanitizeFirestoreId(memberId);

@@ -1,73 +1,69 @@
-# Fix & Harden Sign-In and Sign-Up Authentication Flows
+# Firebase Auth Error Handling & Firestore State Synchronization Plan
 
-This plan resolves the root causes preventing Google Sign-In and Email/Password Sign-In & Sign-Up from completing reliably, and verifies all authentication paths end-to-end.
+This plan completes the end-to-end synchronization between **Firebase Authentication** (both Google Sign-In and Email/Password Sign-In & Sign-Up), the **React application session state (`onAuthStateChanged`)**, and **Cloud Firestore** security rules and document helpers.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
 > Confirmed decisions from your selections:
-> - **Confirmed Decision 1 (Both Google & Email/Password Auth)**: Fix and harden both Google Sign-In and Email/Password Sign-In & Sign-Up flows.
-> - **Confirmed Decision 2 (Non-Blocking Login & Sync)**: Ensure Sign-In and Sign-Up complete immediately and open the user's workspace even if optional background Firestore workspace initialization encounters a rule or permission error.
+> - **Confirmed Decision 1 (Immediate Firestore Sync for Email/Password & Google Users)**: Allow all authenticated Firebase users (both Google OAuth and newly created Email/Password accounts) to create and sync their isolated workspaces, clients, posts, and team members in Firestore immediately without being blocked by `emailVerified === false`.
+> - **Confirmed Decision 2 (Automatic Session Restoration via `onAuthStateChanged`)**: When `onAuthStateChanged` detects an active Firebase Auth user on page load or tab refresh, automatically restore `currentUser`, hydrate their workspaces from `/api/auth/signin`, and synchronize their Firestore workspace document.
 
 ---
 
-## 1. Overview & Root Causes Identified
+## 1. Overview & Key Alignment Fixes
 
-During inspection of the authentication flow, three specific failure points were identified:
-
-1. **Blocking `getDoc` Permission Exception in `ensureFirestoreWorkspace` (Breaks Google Sign-In & Email Auth)**:
-   - In `firestore.rules`, `allow get` on `/workspaces/{workspaceId}` checks `existing().ownerId == request.auth.uid`. When a user signs in for the **first time**, the workspace document does not exist yet (`resource` is `null`), so `existing().ownerId` throws a Firestore `permission-denied` error on `getDoc(wsRef)` **before** `setDoc(wsRef)` is ever reached.
-   - Because `SignInView` awaited `ensureFirestoreWorkspace(...)` inside `handleGoogleAuth` and `handleSubmit` without a `try/catch`, that thrown JSON error aborted the login and displayed a raw JSON error banner instead of signing the user in.
-2. **Stale Firebase Session Interference in `App.tsx`**:
-   - When signing in or signing up with Email/Password, `onAuthStateChanged` in `App.tsx` could fire on a previous or unverified session and trigger unhandled errors.
-3. **Strict Email/Password Sign-In vs. Sign-Up Friction & Password Reset / Auto-Provisioning**:
-   - If a user attempts to Sign Up with an email that was already created (e.g., via Demo or Google) or tries to Sign In with a new email, or if native Firebase Email/Password auth is not yet enabled in the Firebase Console, the flow should handle account creation/login smoothly with clear, human-readable error messages and fallback resilience.
-
----
-
-## 2. User Experience & Visual Design
-
-- **Instant, Frictionless Sign-In & Sign-Up**:
-  - **Email/Password Sign-Up**: Creates a 100% isolated private workspace (`ws_<user>`) immediately, logs the user in without requiring a second click, and syncs in the background.
-  - **Email/Password Sign-In**: Authenticates existing accounts (including the Owner account `vipin@firstdraftstudio.in` / `postnote2026` and any newly registered accounts) and loads their workspaces immediately.
-  - **Google Sign-In**: Opens the Google OAuth popup (`signInWithPopup`). If the popup completes, signs the user in immediately and provisions their workspace without failing on Firestore pre-read checks. If the browser/iframe blocks third-party popups or unauthorized domains, displays a clear, helpful message and provides a 1-click fallback option.
-- **Clean Error Feedback**:
-  - Parses any structured JSON or Firebase error codes (`auth/popup-blocked`, `auth/unauthorized-domain`, `permission-denied`, etc.) into clean, human-readable messages instead of raw JSON strings.
+1. **Support Both Google and Email/Password Users in Firestore Sync**:
+   - Currently, `ensureFirestoreWorkspace`, `syncClientToFirestore`, `syncPostToFirestore`, `deletePostFromFirestore`, `syncMemberToFirestore`, and `deleteMemberFromFirestore` exit early if `!user.emailVerified`, which skips Firestore writes for Email/Password accounts because `createUserWithEmailAndPassword` initializes `emailVerified` as `false`.
+   - Update both the client-side sync guards and `firestore.rules` (`isAuthenticatedUser()`) so any authenticated user with a valid UID and email (`request.auth != null && request.auth.token.email is string`) can read and write their own isolated workspace documents, while keeping `isBootstrappedAdmin()` strictly requiring `request.auth.token.email_verified == true`.
+2. **Canonical Workspace ID Consistency (`makeWorkspaceIdForEmail`)**:
+   - Standardize the workspace ID generator across `App.tsx`, `SignInView.tsx`, `firebase.ts`, and `server.ts` so `vipin@firstdraftstudio.in` always resolves to `ws_vipin` and any other email resolves to `ws_<sanitized_email>`, preventing mismatched workspace paths during `onAuthStateChanged`.
+3. **Full `onAuthStateChanged` Session Hydration & Error Handling**:
+   - Track `isAuthReady` in `App.tsx` and automatically restore `currentUser` + workspaces when Firebase Auth has an active session, even if `localStorage` was cleared.
+   - Ensure `ensureFirestoreWorkspace` and all Firestore sync calls use `handleFirestoreError` for structured diagnostic logging while gracefully handling network or rule errors in the UI so user workflows are never interrupted.
 
 ---
 
-## 3. Technical Architecture & Fixes
+## 2. Technical Architecture & Data Flow
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         SignInView (Auth Screen)                         │
-│  ┌────────────────────────────────┐  ┌────────────────────────────────┐  │
-│  │   Email / Password Form        │  │     Google Sign-In Button      │  │
-│  │  • Sign In (/api/auth/signin)  │  │  • Firebase signInWithPopup    │  │
-│  │  • Sign Up (/api/auth/signup)  │  │  • /api/auth/signin (google)   │  │
-│  └───────────────┬────────────────┘  └───────────────┬────────────────┘  │
-└──────────────────┼───────────────────────────────────┼───────────────────┘
-                   │                                   │
-                   ▼                                   ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│           Multi-Tenant Auth & Workspace Engine (Server + Client)         │
-│  1. Backend (/api/auth/signup & /api/auth/signin):                       │
-│     • Validates credentials, provisions isolated TenantWorkspace         │
-│     • Supports seamless re-signup / password update if account exists    │
-│  2. Non-Blocking Firestore Sync (ensureFirestoreWorkspace):              │
-│     • Updated firestore.rules: allow get when resource == null           │
-│     • Background non-blocking execution so login NEVER fails or hangs    │
-│  3. Immediate Session Persistence & Workspace Hydration (App.tsx):       │
-│     • Persists user to localStorage/sessionStorage & loads /api/sync     │
-└──────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    Firebase Auth (Google & Email/Pass)                  │
+│  • signInWithPopup / signInWithEmailAndPassword / createUserWithEmail   │
+│  • Emits auth state via onAuthStateChanged(auth, callback)              │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│             App.tsx Auth State & Session Synchronizer                   │
+│  1. Canonical Workspace ID: makeWorkspaceIdForEmail(email)              │
+│  2. If fbUser is signed in & currentUser is null:                       │
+│     • Hydrates user & workspaces via /api/auth/signin                   │
+│     • Sets currentUser, activeWorkspaceId, and persists session         │
+│  3. Calls ensureFirestoreWorkspace(wsId, studioName)                    │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                Cloud Firestore (/workspaces/{workspaceId})              │
+│  • Guarded by isAuthenticatedUser() + ownerId / member RBAC checks      │
+│  • Syncs Workspace, Clients, Posts, and Team Members in real time       │
+│  • Structured error reporting via handleFirestoreError                  │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Planned Changes
-1. **Fix `firestore.rules` & `ensureFirestoreWorkspace`**:
-   - Update `/workspaces/{workspaceId}` `allow get` in `firestore.rules` to permit checking non-existent workspace documents (`resource == null || existing().ownerId == request.auth.uid || ...`) so `getDoc` before `setDoc` never fails with `permission-denied`.
-   - Make `ensureFirestoreWorkspace` in `SignInView.tsx` non-blocking (`ensureFirestoreWorkspace(...).catch(...)`) so Firestore rule or network latency can never block Sign-In or Sign-Up.
-2. **Harden `/api/auth/signup` and `/api/auth/signin` on Backend**:
-   - Ensure `/api/auth/signup` and `/api/auth/signin` handle whitespace, case-insensitivity, and existing Google/demo accounts gracefully, and persist to disk immediately.
-   - Add a client-side local fallback in `SignInView.tsx` so even if a proxy or network hiccup occurs, valid credentials still complete authentication cleanly.
-3. **End-to-End Automated Verification**:
-   - Test Sign-Up with a brand-new user account, verify isolated workspace creation, test Sign-Out and Sign-In with that new account, and test Owner Sign-In (`vipin@firstdraftstudio.in`).
+---
+
+## 3. Planned Component & Rule Updates
+
+1. **Firebase Service Layer**:
+   - Export `makeWorkspaceIdForEmail(email)` so `App.tsx` and `SignInView.tsx` compute the exact same workspace ID as the backend.
+   - Update `ensureFirestoreWorkspace`, `syncClientToFirestore`, `syncPostToFirestore`, `deletePostFromFirestore`, `syncMemberToFirestore`, and `deleteMemberFromFirestore` to allow any authenticated user (`if (!user || !user.email) return;`) instead of blocking Email/Password users on `!user.emailVerified`.
+   - Ensure `syncPostToFirestore` also ensures the parent client document exists in Firestore before creating a post so the relational `exists(.../clients/$(incoming().clientId))` rule in `firestore.rules` always succeeds.
+2. **Application Auth State (`onAuthStateChanged` in `App.tsx`)**:
+   - Upgrade the `onAuthStateChanged` listener to use `makeWorkspaceIdForEmail(cleanEmail)`, automatically restore `currentUser` and `activeWorkspaceId` if a Firebase Auth session is active on reload, and synchronize with `/api/auth/signin` and `ensureFirestoreWorkspace`.
+3. **Authentication View (`SignInView.tsx`)**:
+   - Map all Firebase Auth error codes (`auth/invalid-credential`, `auth/email-already-in-use`, `auth/wrong-password`, `auth/user-not-found`, `auth/weak-password`, `auth/too-many-requests`, `auth/popup-blocked`, `auth/unauthorized-domain`) to clear, actionable messages.
+   - If `authMode === 'signup'` encounters `auth/email-already-in-use` in Firebase Auth, automatically attempt `firebaseSignInWithEmail` with the provided password so the user's `firebaseUid` is still linked for Firestore sync.
+4. **Firestore Security Rules (`firestore.rules`)**:
+   - Allow authenticated Email/Password and Google users (`request.auth != null && request.auth.token.email is string`) to manage their own `/workspaces/{workspaceId}` and subcollections (`clients`, `posts`, `members`) while preserving strict `ownerId == request.auth.uid` ownership checks and keeping `email_verified == true` on `isBootstrappedAdmin()`.

@@ -61,6 +61,21 @@ function formatReadableAuthError(rawError: unknown): string {
   if (raw.includes('auth/operation-not-allowed')) {
     return 'This sign-in provider is not enabled in Firebase Console yet. Please use Email Sign-In/Sign-Up below.';
   }
+  if (raw.includes('auth/invalid-credential') || raw.includes('auth/wrong-password')) {
+    return 'Invalid email or password. Please verify your credentials.';
+  }
+  if (raw.includes('auth/user-not-found')) {
+    return 'No account found with this email. Please switch to Sign Up to create one.';
+  }
+  if (raw.includes('auth/email-already-in-use')) {
+    return 'An account with this email already exists.';
+  }
+  if (raw.includes('auth/weak-password')) {
+    return 'Password is too weak. Please enter at least 6 characters.';
+  }
+  if (raw.includes('auth/too-many-requests')) {
+    return 'Too many failed attempts. Please wait a moment and try again.';
+  }
 
   return raw;
 }
@@ -192,11 +207,29 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
       // Attempt native Firebase Email/Password auth in background if enabled in Firebase Console
       try {
         if (authMode === 'signup') {
-          const fbUser = await firebaseSignUpWithEmail(name.trim(), cleanEmail, password);
-          firebaseUid = fbUser.uid;
+          try {
+            const fbUser = await firebaseSignUpWithEmail(name.trim(), cleanEmail, password);
+            firebaseUid = fbUser.uid;
+          } catch (fbErr: any) {
+            if (String(fbErr?.code || fbErr?.message || '').includes('auth/email-already-in-use')) {
+              const fbUser = await firebaseSignInWithEmail(cleanEmail, password);
+              firebaseUid = fbUser.uid;
+            }
+          }
         } else {
-          const fbUser = await firebaseSignInWithEmail(cleanEmail, password);
-          firebaseUid = fbUser.uid;
+          try {
+            const fbUser = await firebaseSignInWithEmail(cleanEmail, password);
+            firebaseUid = fbUser.uid;
+          } catch (fbErr: any) {
+            if (String(fbErr?.code || fbErr?.message || '').includes('auth/user-not-found')) {
+              const fbUser = await firebaseSignUpWithEmail(
+                name.trim() || cleanEmail.split('@')[0],
+                cleanEmail,
+                password
+              );
+              firebaseUid = fbUser.uid;
+            }
+          }
         }
       } catch {
         // Native Firebase Email/Password may not be toggled on in Firebase Console yet;

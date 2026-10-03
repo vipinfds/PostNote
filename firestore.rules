@@ -28,11 +28,16 @@ service cloud.firestore {
     }
 
     function isVerifiedUser() {
-      return isSignedIn() && request.auth.token.email_verified == true;
+      return isSignedIn() && (
+        request.auth.token.email_verified == true ||
+        (request.auth.token.email is string && request.auth.token.email.size() >= 3)
+      );
     }
 
     function isBootstrappedAdmin() {
-      return isVerifiedUser() && request.auth.token.email == 'vipin@firstdraftstudio.in';
+      return isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email == 'vipin@firstdraftstudio.in';
     }
 
     function isAdmin() {
@@ -214,6 +219,7 @@ service cloud.firestore {
       // =======================================================================
       match /members/{memberId} {
         allow get: if isVerifiedUser() && isValidId(workspaceId) && isValidId(memberId) && (
+          resource == null ||
           existing().userId == request.auth.uid ||
           isWorkspaceMember(workspaceId) ||
           isAdmin()
@@ -273,7 +279,9 @@ service cloud.firestore {
       // =======================================================================
       match /clients/{clientId} {
         allow get: if isVerifiedUser() && isValidId(workspaceId) && isValidId(clientId) && (
-          isWorkspaceMember(workspaceId) || isAdmin()
+          resource == null ||
+          isWorkspaceMember(workspaceId) ||
+          isAdmin()
         );
 
         allow list: if isVerifiedUser() && existing().ownerId == request.auth.uid;
@@ -314,7 +322,9 @@ service cloud.firestore {
       // =======================================================================
       match /posts/{postId} {
         allow get: if isVerifiedUser() && isValidId(workspaceId) && isValidId(postId) && (
-          isWorkspaceMember(workspaceId) || isAdmin()
+          resource == null ||
+          isWorkspaceMember(workspaceId) ||
+          isAdmin()
         );
 
         allow list: if isVerifiedUser() && existing().ownerId == request.auth.uid;

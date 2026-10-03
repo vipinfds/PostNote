@@ -23,6 +23,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import {
   auth,
   signOutFirebase,
+  makeWorkspaceIdForEmail,
   ensureFirestoreWorkspace,
   syncClientToFirestore,
   syncPostToFirestore,
@@ -83,14 +84,68 @@ export default function App() {
   const [isSelectingWorkspace, setIsSelectingWorkspace] = useState<boolean>(false);
   const hasLoadedWorkspaceRef = useRef(false);
 
-  // Synchronize Firebase Auth state with isolated tenant session
+  // Synchronize Firebase Auth state with isolated tenant session & auto-restore on reload
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (!fbUser || !fbUser.email) return;
       const cleanEmail = fbUser.email.trim().toLowerCase();
       const displayName = fbUser.displayName || cleanEmail.split('@')[0] || 'Studio User';
-      const personalWsId = `ws_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const personalWsId = makeWorkspaceIdForEmail(cleanEmail);
+
+      // Ensure Firestore workspace document exists for this authenticated Firebase user
       ensureFirestoreWorkspace(personalWsId, `${displayName}'s Studio`).catch(() => {});
+
+      // Automatically restore session & hydrate workspaces if not yet in React state
+      setCurrentUser((prev) => {
+        if (prev && prev.email.toLowerCase() === cleanEmail) {
+          if (!prev.uid || !prev.personalWorkspaceId) {
+            const updated = {
+              ...prev,
+              uid: fbUser.uid,
+              personalWorkspaceId: prev.personalWorkspaceId || personalWsId,
+            };
+            try {
+              localStorage.setItem('postnote_auth_user', JSON.stringify(updated));
+            } catch {}
+            return updated;
+          }
+          return prev;
+        }
+        const restored = {
+          name: displayName,
+          email: cleanEmail,
+          role: 'Owner',
+          uid: fbUser.uid,
+          personalWorkspaceId: personalWsId,
+        };
+        try {
+          localStorage.setItem('postnote_auth_user', JSON.stringify(restored));
+        } catch {}
+        return restored;
+      });
+
+      setActiveWorkspaceId((prevWs) => prevWs || personalWsId);
+
+      // Hydrate backend multi-tenant store for this Firebase user
+      try {
+        const res = await fetch('/api/auth/signin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: cleanEmail,
+            name: displayName,
+            provider: 'google',
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data?.workspaces) && data.workspaces.length > 0) {
+            setWorkspaces(data.workspaces);
+          }
+        }
+      } catch {
+        // Offline or local fallback
+      }
     });
     return () => unsubscribe();
   }, []);

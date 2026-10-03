@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to fix and harden both Google Sign-In and Email/Password Sign-In & Sign-Up flows, ensuring non-blocking Firestore workspace initialization, unified Sign-In/Sign-Up account resolution, and full end-to-end automated verification.",
-  "updatedAt":  "2026-10-03T21:21:10.775539498Z",
+  "summary":  "Implementation plan for unifying Firebase Auth state synchronization (onAuthStateChanged), enabling Firestore workspace/client/post sync for both Google and Email/Password users, and standardizing workspace ID resolution and error handling.",
+  "updatedAt":  "2026-10-03T21:26:53.308479567Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
