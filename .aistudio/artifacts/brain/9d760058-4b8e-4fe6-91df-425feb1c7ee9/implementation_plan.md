@@ -1,62 +1,60 @@
-# Fix GitHub Pages Deployment (`https://vipinfds.github.io/PostNote/`) & Standalone Static Mode
+# Unified Single-Scroll Post Details + Activity & Comments Pop-up & Approval Notifications
 
-This plan resolves why `https://vipinfds.github.io/PostNote/` stopped loading after `firebase-applet-config.json` was added to `.gitignore`, and makes the app work 100% seamlessly on both **AI Studio / Full-Stack Node** and **GitHub Pages (Static Hosting)**.
+This plan removes the separate tab switcher inside the Post Details pop-up modal and places **Activity & Comments** directly below the post details, media carousel, and approval actions in a single continuous vertical scroll—while ensuring **Approve** actions explicitly notify the employee who submitted the post and the responsible content team.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> Confirmed decisions from your selections:
-> - **Confirmed Decision 1 (Crash-Safe Firebase Init + Standalone GitHub Pages Mode)**: Guard Firebase initialization so missing `firebase-applet-config.json` in GitHub Actions never crashes the app at startup (`auth/invalid-api-key`), and provide a complete client-side multi-tenant fallback when `/api/*` backend routes return `404` on GitHub Pages.
-> - **Confirmed Decision 2 (Default FirstDraft Studio Portfolio on GitHub Pages)**: When signing into `vipin@firstdraftstudio.in` on GitHub Pages, automatically hydrate the full **FirstDraft Studio** portfolio (`INITIAL_POSTS`, `INITIAL_CLIENTS`, `INITIAL_CAMPAIGNS`, `INITIAL_IDEAS`) and persist changes in `localStorage`.
+> Both requirements from your prompt are clear and self-contained:
+
+- **Single Continuous Scroll Layout**: When opening any existing post pop-up, users see the post metadata, title, full caption, interactive media carousel, and **Approve / Request Changes** buttons at the top, followed immediately below by the **Activity & Comments** timeline and comment input box so they can swipe/scroll down naturally on one page.
+- **Approval Notifications to Submitter & Content Team**: Clicking **Approve** (either on the Approvals screen or inside the Post Details pop-up) logs an `Approved Post` entry in the activity timeline, displays a confirmation banner/toast naming the employee who submitted the post (`submittedBy` / `createdBy`) and the content team, and pushes an approval notification to the header **Notification Bell**.
 
 ---
 
-## 1. Root Causes Why `https://vipinfds.github.io/PostNote/` Broke
+## 1. Overview & Core Concept
 
-1. **Top-Level `getAuth(app)` Crash When `firebase-applet-config.json` Is Gitignored**:
-   - Earlier, `firebase-applet-config.json` was added to `.gitignore` so GitHub’s secret scanner wouldn't block your push.
-   - However, when GitHub Actions built the app for GitHub Pages (`deploy-pages.yml`), `localFirebaseConfig` was `{}` and `resolvedFirebaseConfig.apiKey` evaluated to `""` (empty string).
-   - Calling `export const auth = getAuth(app)` at module import time with an empty `apiKey` immediately throws an uncaught `FirebaseError: Firebase: Error (auth/invalid-api-key)` before React even mounts—resulting in a **blank white screen** on `https://vipinfds.github.io/PostNote/`.
-2. **Static Hosting on GitHub Pages Has No Express Backend (`/api/auth/*`, `/api/sync`)**:
-   - GitHub Pages serves static files from `./dist` and does not run `server.ts`. Any `fetch('/api/auth/signin')` or `fetch('/api/sync')` on `vipinfds.github.io` returns a `404` HTML page from GitHub Pages.
-3. **GitHub Pages SPA Routing (`404.html`) & Build Artifact Hygiene**:
-   - `npm run build` previously bundled `dist/server.cjs` directly inside `./dist`, which got uploaded to GitHub Pages, and lacked a `404.html` SPA fallback for deep links (like client portals).
+- **What It Does**:
+  1. **Single-Page Scrollable Post Modal**: Consolidates **Post Details** and **Activity & Comments** into one seamless view inside the read-only pop-up modal. Users no longer have to click a separate tab—scrolling or swiping down reveals the responsible content creator card, the chronological employee activity log, and the comment composer.
+  2. **Explicit Approval Notification Feedback**: When a post is approved, the system records the approval in `post.activityLog`, dispatches a `StudioNotification` (`type: 'approved'`) to the employee who submitted the post for review and the content team (`Editor` / `Manager` roles), and shows an explicit confirmation banner inside the activity feed and toast alert.
+  3. **Direct Scroll-to-Activity on Notification Click**: Clicking any notification in the top header **Notification Bell** opens the post pop-up and smoothly scrolls to the **Activity & Comments** section at the bottom of the modal.
 
 ---
 
-## 2. Technical Architecture & Dual-Mode Design
+## 2. User Experience & Visual Design
+
+- **Single-Page Modal Flow (Top to Bottom)**:
+  1. **Sticky Modal Header**: Client color dot, `"Post Details"`, **Edit (`Pencil`)** button (unlocks edit mode only when clicked), and **Close (`X`)** button.
+  2. **Post Overview & Content**: Client name · Category · Platform · Date · Status, Submitter attribution line, Title, Full Caption, and Left/Right **Media Carousel**.
+  3. **Approval Action Bar**: **Approve Post** and **Request Changes** buttons (with inline comment prompt when requesting changes, plus a clear note that approving or requesting changes notifies the submitter and content team).
+  4. **Divider + Activity & Comments Section (Directly Below)**:
+     - **Responsible Content Creator / Submitter** summary row.
+     - **Employee Activity Log**: Chronological entries (`Created Post`, `Edited Post`, `Submitted for Approval`, `Requested Changes`, `Approved Post`, `Commented`) with employee name, role, timestamp, and highlighted comment callouts.
+     - **Add Team Comment Bar**: Input field and **Comment** button at the bottom of the scroll container.
+
+---
+
+## 3. Technical Architecture & Data Strategy *(Technical Reference)*
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                     PostNote Application Boot                            │
-│  1. Safe Firebase Initializer (src/firebase.ts)                          │
-│     • Checks if apiKey is non-empty before calling getAuth/getFirestore  │
-│     • If apiKey is absent (e.g. unconfigured GitHub Actions build),      │
-│       exports safe no-op Auth/Firestore adapters — ZERO startup crash!   │
-└────────────────────────────────────┬─────────────────────────────────────┘
-                                     │
-                                     ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│           Dual-Runtime Auth & Workspace Sync Engine                      │
-│  ┌────────────────────────────────┐  ┌────────────────────────────────┐  │
-│  │  Full-Stack Mode (AI Studio)   │  │  Static Mode (GitHub Pages)    │  │
-│  │  • Uses /api/auth/* & /api/sync│  │  • Detects 404/non-JSON on /api│  │
-│  │  • Syncs live with server.ts   │  │  • Uses persistent localStorage│  │
-│  │    and Cloud Firestore         │  │  • Loads FirstDraft Studio data│  │
-│  └────────────────────────────────┘  └────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────┐
+│                    Post Details Pop-up Modal                      │
+│  [Header: Post Details]                        [✏ Edit]   [✕]     │
+├───────────────────────────────────────────────────────────────────┤
+│  1. Meta Row (Client · Category · Platform · Date · Status)       │
+│  2. Title & Full Caption (Read-only)                              │
+│  3. Interactive Media Carousel (< Left / Right > · 1/N)           │
+│  4. Approval Controls: [✓ Approve Post]  [↺ Request Changes]      │
+│     (Both notify Submitter + Content Team & log to Activity)      │
+│  ───────────────────────────────────────────────────────────────  │
+│  5. Activity & Comments (Directly Below — Swipe/Scroll Down)      │
+│     • Responsible Submitter / Creator Badge                       │
+│     • Chronological Employee Activity Timeline                    │
+│     • Inline Comment Composer ([Write a comment...] [Comment])    │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## 3. Planned Fixes
-
-1. **Crash-Safe Firebase Initialization (`src/firebase.ts`)**:
-   - Check `Boolean(resolvedFirebaseConfig.apiKey)` before calling `initializeApp`, `getAuth`, and `getFirestore`.
-   - Export a safe `subscribeToAuthChanges(callback)` helper instead of calling `onAuthStateChanged(auth, ...)` directly on an uninitialized `auth` instance, so the app boots cleanly even if built in GitHub Actions without `firebase-applet-config.json`.
-   - Support passing `VITE_FIREBASE_API_KEY` in `.github/workflows/deploy-pages.yml` (via GitHub Actions Secrets if configured) while working 100% without it if not set.
-2. **Standalone Static Host Fallback for Auth & Workspace Sync (`src/App.tsx` & `src/components/SignInView.tsx`)**:
-   - In `SignInView.tsx`: If `/api/auth/signin` or `/api/auth/signup` returns non-JSON or `404` (as happens on `vipinfds.github.io/PostNote/`), automatically authenticate against the browser's persistent multi-tenant store (`postnote_static_tenants_v1`), pre-seeded with `vipin@firstdraftstudio.in` (`postnote2026`) and the full **FirstDraft Studio** dataset.
-   - In `App.tsx`: Upgrade `fetchServerSync` and the save `useEffect` so when `/api/sync` is unavailable (on GitHub Pages), workspace data (`posts`, `clients`, `campaigns`, `ideas`, `teamMembers`) is loaded from and persisted to `localStorage` scoped by `workspaceId` (`ws_vipin` pre-populated with `INITIAL_POSTS`, `INITIAL_CLIENTS`, `INITIAL_CAMPAIGNS`, `INITIAL_IDEAS`).
-3. **GitHub Pages Build & Workflow Optimization (`vite.config.ts` & `.github/workflows/deploy-pages.yml`)**:
-   - Ensure `.github/workflows/deploy-pages.yml` builds the Vite SPA cleanly (`npx vite build`) and copies `dist/index.html` to `dist/404.html` so direct URL refreshes and Client Portal links work on `https://vipinfds.github.io/PostNote/`.
+- **State & Notification Updates**:
+  - Remove `activeModalTab` segmentation from `PostFormView` so the read-only view renders both the post details and the **Activity & Comments** section in a single scrollable container.
+  - Auto-scroll to `#post-activity-section` when opened from a notification click (`initialModalTab === 'activity'`).
+  - Ensure `handleApprovePost` updates `editingPost` in real time if the modal stays open or transitions, logs the approval with a notification summary (`"Notified <Submitter> & Content Team"`), and increments the unread badge in the header **Notification Bell**.

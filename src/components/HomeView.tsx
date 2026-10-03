@@ -19,6 +19,7 @@ import {
 } from '../utils/theme';
 import { downloadMediaFile } from '../utils/mediaDownload';
 import { PullToRefreshContainer } from './PullToRefreshContainer';
+import { MediaCarousel } from './MediaCarousel';
 
 interface HomeViewProps {
   posts: Post[];
@@ -782,27 +783,29 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
                   {/* Media Preview or Add Media */}
                   {((post.media && post.media.length > 0) || post.mediaUrl) ? (
-                    <div className="mt-2.5 pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between">
-                      <span className="text-[10px] text-stone-400 font-medium tabular-nums">
-                        {post.media?.length || 1} asset{(post.media?.length || 1) > 1 ? 's' : ''} attached
-                      </span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const targetUrl =
-                            post.media?.[0]?.url ||
-                            post.media?.[0]?.thumbnailUrl ||
-                            post.mediaUrl ||
-                            '';
-                          downloadMediaFile(targetUrl, post.title);
-                        }}
-                        className="text-[10px] font-bold text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer"
-                        title="Download media file"
-                      >
-                        <Download className="w-3 h-3" />
-                        <span>Download</span>
-                      </button>
+                    <div
+                      className="mt-2.5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MediaCarousel
+                        mediaItems={
+                          post.media && post.media.length > 0
+                            ? post.media
+                            : [
+                                {
+                                  id: `media-${post.id}`,
+                                  title: post.title || 'Attached Media',
+                                  type: post.mediaType || 'image',
+                                  url: post.mediaUrl,
+                                  thumbnailUrl: post.mediaUrl,
+                                },
+                              ]
+                        }
+                        fallbackTitle={post.title}
+                        heightClass="aspect-video max-h-[155px]"
+                        showCaptionBar={false}
+                        isDark={isDark}
+                      />
                     </div>
                   ) : (
                     <div className="mt-2.5 pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between">

@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to fix the blank/broken GitHub Pages link (https://vipinfds.github.io/PostNote/) by making Firebase initialization crash-safe when firebase-applet-config.json is excluded on GitHub, adding a client-side standalone multi-tenant store fallback when /api/* routes are unavailable on static hosts, and updating the GitHub Pages workflow.",
-  "updatedAt":  "2026-10-03T21:31:41.482738204Z",
+  "summary":  "Implementation plan to unify Post Details and Activity & Comments into a single continuous scrollable pop-up modal (no separate tab switching needed) and ensure post approvals explicitly notify the submitting employee and content team.",
+  "updatedAt":  "2026-10-03T22:14:33.898166869Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

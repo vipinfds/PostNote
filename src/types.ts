@@ -68,6 +68,46 @@ export interface Client {
   createdAt?: string;
 }
 
+export type PostActivityType =
+  | 'created'
+  | 'edited'
+  | 'submitted_for_review'
+  | 'approved'
+  | 'changes_requested'
+  | 'comment';
+
+export interface PostActor {
+  name: string;
+  email: string;
+  role?: WorkspaceRole | string;
+}
+
+export interface PostActivityItem {
+  id: string;
+  type: PostActivityType;
+  actorName: string;
+  actorEmail: string;
+  actorRole?: WorkspaceRole | string;
+  timestamp: string;
+  comment?: string;
+  details?: string;
+}
+
+export interface StudioNotification {
+  id: string;
+  postId: string;
+  postTitle: string;
+  clientName: string;
+  type: 'changes_requested' | 'submitted_for_review' | 'approved' | 'comment';
+  message: string;
+  comment?: string;
+  actorName: string;
+  actorEmail: string;
+  targetSummary: string;
+  createdAt: string;
+  read: boolean;
+}
+
 export interface Post {
   id: string;
   clientId: string;
@@ -84,6 +124,9 @@ export interface Post {
   mediaUrl?: string;
   mediaType?: 'image' | 'video';
   createdAt?: string;
+  createdBy?: PostActor;
+  submittedBy?: PostActor;
+  activityLog?: PostActivityItem[];
 }
 
 export interface Idea {
@@ -141,4 +184,3 @@ export interface WorkspaceSummary {
   clientsCount: number;
   postsCount: number;
 }
-

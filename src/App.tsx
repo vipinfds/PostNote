@@ -12,15 +12,18 @@ import {
   SubscriptionState,
   WorkspaceRole,
   WorkspaceSummary,
+  PostActivityItem,
+  StudioNotification,
 } from './types';
 import {
   INITIAL_MEDIA,
 } from './data/initialData';
 import { INITIAL_SUBSCRIPTION_STATE } from './data/pricingData';
 import { getTodayDateStr } from './utils/theme';
-import { Menu, Plus, Building2, Shield, ArrowRight, Lock, Users, LogOut } from 'lucide-react';
+import { Menu, Plus, Building2, Shield, ArrowRight, Lock, Users, LogOut, Cloud, CloudOff, Bell, CheckCheck, MessageSquare, CheckCircle2, RotateCcw } from 'lucide-react';
 import {
   auth,
+  isFirebaseConfigured,
   subscribeToAuthChanges,
   signOutFirebase,
   makeWorkspaceIdForEmail,
@@ -90,6 +93,9 @@ export default function App() {
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [myRole, setMyRole] = useState<WorkspaceRole>('Owner');
   const [isSelectingWorkspace, setIsSelectingWorkspace] = useState<boolean>(false);
+  const [syncMode, setSyncMode] = useState<'cloud' | 'static'>(() =>
+    isFirebaseConfigured ? 'cloud' : 'static'
+  );
   const hasLoadedWorkspaceRef = useRef(false);
 
   // Synchronize Firebase Auth state with isolated tenant session & auto-restore on reload
@@ -191,6 +197,7 @@ export default function App() {
   // Post form state (for both New & Edit)
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [initialPostModalTab, setInitialPostModalTab] = useState<'details' | 'activity'>('details');
   const [preselectedClientId, setPreselectedClientId] = useState<string | undefined>();
   const [preselectedDate, setPreselectedDate] = useState<string | undefined>();
 
@@ -206,6 +213,17 @@ export default function App() {
 
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Studio Team Notifications state (persisted per workspace in localStorage)
+  const [notifications, setNotifications] = useState<StudioNotification[]>(() => {
+    try {
+      const saved = localStorage.getItem('postnote_notifications_v1');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   // Theme state
   const [theme, setTheme] = useState<ThemeMode>(() => {
@@ -294,6 +312,7 @@ export default function App() {
       const contentType = res.headers.get('content-type') || '';
       if (res.ok && contentType.includes('application/json')) {
         const data = await res.json();
+        setSyncMode('cloud');
         applyWorkspaceData(data);
         return;
       }
@@ -302,6 +321,7 @@ export default function App() {
     }
 
     // Standalone static host fallback (GitHub Pages / offline)
+    setSyncMode(isFirebaseConfigured && auth?.currentUser ? 'cloud' : 'static');
     if (!hasLoadedWorkspaceRef.current || overrideWsId) {
       const staticData = staticGetWorkspaceSync(currentUser.email, targetWs || undefined);
       applyWorkspaceData(staticData);
@@ -606,21 +626,50 @@ export default function App() {
     }, 120);
   };
 
-  // Open Post Form (New or Edit)
+  // Helper to push a team & submitter notification
+  const pushTeamNotification = (
+    notif: Omit<StudioNotification, 'id' | 'createdAt' | 'read'>
+  ) => {
+    const newItem: StudioNotification = {
+      ...notif,
+      id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: new Date().toISOString(),
+      read: false,
+    };
+    setNotifications((prev) => {
+      const next = [newItem, ...prev].slice(0, 40);
+      try {
+        localStorage.setItem('postnote_notifications_v1', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const markAllNotificationsRead = () => {
+    setNotifications((prev) => {
+      const next = prev.map((n) => ({ ...n, read: true }));
+      try {
+        localStorage.setItem('postnote_notifications_v1', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  // Open Post Modal (New or View/Edit)
   const handleOpenNewPost = (initialDate?: string, clientId?: string) => {
     setEditingPost(null);
+    setInitialPostModalTab('details');
     setPreselectedDate(initialDate);
     setPreselectedClientId(clientId);
     setIsPostFormOpen(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleEditPost = (post: Post) => {
+  const handleEditPost = (post: Post, tab: 'details' | 'activity' = 'details') => {
     setEditingPost(post);
+    setInitialPostModalTab(tab);
     setPreselectedDate(undefined);
     setPreselectedClientId(undefined);
     setIsPostFormOpen(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSavePost = (postData: Omit<Post, 'id' | 'createdAt'> & { id?: string }) => {
@@ -628,30 +677,126 @@ export default function App() {
       showToast('Viewers have read-only access and cannot create or edit posts');
       return;
     }
+
+    const actorName = currentUser?.name || 'Studio Member';
+    const actorEmail = currentUser?.email || 'team@firstdraftstudio.in';
+    const nowIso = new Date().toISOString();
+
     if (postData.id) {
-      const updatedPost: Post = { ...postData, id: postData.id };
+      const existing = posts.find((p) => p.id === postData.id);
+      const wasSubmittedForReview =
+        existing?.status !== 'In review' && postData.status === 'In review';
+
+      const newActivity: PostActivityItem = {
+        id: `act-${Date.now()}`,
+        type: wasSubmittedForReview ? 'submitted_for_review' : 'edited',
+        actorName,
+        actorEmail,
+        actorRole: myRole,
+        timestamp: nowIso,
+        details: wasSubmittedForReview
+          ? `Submitted post for approval (${postData.platform})`
+          : `Updated post details (${postData.status})`,
+      };
+
+      const updatedPost: Post = {
+        ...existing,
+        ...postData,
+        id: postData.id,
+        createdBy: existing?.createdBy || {
+          name: actorName,
+          email: actorEmail,
+          role: myRole,
+        },
+        submittedBy: wasSubmittedForReview
+          ? { name: actorName, email: actorEmail, role: myRole }
+          : existing?.submittedBy,
+        activityLog: [...(existing?.activityLog || []), newActivity],
+      };
+
       setPosts((prev) =>
-        prev.map((p) => (p.id === postData.id ? { ...p, ...updatedPost } : p))
+        prev.map((p) => (p.id === postData.id ? updatedPost : p))
       );
-      if (auth.currentUser && activeWorkspaceId) {
+      setEditingPost(updatedPost);
+
+      if (auth?.currentUser && activeWorkspaceId) {
         syncPostToFirestore(activeWorkspaceId, auth.currentUser.uid, updatedPost, false).catch(
           () => {}
         );
       }
-      showToast('Post updated');
+
+      if (wasSubmittedForReview) {
+        pushTeamNotification({
+          postId: updatedPost.id,
+          postTitle: updatedPost.title,
+          clientName: updatedPost.clientName,
+          type: 'submitted_for_review',
+          message: `${actorName} (${myRole}) submitted "${updatedPost.title}" for approval.`,
+          actorName,
+          actorEmail,
+          targetSummary: 'Approvers (Owners, Admins & Managers)',
+        });
+        showToast(`Submitted for approval · Approvers notified`);
+      } else {
+        showToast('Post updated & activity logged');
+      }
     } else {
+      const isSubmittedDirectly = postData.status === 'In review';
+      const initialActivities: PostActivityItem[] = [
+        {
+          id: `act-${Date.now()}-1`,
+          type: 'created',
+          actorName,
+          actorEmail,
+          actorRole: myRole,
+          timestamp: nowIso,
+          details: `Created post for ${postData.clientName} on ${postData.platform}`,
+        },
+      ];
+
+      if (isSubmittedDirectly) {
+        initialActivities.push({
+          id: `act-${Date.now()}-2`,
+          type: 'submitted_for_review',
+          actorName,
+          actorEmail,
+          actorRole: myRole,
+          timestamp: nowIso,
+          details: 'Submitted for approval upon creation',
+        });
+      }
+
       const newPost: Post = {
         ...postData,
         id: `post-${Date.now()}`,
-        createdAt: new Date().toISOString(),
+        createdAt: nowIso,
+        createdBy: { name: actorName, email: actorEmail, role: myRole },
+        submittedBy: isSubmittedDirectly
+          ? { name: actorName, email: actorEmail, role: myRole }
+          : undefined,
+        activityLog: initialActivities,
       };
+
       setPosts((prev) => [newPost, ...prev]);
-      if (auth.currentUser && activeWorkspaceId) {
+      if (auth?.currentUser && activeWorkspaceId) {
         syncPostToFirestore(activeWorkspaceId, auth.currentUser.uid, newPost, true).catch(
           () => {}
         );
       }
-      showToast('Post created');
+
+      if (isSubmittedDirectly) {
+        pushTeamNotification({
+          postId: newPost.id,
+          postTitle: newPost.title,
+          clientName: newPost.clientName,
+          type: 'submitted_for_review',
+          message: `${actorName} (${myRole}) created & submitted "${newPost.title}" for approval.`,
+          actorName,
+          actorEmail,
+          targetSummary: 'Approvers (Owners, Admins & Managers)',
+        });
+      }
+      showToast('Post created & activity logged');
     }
     setIsPostFormOpen(false);
     setEditingPost(null);
@@ -784,27 +929,186 @@ export default function App() {
     showToast('Idea deleted');
   };
 
-  // Approvals handlers
+  // Approvals & Post Activity handlers
   const handleApprovePost = (postId: string) => {
     if (myRole === 'Viewer' || myRole === 'Editor') {
       showToast('Only Owners, Admins, and Managers can approve posts');
       return;
     }
+
+    const actorName = currentUser?.name || 'Approver';
+    const actorEmail = currentUser?.email || 'owner@firstdraftstudio.in';
+    const targetPost = posts.find((p) => p.id === postId);
+    const submitter = targetPost?.submittedBy || targetPost?.createdBy;
+
+    const approvalActivity: PostActivityItem = {
+      id: `act-${Date.now()}`,
+      type: 'approved',
+      actorName,
+      actorEmail,
+      actorRole: myRole,
+      timestamp: new Date().toISOString(),
+      details: submitter
+        ? `Approved post submitted by ${submitter.name}`
+        : 'Approved post for publishing',
+    };
+
     setPosts((prev) =>
-      prev.map((p) => (p.id === postId ? { ...p, status: 'Approved' } : p))
+      prev.map((p) =>
+        p.id === postId
+          ? {
+              ...p,
+              status: 'Approved',
+              activityLog: [...(p.activityLog || []), approvalActivity],
+            }
+          : p
+      )
     );
-    showToast('Post approved');
+
+    if (targetPost) {
+      const recipientLabel = submitter
+        ? `${submitter.name} (${submitter.email}) & Content Team`
+        : 'Content Team';
+      pushTeamNotification({
+        postId: targetPost.id,
+        postTitle: targetPost.title,
+        clientName: targetPost.clientName,
+        type: 'approved',
+        message: `${actorName} approved "${targetPost.title}".`,
+        actorName,
+        actorEmail,
+        targetSummary: recipientLabel,
+      });
+      showToast(
+        submitter
+          ? `Post approved · Notified ${submitter.name} & Content Team`
+          : 'Post approved · Content Team notified'
+      );
+    } else {
+      showToast('Post approved');
+    }
   };
 
-  const handleRequestChanges = (postId: string) => {
+  const handleRequestChanges = (postId: string, comment?: string) => {
     if (myRole === 'Viewer') {
       showToast('Viewers have read-only access');
       return;
     }
+
+    const actorName = currentUser?.name || 'Reviewer';
+    const actorEmail = currentUser?.email || 'owner@firstdraftstudio.in';
+    const targetPost = posts.find((p) => p.id === postId);
+    const submitter = targetPost?.submittedBy || targetPost?.createdBy;
+
+    const editorsList = teamMembers
+      .filter((m) => m.role === 'Editor' || m.role === 'Manager')
+      .map((m) => m.name || m.email)
+      .slice(0, 2);
+
+    const targetSummary = submitter
+      ? `${submitter.name} (${submitter.role || 'Submitter'})${
+          editorsList.length > 0 ? ` & Content Team (${editorsList.join(', ')})` : ' & Content Team'
+        }`
+      : editorsList.length > 0
+      ? `Content Team (${editorsList.join(', ')})`
+      : 'Content Team & Submitter';
+
+    const changeActivity: PostActivityItem = {
+      id: `act-${Date.now()}`,
+      type: 'changes_requested',
+      actorName,
+      actorEmail,
+      actorRole: myRole,
+      timestamp: new Date().toISOString(),
+      comment: comment || 'Requested revisions before approval.',
+      details: `Returned status to Planned · Notified ${targetSummary}`,
+    };
+
     setPosts((prev) =>
-      prev.map((p) => (p.id === postId ? { ...p, status: 'Planned' } : p))
+      prev.map((p) => {
+        if (p.id !== postId) return p;
+        const updated = {
+          ...p,
+          status: 'Planned' as const,
+          activityLog: [...(p.activityLog || []), changeActivity],
+        };
+        if (editingPost?.id === postId) {
+          setEditingPost(updated);
+        }
+        return updated;
+      })
     );
-    showToast('Sent back to planned');
+
+    if (targetPost) {
+      pushTeamNotification({
+        postId: targetPost.id,
+        postTitle: targetPost.title,
+        clientName: targetPost.clientName,
+        type: 'changes_requested',
+        message: `${actorName} requested changes on "${targetPost.title}"`,
+        comment: comment || 'Requested revisions before approval.',
+        actorName,
+        actorEmail,
+        targetSummary,
+      });
+    }
+
+    showToast(
+      submitter
+        ? `Changes requested · Notified ${submitter.name} & Content Team`
+        : 'Changes requested · Content Team notified'
+    );
+  };
+
+  const handleAddPostComment = (postId: string, comment: string) => {
+    if (!comment.trim()) return;
+    const actorName = currentUser?.name || 'Team Member';
+    const actorEmail = currentUser?.email || 'team@firstdraftstudio.in';
+    const targetPost = posts.find((p) => p.id === postId);
+    const submitter = targetPost?.submittedBy || targetPost?.createdBy;
+
+    const commentActivity: PostActivityItem = {
+      id: `act-${Date.now()}`,
+      type: 'comment',
+      actorName,
+      actorEmail,
+      actorRole: myRole,
+      timestamp: new Date().toISOString(),
+      comment: comment.trim(),
+    };
+
+    setPosts((prev) =>
+      prev.map((p) => {
+        if (p.id !== postId) return p;
+        const updated = {
+          ...p,
+          activityLog: [...(p.activityLog || []), commentActivity],
+        };
+        if (editingPost?.id === postId) {
+          setEditingPost(updated);
+        }
+        return updated;
+      })
+    );
+
+    if (targetPost) {
+      const targetSummary = submitter
+        ? `${submitter.name} & Content Team`
+        : 'Content Team';
+      pushTeamNotification({
+        postId: targetPost.id,
+        postTitle: targetPost.title,
+        clientName: targetPost.clientName,
+        type: 'comment',
+        message: `${actorName} commented on "${targetPost.title}"`,
+        comment: comment.trim(),
+        actorName,
+        actorEmail,
+        targetSummary,
+      });
+    }
+
+    showToast('Comment added & team notified');
   };
 
   // Media Library handlers
@@ -1038,29 +1342,6 @@ export default function App() {
                   } catch {}
                 }
           }
-          isDark={isDark}
-        />
-      );
-    }
-
-    // 1. If Post Form is open (New or Edit)
-    if (isPostFormOpen) {
-      return (
-        <PostFormView
-          initialPost={editingPost}
-          clients={clients}
-          campaigns={campaigns}
-          mediaLibrary={mediaFiles}
-          preselectedClientId={preselectedClientId}
-          preselectedDate={preselectedDate}
-          onBack={() => {
-            setIsPostFormOpen(false);
-            setEditingPost(null);
-          }}
-          onSave={handleSavePost}
-          onCreateClient={(clientData) => handleSaveClient(clientData)}
-          onDelete={handleDeletePost}
-          onUploadToLibrary={handleUploadMedia}
           isDark={isDark}
         />
       );
@@ -1431,7 +1712,7 @@ export default function App() {
       <Toast message={toastMessage} isDark={isDark} />
 
       {/* Desktop Navigation Sidebar (Shown on Desktop screens lg: >= 1024px) */}
-      {!portalClient && !isPostFormOpen && (
+      {!portalClient && (
         <div className="hidden lg:block shrink-0">
           <DesktopSidebar
             activeTab={activeTab}
@@ -1458,7 +1739,7 @@ export default function App() {
       {/* Main View Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Sticky Mobile Top Header with Hamburger Menu (Visible on mobile/tablet, hidden on lg desktop) */}
-        {!portalClient && !isPostFormOpen && (
+        {!portalClient && (
           <header
             className={`lg:hidden sticky top-0 z-30 flex items-center justify-between px-3.5 py-2.5 border-b backdrop-blur-md transition-colors ${
               isDark
@@ -1485,6 +1766,50 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2">
+              <div
+                title={
+                  syncMode === 'cloud'
+                    ? 'Connected / Cloud Mode: Workspace changes sync to Firestore & Cloud'
+                    : 'Offline / Static Mode: Running on static host with browser local storage'
+                }
+                className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] font-semibold tracking-wide select-none ${
+                  syncMode === 'cloud'
+                    ? isDark
+                      ? 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400'
+                      : 'bg-emerald-50 border-emerald-200/80 text-emerald-700'
+                    : isDark
+                    ? 'bg-amber-950/40 border-amber-800/50 text-amber-400'
+                    : 'bg-amber-50 border-amber-200/80 text-amber-700'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    syncMode === 'cloud' ? 'bg-emerald-500' : 'bg-amber-500'
+                  }`}
+                />
+                <span>{syncMode === 'cloud' ? 'Connected / Cloud' : 'Offline / Static'}</span>
+              </div>
+
+              {/* Mobile Notification Bell */}
+              <button
+                type="button"
+                onClick={() => setIsNotificationsOpen((prev) => !prev)}
+                className={`relative p-1.5 rounded-xl border transition-colors cursor-pointer ${
+                  isDark
+                    ? 'bg-[#1D242C] border-[#2A3440] text-stone-300 hover:text-white'
+                    : 'bg-white border-[#E8E4DC] text-stone-700 hover:text-stone-900'
+                }`}
+                aria-label="Team Notifications"
+                title="Team & Approval Notifications"
+              >
+                <Bell className="w-4 h-4" />
+                {notifications.filter((n) => !n.read).length > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-[#C44D34] text-white text-[9px] font-extrabold flex items-center justify-center tabular-nums">
+                    {notifications.filter((n) => !n.read).length}
+                  </span>
+                )}
+              </button>
+
               <button
                 onClick={() => handleOpenNewPost()}
                 className="px-2.5 py-1.5 bg-[#C44D34] hover:bg-[#b04028] text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs transition-colors"
@@ -1496,12 +1821,215 @@ export default function App() {
           </header>
         )}
 
+        {/* Subtle Desktop Top Status Header (Visible on lg desktop screens) */}
+        {!portalClient && (
+          <div
+            className={`hidden lg:flex items-center justify-between px-6 py-2 border-b text-xs transition-colors relative z-30 ${
+              isDark
+                ? 'bg-[#151C24]/90 border-[#242E3B] text-stone-400'
+                : 'bg-[#FAF7F2]/90 border-[#E8E2D8] text-stone-500'
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-semibold text-stone-700 dark:text-stone-300 truncate">
+                {workspaces.find((w) => w.id === activeWorkspaceId)?.name ||
+                  (currentUser ? `${currentUser.name}'s Private Studio` : 'Workspace')}
+              </span>
+              <span className="text-stone-300 dark:text-stone-700">•</span>
+              <span className="text-[11px] text-stone-400 truncate">
+                {currentUser?.email}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              {/* Desktop Notification Bell Button */}
+              <button
+                id="header-notification-bell-btn"
+                type="button"
+                onClick={() => setIsNotificationsOpen((prev) => !prev)}
+                className={`relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-semibold transition-colors cursor-pointer ${
+                  isDark
+                    ? 'bg-[#1C242E] border-[#2A3543] text-stone-200 hover:border-[#C44D34]'
+                    : 'bg-white border-[#E5DFD3] text-stone-700 hover:border-[#C44D34]'
+                }`}
+                title="View Team & Approval Notifications"
+              >
+                <Bell className="w-3.5 h-3.5 text-[#C44D34]" />
+                <span>Notifications</span>
+                {notifications.filter((n) => !n.read).length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-[#C44D34] text-white text-[10px] font-extrabold tabular-nums">
+                    {notifications.filter((n) => !n.read).length}
+                  </span>
+                )}
+              </button>
+
+              <div
+                id="sync-mode-indicator"
+                title={
+                  syncMode === 'cloud'
+                    ? 'Connected / Cloud Mode: Workspace changes sync to Firestore & Cloud'
+                    : 'Offline / Static Mode: Running on static host with local browser storage'
+                }
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-semibold tracking-wide transition-colors select-none ${
+                  syncMode === 'cloud'
+                    ? isDark
+                      ? 'bg-emerald-950/35 border-emerald-800/50 text-emerald-400'
+                      : 'bg-emerald-50/90 border-emerald-200/80 text-emerald-700'
+                    : isDark
+                    ? 'bg-amber-950/35 border-amber-800/50 text-amber-400'
+                    : 'bg-amber-50/90 border-amber-200/80 text-amber-700'
+                }`}
+              >
+                {syncMode === 'cloud' ? (
+                  <Cloud className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                ) : (
+                  <CloudOff className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                )}
+                <span>
+                  {syncMode === 'cloud' ? 'Connected / Cloud' : 'Offline / Static'}
+                </span>
+                <span className="text-[10px] opacity-75 font-normal hidden xl:inline">
+                  {syncMode === 'cloud' ? '(Firestore Sync)' : '(Local Storage)'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Team & Submitter Notifications Popover */}
+        {isNotificationsOpen && (
+          <div
+            onClick={() => setIsNotificationsOpen(false)}
+            className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]"
+          >
+            <div
+              id="team-notifications-popover"
+              onClick={(e) => e.stopPropagation()}
+              className={`fixed top-12 right-3 sm:right-6 w-[360px] max-w-[92vw] max-h-[75vh] flex flex-col rounded-2xl border shadow-2xl overflow-hidden z-50 animate-fade-in ${
+                isDark
+                  ? 'bg-[#19212B] border-[#2C3847] text-stone-100'
+                  : 'bg-white border-[#E5DFD3] text-[#1E252B]'
+              }`}
+            >
+              <div
+                className={`px-4 py-3 border-b flex items-center justify-between ${
+                  isDark ? 'bg-[#1E2733] border-[#2C3847]' : 'bg-[#FAF7F2] border-[#E8E4DC]'
+                }`}
+              >
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#C44D34]">
+                    Team & Review Notifications
+                  </h3>
+                  <p className="text-[10px] text-stone-400 mt-0.5">
+                    Alerts for content creators, submitters & approvers
+                  </p>
+                </div>
+                {notifications.some((n) => !n.read) && (
+                  <button
+                    type="button"
+                    onClick={markAllNotificationsRead}
+                    className="text-[10px] font-bold text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <CheckCheck className="w-3 h-3" />
+                    <span>Mark all read</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex-1 overflow-y-auto divide-y divide-stone-100 dark:divide-stone-800">
+                {notifications.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-stone-400">
+                    <Bell className="w-6 h-6 mx-auto mb-1.5 opacity-50" />
+                    <p>No team notifications yet.</p>
+                    <p className="text-[11px] mt-1">
+                      When changes are requested, posts are approved, or comments are added, notifications appear here.
+                    </p>
+                  </div>
+                ) : (
+                  notifications.map((notif) => {
+                    const matchedPost = posts.find((p) => p.id === notif.postId);
+                    return (
+                      <div
+                        key={notif.id}
+                        onClick={() => {
+                          setNotifications((prev) =>
+                            prev.map((item) =>
+                              item.id === notif.id ? { ...item, read: true } : item
+                            )
+                          );
+                          setIsNotificationsOpen(false);
+                          if (matchedPost) {
+                            handleEditPost(matchedPost, 'activity');
+                          }
+                        }}
+                        className={`p-3.5 text-xs transition-colors cursor-pointer ${
+                          !notif.read
+                            ? isDark
+                              ? 'bg-[#222C3A]/70 hover:bg-[#263242]'
+                              : 'bg-amber-50/40 hover:bg-stone-50'
+                            : isDark
+                            ? 'hover:bg-[#1E2733]'
+                            : 'hover:bg-stone-50'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-1.5 font-bold text-stone-800 dark:text-stone-100">
+                            {notif.type === 'changes_requested' ? (
+                              <RotateCcw className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                            ) : notif.type === 'approved' ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            ) : (
+                              <MessageSquare className="w-3.5 h-3.5 text-[#C44D34] shrink-0" />
+                            )}
+                            <span>{notif.clientName}</span>
+                          </div>
+                          <span className="text-[10px] text-stone-400 font-mono tabular-nums shrink-0">
+                            {new Date(notif.createdAt).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+
+                        <p className="mt-1 text-stone-700 dark:text-stone-300 leading-snug">
+                          {notif.message}
+                        </p>
+
+                        {notif.comment && (
+                          <div
+                            className={`mt-1.5 p-2 rounded-lg border text-[11px] ${
+                              isDark
+                                ? 'bg-[#151C24] border-[#2A3543] text-amber-300'
+                                : 'bg-white border-amber-200 text-stone-700'
+                            }`}
+                          >
+                            &ldquo;{notif.comment}&rdquo;
+                          </div>
+                        )}
+
+                        <div className="mt-1.5 flex items-center justify-between text-[10px] text-stone-400">
+                          <span className="truncate">
+                            Notified: <strong className="text-stone-500 dark:text-stone-300">{notif.targetSummary}</strong>
+                          </span>
+                          <span className="text-[#C44D34] font-bold shrink-0 ml-2">
+                            Open Activity →
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <main className="flex-1 flex flex-col">
           {renderScreenContent()}
         </main>
 
         {/* Sticky Mobile Bottom Navigation Bar (Visible on mobile/tablet < 1024px) */}
-        {!portalClient && !isPostFormOpen && (
+        {!portalClient && (
           <div className="lg:hidden sticky bottom-0 z-30">
             <BottomNav
               activeTab={activeTab === 'queue' ? 'content' : activeTab}
@@ -1535,6 +2063,32 @@ export default function App() {
           onToggleTheme={handleToggleTheme}
         />
       </div>
+
+      {/* Post Details / Edit / Create Pop-up Modal */}
+      {isPostFormOpen && (
+        <PostFormView
+          initialPost={editingPost}
+          clients={clients}
+          campaigns={campaigns}
+          mediaLibrary={mediaFiles}
+          preselectedClientId={preselectedClientId}
+          preselectedDate={preselectedDate}
+          initialModalTab={initialPostModalTab}
+          currentUser={currentUser}
+          onBack={() => {
+            setIsPostFormOpen(false);
+            setEditingPost(null);
+          }}
+          onSave={handleSavePost}
+          onCreateClient={(clientData) => handleSaveClient(clientData)}
+          onDelete={handleDeletePost}
+          onApprovePost={handleApprovePost}
+          onRequestChanges={handleRequestChanges}
+          onAddPostComment={handleAddPostComment}
+          onUploadToLibrary={handleUploadMedia}
+          isDark={isDark}
+        />
+      )}
 
       {/* Client Modal (New / Edit) */}
       <ClientModal

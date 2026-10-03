@@ -20,6 +20,7 @@ import { Post, Client, Campaign, PostStatus } from '../types';
 import { CATEGORY_COLORS, STATUS_STYLES, formatSectionDate, getTodayDateStr } from '../utils/theme';
 import { downloadMediaFile } from '../utils/mediaDownload';
 import { PullToRefreshContainer } from './PullToRefreshContainer';
+import { MediaCarousel } from './MediaCarousel';
 
 interface ContentOverviewViewProps {
   posts: Post[];
@@ -457,58 +458,31 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                             {post.caption}
                           </p>
 
-                          {/* Attached Media Thumbnails */}
+                          {/* Attached Media Carousel */}
                           {((post.media && post.media.length > 0) || post.mediaUrl) && (
-                            <div className="mt-2.5 flex items-center gap-2 overflow-x-auto">
-                              {post.media && post.media.length > 0 ? (
-                                post.media.slice(0, 3).map((m, idx) => (
-                                  <div
-                                    key={m.id || idx}
-                                    className="relative w-14 h-11 rounded-lg bg-stone-900 overflow-hidden shrink-0 border border-stone-200 dark:border-stone-700"
-                                  >
-                                    {m.type === 'video' ? (
-                                      <div className="w-full h-full relative">
-                                        {m.thumbnailUrl ? (
-                                          <img
-                                            src={m.thumbnailUrl}
-                                            alt={m.title}
-                                            className="w-full h-full object-cover"
-                                            referrerPolicy="no-referrer"
-                                          />
-                                        ) : (
-                                          <div className="w-full h-full bg-stone-800 flex items-center justify-center">
-                                            <Film className="w-3.5 h-3.5 text-stone-400" />
-                                          </div>
-                                        )}
-                                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                                          <Play className="w-3 h-3 fill-white text-white" />
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <img
-                                        src={m.url || m.thumbnailUrl}
-                                        alt={m.title}
-                                        className="w-full h-full object-cover"
-                                        referrerPolicy="no-referrer"
-                                      />
-                                    )}
-                                  </div>
-                                ))
-                              ) : post.mediaUrl ? (
-                                <div className="relative w-14 h-11 rounded-lg bg-stone-900 overflow-hidden shrink-0 border border-stone-200 dark:border-stone-700">
-                                  <img
-                                    src={post.mediaUrl}
-                                    alt={post.title}
-                                    className="w-full h-full object-cover"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                </div>
-                              ) : null}
-                              {post.media && post.media.length > 3 && (
-                                <span className="text-[10px] font-semibold text-stone-400">
-                                  +{post.media.length - 3}
-                                </span>
-                              )}
+                            <div
+                              className="mt-2.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MediaCarousel
+                                mediaItems={
+                                  post.media && post.media.length > 0
+                                    ? post.media
+                                    : [
+                                        {
+                                          id: `media-${post.id}`,
+                                          title: post.title || 'Attached Media',
+                                          type: post.mediaType || 'image',
+                                          url: post.mediaUrl,
+                                          thumbnailUrl: post.mediaUrl,
+                                        },
+                                      ]
+                                }
+                                fallbackTitle={post.title}
+                                heightClass="aspect-video max-h-[160px]"
+                                showCaptionBar={false}
+                                isDark={isDark}
+                              />
                             </div>
                           )}
 
