@@ -585,7 +585,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
             {isDatePickerOpen && (
               <div
                 id="date-picker-popup"
-                className={`absolute z-30 top-full mt-2 left-0 w-64 p-3 rounded-2xl border shadow-xl animate-fade-in ${
+                className={`absolute z-30 top-full mt-2 left-0 w-[260px] max-w-[88vw] p-3 rounded-2xl border shadow-xl animate-fade-in ${
                   isDark
                     ? 'bg-[#1C232B] border-[#2E3A47] text-white'
                     : 'bg-white border-[#E8E4DC] text-[#1E252B]'
@@ -793,11 +793,11 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
 
         {/* MEDIA UPLOAD & DOWNLOAD SECTION */}
         <div className="pt-1">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
             <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
               MEDIA ATTACHMENTS {attachedMedia.length > 0 && `(${attachedMedia.length})`}
             </label>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -810,7 +810,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
               <button
                 type="button"
                 onClick={() => setIsUrlInputOpen((prev) => !prev)}
-                className="text-[11px] font-semibold text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 flex items-center gap-1"
+                className="text-[11px] font-semibold text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 flex items-center gap-1 cursor-pointer"
               >
                 <LinkIcon className="w-3.5 h-3.5" />
                 <span>Add URL</span>
@@ -819,7 +819,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
               <button
                 type="button"
                 onClick={handleAddSampleMedia}
-                className="text-[11px] font-semibold text-stone-500 hover:text-[#C44D34] flex items-center gap-1"
+                className="text-[11px] font-semibold text-stone-500 hover:text-[#C44D34] flex items-center gap-1 cursor-pointer"
                 title="Add sample studio media asset"
               >
                 <Sparkles className="w-3.5 h-3.5" />

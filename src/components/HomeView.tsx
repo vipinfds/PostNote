@@ -18,6 +18,7 @@ import {
   getTodayParts,
 } from '../utils/theme';
 import { downloadMediaFile } from '../utils/mediaDownload';
+import { PullToRefreshContainer } from './PullToRefreshContainer';
 
 interface HomeViewProps {
   posts: Post[];
@@ -26,6 +27,7 @@ interface HomeViewProps {
   onNavigateToBilling?: () => void;
   onOpenNewPost: (initialDate?: string, preselectedClientId?: string) => void;
   onEditPost: (post: Post) => void;
+  onRefresh?: () => Promise<void> | void;
   isDark?: boolean;
 }
 
@@ -36,6 +38,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onNavigateToBilling,
   onOpenNewPost,
   onEditPost,
+  onRefresh,
   isDark,
 }) => {
   // Sync with actual real-time local date and automatically roll over if date changes
@@ -45,6 +48,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [currentMonth, setCurrentMonth] = useState(() => todayParts.monthIndex);
   const [selectedDayDate, setSelectedDayDate] = useState<string>(() => todayParts.dateStr);
   const [selectedClientId, setSelectedClientId] = useState<string>('ALL');
+  const [agendaRangeFilter, setAgendaRangeFilter] = useState<'upcoming' | 'past' | 'all'>('upcoming');
 
   useEffect(() => {
     const syncClock = () => {
@@ -185,11 +189,24 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const isTodaySelected = activeScheduleDate === TODAY_REF_DATE;
   const selectedDayPosts = getPostsForDate(activeScheduleDate);
 
-  // Filter upcoming posts for Agenda (today 2026-09-20 and future dates only, excluding past dates)
-  const upcomingAgendaPosts = filteredPosts
-    .filter((p) => p.date >= TODAY_REF_DATE)
+  // Date-range counts for Agenda ('upcoming', 'past', 'all')
+  const upcomingCount = filteredPosts.filter((p) => p.date >= TODAY_REF_DATE).length;
+  const pastCount = filteredPosts.filter((p) => p.date < TODAY_REF_DATE).length;
+  const allCount = filteredPosts.length;
+
+  // Filter Agenda posts by date-range ('upcoming', 'past', 'all')
+  const agendaPosts = filteredPosts
+    .filter((p) => {
+      if (agendaRangeFilter === 'upcoming') return p.date >= TODAY_REF_DATE;
+      if (agendaRangeFilter === 'past') return p.date < TODAY_REF_DATE;
+      return true;
+    })
     .slice()
-    .sort((a, b) => a.date.localeCompare(b.date));
+    .sort((a, b) =>
+      agendaRangeFilter === 'past'
+        ? b.date.localeCompare(a.date)
+        : a.date.localeCompare(b.date)
+    );
 
   const categoriesList: PostCategory[] = [
     'POST',
@@ -202,17 +219,18 @@ export const HomeView: React.FC<HomeViewProps> = ({
   ];
 
   return (
-    <div
-      id="home-view"
-      className={`relative min-h-[780px] pb-24 px-4 pt-5 transition-colors ${
-        isDark ? 'text-stone-100' : 'text-[#1E252B]'
-      }`}
-    >
-      {/* Brand Header */}
-      <header className="flex flex-col items-center justify-center pt-1 pb-2">
+    <PullToRefreshContainer onRefresh={onRefresh} isDark={isDark}>
+      <div
+        id="home-view"
+        className={`relative min-h-[780px] pb-28 lg:pb-24 px-3.5 sm:px-5 pt-3 sm:pt-5 transition-colors ${
+          isDark ? 'text-stone-100' : 'text-[#1E252B]'
+        }`}
+      >
+      {/* Brand Header (Full hero title on Desktop; compact plan bar on Mobile since Mobile Top Header already shows PostNote) */}
+      <header className="flex flex-col items-center justify-center pb-1.5 sm:pb-2">
         <h1
           id="brand-logo"
-          className="font-serif text-[32px] sm:text-[36px] font-bold tracking-tight text-[#C44D34] select-none"
+          className="hidden lg:block font-serif text-[36px] font-bold tracking-tight text-[#C44D34] select-none"
           style={{ fontFamily: "'Fraunces', Georgia, serif" }}
         >
           PostNote
@@ -220,7 +238,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         {onNavigateToBilling && (
           <button
             onClick={onNavigateToBilling}
-            className="mt-0.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#C44D34]/10 text-[#C44D34] hover:bg-[#C44D34]/20 transition-colors"
+            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-[#C44D34]/10 text-[#C44D34] hover:bg-[#C44D34]/20 transition-colors cursor-pointer"
           >
             <Sparkles className="w-3 h-3" />
             <span>
@@ -235,24 +253,24 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </header>
 
       {/* Month Switcher & Today Button */}
-      <div className="flex items-center justify-between mt-1 mb-4 px-1">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between mt-1 mb-3.5 px-0.5">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             id="prev-month-btn"
             onClick={prevMonth}
-            className={`p-1.5 rounded-full transition-colors ${
+            className={`p-2 rounded-xl transition-colors cursor-pointer ${
               isDark
-                ? 'text-stone-400 hover:text-white hover:bg-stone-800'
-                : 'text-stone-500 hover:text-stone-900 hover:bg-stone-200/60'
+                ? 'text-stone-300 hover:text-white hover:bg-stone-800'
+                : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/60'
             }`}
             aria-label="Previous month"
           >
-            <ChevronLeft className="w-5 h-5 stroke-[2]" />
+            <ChevronLeft className="w-5 h-5 stroke-[2.2]" />
           </button>
 
           <h2
             id="calendar-month-title"
-            className="text-[17px] font-bold tracking-tight min-w-[140px]"
+            className="text-base sm:text-[17px] font-bold tracking-tight min-w-[130px] text-center sm:text-left"
           >
             {monthNames[currentMonth]} {currentYear}
           </h2>
@@ -260,36 +278,36 @@ export const HomeView: React.FC<HomeViewProps> = ({
           <button
             id="next-month-btn"
             onClick={nextMonth}
-            className={`p-1.5 rounded-full transition-colors ${
+            className={`p-2 rounded-xl transition-colors cursor-pointer ${
               isDark
-                ? 'text-stone-400 hover:text-white hover:bg-stone-800'
-                : 'text-stone-500 hover:text-stone-900 hover:bg-stone-200/60'
+                ? 'text-stone-300 hover:text-white hover:bg-stone-800'
+                : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/60'
             }`}
             aria-label="Next month"
           >
-            <ChevronRight className="w-5 h-5 stroke-[2]" />
+            <ChevronRight className="w-5 h-5 stroke-[2.2]" />
           </button>
         </div>
 
         <button
           id="today-nav-btn"
           onClick={jumpToToday}
-          className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider rounded-lg transition-all ${
+          className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
             isDark
-              ? 'bg-stone-800 text-stone-300 border border-stone-700 hover:bg-stone-700'
-              : 'bg-white text-stone-600 border border-stone-300/80 hover:bg-stone-100 shadow-xs'
+              ? 'bg-stone-800 text-stone-200 border border-stone-700 hover:bg-stone-700'
+              : 'bg-white text-stone-700 border border-stone-300/80 hover:bg-stone-100 shadow-2xs'
           }`}
         >
-          TODAY
+          TODAY ({todayParts.shortLabel})
         </button>
       </div>
 
       {/* Calendar Header Bar + Client Filter Dropdown */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-300/70 dark:border-stone-800 mb-4 px-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-300/70 dark:border-stone-800 mb-3.5 px-1">
         <div className="flex items-center">
           <div
             id="subtab-calendar"
-            className="pb-2.5 px-3 text-xs font-bold tracking-widest uppercase relative text-[#C44D34]"
+            className="pb-2 px-2 text-xs font-bold tracking-widest uppercase relative text-[#C44D34]"
           >
             CALENDAR
             <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#C44D34] rounded-full" />
@@ -297,8 +315,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
 
         {/* Client Calendar & Agenda Filter Dropdown */}
-        <div className="pb-2 flex items-center gap-2">
-          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-400">
+        <div className="pb-2 flex items-center gap-2 max-w-full">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-400 shrink-0">
             {selectedClientObj ? (
               <span
                 className="w-2.5 h-2.5 rounded-full shrink-0"
@@ -314,7 +332,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             value={selectedClientId}
             onChange={(e) => setSelectedClientId(e.target.value)}
             aria-label="Filter calendar and agenda by client"
-            className={`px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#C44D34] transition-colors ${
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#C44D34] transition-colors max-w-[210px] sm:max-w-xs truncate ${
               isDark
                 ? 'bg-[#1D242C] border-[#2A3440] text-stone-100'
                 : 'bg-white border-[#E8E4DC] text-stone-800 shadow-2xs'
@@ -334,13 +352,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </div>
 
       {/* 1. Calendar View + Inline Today's Schedule (On Mobile: stacked after Calendar and above Agenda; On Desktop: side-by-side) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
         {/* Left Column (lg:col-span-7): Calendar Grid & Legend */}
-        <div className="lg:col-span-7 space-y-4">
+        <div className="lg:col-span-7 space-y-3.5">
           {/* Calendar Grid Container */}
           <div
             id="calendar-grid-card"
-            className={`rounded-2xl border p-2 shadow-xs transition-colors ${
+            className={`rounded-2xl border p-2 sm:p-2.5 shadow-xs transition-colors ${
               isDark
                 ? 'bg-[#1D242C] border-[#2A3440]'
                 : 'bg-white/95 border-[#E8E4DC]'
@@ -370,7 +388,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     key={idx}
                     id={`cal-day-${cell.dateStr}`}
                     onClick={() => setSelectedDayDate(cell.dateStr)}
-                    className={`min-h-[52px] sm:min-h-[58px] p-1 flex flex-col items-center justify-start rounded-xl transition-all relative group cursor-pointer ${
+                    className={`min-h-[48px] sm:min-h-[58px] p-1 flex flex-col items-center justify-start rounded-xl transition-all relative group cursor-pointer ${
                       isSelected
                         ? isDark
                           ? 'bg-stone-800/90 ring-2 ring-[#C44D34]'
@@ -425,7 +443,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           {/* Categories Legend */}
           <div
             id="categories-legend"
-            className="flex flex-wrap items-center justify-center gap-x-3.5 gap-y-2 px-2"
+            className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 px-1"
           >
             {categoriesList.map((cat) => (
               <div key={cat} className="flex items-center gap-1.5">
@@ -444,18 +462,18 @@ export const HomeView: React.FC<HomeViewProps> = ({
         {/* Today’s Schedule Card (Visible on BOTH Mobile and Desktop: right after Calendar and above Agenda on mobile) */}
         <div id="todays-schedule-section" className="lg:col-span-5 space-y-4">
           <div
-            className={`p-4 rounded-2xl border shadow-xs ${
+            className={`p-3.5 sm:p-4 rounded-2xl border shadow-xs ${
               isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
             }`}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-stone-200 dark:border-stone-800">
-              <div>
-                <h3 className="text-sm font-bold tracking-tight">
+            <div className="flex items-center justify-between gap-2 pb-3 border-b border-stone-200 dark:border-stone-800">
+              <div className="min-w-0">
+                <h3 className="text-xs sm:text-sm font-bold tracking-tight truncate">
                   {isTodaySelected
                     ? `Today’s Schedule • ${formatLongDate(activeScheduleDate)}`
                     : formatLongDate(activeScheduleDate)}
                 </h3>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 tabular-nums">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 tabular-nums block truncate">
                   {selectedDayPosts.length} post{selectedDayPosts.length === 1 ? '' : 's'} scheduled
                   {selectedClientObj ? ` • ${selectedClientObj.name}` : ''}
                 </span>
@@ -468,7 +486,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     selectedClientId !== 'ALL' ? selectedClientId : undefined
                   )
                 }
-                className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-[#C44D34] text-white hover:bg-[#B33E26] shadow-xs transition-colors flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                className="px-3 py-1.5 text-xs font-bold rounded-xl bg-[#C44D34] text-white hover:bg-[#B33E26] shadow-xs transition-colors flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                 <span>Schedule</span>
@@ -476,9 +494,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </div>
 
             {/* Day's posts */}
-            <div className="space-y-2.5 mt-3 max-h-[380px] overflow-y-auto pr-1">
+            <div className="space-y-2.5 mt-3 max-h-[360px] overflow-y-auto pr-0.5">
               {selectedDayPosts.length === 0 ? (
-                <div className="text-center py-8">
+                <div className="text-center py-7">
                   <p className="text-xs text-stone-400">
                     No posts queued for {isTodaySelected ? 'today' : formatLongDate(activeScheduleDate)}
                     {selectedClientObj ? ` (${selectedClientObj.name})` : ''}.
@@ -510,25 +528,25 @@ export const HomeView: React.FC<HomeViewProps> = ({
                           : 'bg-[#FAF8F5] border-[#E8E4DC] hover:bg-stone-50'
                       }`}
                     >
-                      <div className="flex items-center justify-between text-xs mb-1">
-                        <div className="flex items-center gap-1.5">
+                      <div className="flex items-center justify-between text-xs mb-1 gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
                           <span
                             className="w-2 h-2 rounded-full shrink-0"
                             style={{ backgroundColor: catStyle.dot }}
                           />
                           <span
-                            className="font-bold text-[9px] uppercase tracking-wider"
+                            className="font-bold text-[9px] uppercase tracking-wider shrink-0"
                             style={{ color: catStyle.text }}
                           >
                             {post.category}
                           </span>
                           <span className="text-stone-400">•</span>
-                          <span className="text-stone-500 font-medium text-[11px]">
+                          <span className="text-stone-500 font-medium text-[11px] truncate">
                             {post.clientName}
                           </span>
                         </div>
                         <span
-                          className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md ${statStyle.badge}`}
+                          className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0 ${statStyle.badge}`}
                         >
                           {statStyle.text}
                         </span>
@@ -618,31 +636,83 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
       </div>
 
-      {/* 2. Agenda Section Directly Below Calendar & Today's Schedule (Upcoming Posts Only, Filtered by Selected Client) */}
-      <div className="mt-7">
-        <div className="flex items-center justify-between border-b border-stone-300/70 dark:border-stone-800 mb-4 px-2">
-          <div className="flex items-center gap-2 pb-2.5 relative">
+      {/* 2. Agenda Section Directly Below Calendar & Today's Schedule (With Upcoming / Past / All Toggle) */}
+      <div className="mt-6 sm:mt-7">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-stone-300/70 dark:border-stone-800 pb-2.5 mb-4 px-1">
+          <div className="flex items-center gap-2">
             <span
               id="subtab-agenda"
               className="text-xs font-bold tracking-widest uppercase text-[#C44D34]"
             >
-              AGENDA • {selectedClientObj ? `${selectedClientObj.name} (UPCOMING)` : 'UPCOMING POSTS'}
+              AGENDA • {selectedClientObj ? selectedClientObj.name : 'ALL CLIENTS'}
             </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#C44D34]/10 text-[#C44D34] tabular-nums">
-              {upcomingAgendaPosts.length} upcoming
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-[#C44D34]/10 text-[#C44D34] tabular-nums">
+              {agendaPosts.length}{' '}
+              {agendaRangeFilter === 'upcoming'
+                ? 'upcoming'
+                : agendaRangeFilter === 'past'
+                ? 'past'
+                : 'total'}
             </span>
-            <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#C44D34] rounded-full" />
+          </div>
+
+          {/* Segmented Date-Range Toggle: Upcoming | Past | All */}
+          <div
+            id="agenda-date-range-filter"
+            className={`p-1 rounded-xl border flex items-center gap-1 self-start sm:self-auto ${
+              isDark ? 'bg-[#18202A] border-[#2A3646]' : 'bg-stone-200/70 border-stone-200'
+            }`}
+          >
+            {(
+              [
+                { id: 'upcoming', label: 'Upcoming', count: upcomingCount },
+                { id: 'past', label: 'Past', count: pastCount },
+                { id: 'all', label: 'All', count: allCount },
+              ] as const
+            ).map((tab) => {
+              const active = agendaRangeFilter === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  id={`agenda-range-${tab.id}`}
+                  type="button"
+                  onClick={() => setAgendaRangeFilter(tab.id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    active
+                      ? 'bg-[#181E24] dark:bg-[#C44D34] text-white shadow-xs font-bold'
+                      : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span
+                    className={`text-[10px] px-1 rounded tabular-nums ${
+                      active
+                        ? 'bg-white/20 text-white'
+                        : isDark
+                        ? 'bg-stone-800 text-stone-400'
+                        : 'bg-white/70 text-stone-500'
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {upcomingAgendaPosts.length === 0 ? (
+        {agendaPosts.length === 0 ? (
           <div
-            className={`p-8 rounded-2xl border text-center ${
+            className={`p-7 sm:p-8 rounded-2xl border text-center ${
               isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
             }`}
           >
             <p className="text-xs text-stone-500 dark:text-stone-400">
-              No upcoming posts scheduled{selectedClientObj ? ` for ${selectedClientObj.name}` : ''}.
+              {agendaRangeFilter === 'upcoming'
+                ? `No upcoming posts scheduled${selectedClientObj ? ` for ${selectedClientObj.name}` : ''}.`
+                : agendaRangeFilter === 'past'
+                ? `No past posts found${selectedClientObj ? ` for ${selectedClientObj.name}` : ''}.`
+                : `No posts scheduled${selectedClientObj ? ` for ${selectedClientObj.name}` : ''}.`}
             </p>
             <button
               type="button"
@@ -654,94 +724,110 @@ export const HomeView: React.FC<HomeViewProps> = ({
               }
               className="mt-2.5 px-4 py-2 rounded-xl bg-[#C44D34] hover:bg-[#B33E26] text-white text-xs font-bold shadow-xs cursor-pointer"
             >
-              + Schedule Upcoming Post{selectedClientObj ? ` for ${selectedClientObj.name}` : ''}
+              + Schedule Post{selectedClientObj ? ` for ${selectedClientObj.name}` : ''}
             </button>
           </div>
         ) : (
           <div id="agenda-view-list" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-            {upcomingAgendaPosts.map((post) => (
-              <div
-                key={post.id}
-                onClick={() => onEditPost(post)}
-                className={`p-4 rounded-2xl border shadow-xs cursor-pointer hover:border-[#C44D34] transition-all ${
-                  isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-                }`}
-              >
-                <div className="flex items-center justify-between text-xs mb-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: CATEGORY_COLORS[post.category]?.dot }}
-                    />
-                    <span
-                      className="font-bold text-[10px] tracking-wider"
-                      style={{ color: CATEGORY_COLORS[post.category]?.text }}
-                    >
-                      {post.category}
-                    </span>
-                    <span className="text-stone-400">•</span>
-                    <span className="text-stone-600 dark:text-stone-300 font-medium">
-                      {post.clientName}
-                    </span>
-                  </div>
-                  <span className="text-[10px] uppercase font-bold text-stone-400 tabular-nums">
-                    {post.date}
-                  </span>
-                </div>
-                <h3 className="text-sm font-bold text-stone-900 dark:text-white">
-                  {post.title}
-                </h3>
-                <p className="text-xs text-stone-500 dark:text-stone-400 line-clamp-2 mt-1">
-                  {post.caption}
-                </p>
+            {agendaPosts.map((post) => {
+              const statStyle = STATUS_STYLES[post.status] || STATUS_STYLES.Planned;
+              const isPast = post.date < TODAY_REF_DATE;
 
-                {/* Media Preview or Add Media */}
-                {((post.media && post.media.length > 0) || post.mediaUrl) ? (
-                  <div className="mt-2.5 pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between">
-                    <span className="text-[10px] text-stone-400 font-medium tabular-nums">
-                      {post.media?.length || 1} asset{(post.media?.length || 1) > 1 ? 's' : ''} attached
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const targetUrl =
-                          post.media?.[0]?.url ||
-                          post.media?.[0]?.thumbnailUrl ||
-                          post.mediaUrl ||
-                          '';
-                        downloadMediaFile(targetUrl, post.title);
-                      }}
-                      className="text-[10px] font-bold text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer"
-                      title="Download media file"
-                    >
-                      <Download className="w-3 h-3" />
-                      <span>Download</span>
-                    </button>
+              return (
+                <div
+                  key={post.id}
+                  onClick={() => onEditPost(post)}
+                  className={`p-4 rounded-2xl border shadow-xs cursor-pointer hover:border-[#C44D34] transition-all ${
+                    isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-xs mb-1.5 gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: CATEGORY_COLORS[post.category]?.dot }}
+                      />
+                      <span
+                        className="font-bold text-[10px] tracking-wider shrink-0"
+                        style={{ color: CATEGORY_COLORS[post.category]?.text }}
+                      >
+                        {post.category}
+                      </span>
+                      <span className="text-stone-400">•</span>
+                      <span className="text-stone-600 dark:text-stone-300 font-medium truncate">
+                        {post.clientName}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span
+                        className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${statStyle.badge}`}
+                      >
+                        {statStyle.text}
+                      </span>
+                      <span
+                        className={`text-[10px] uppercase font-bold tabular-nums ${
+                          isPast ? 'text-stone-400' : 'text-[#C44D34]'
+                        }`}
+                      >
+                        {post.date}
+                      </span>
+                    </div>
                   </div>
-                ) : (
-                  <div className="mt-2.5 pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between">
-                    <span className="text-[10px] text-stone-400">No media</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEditPost(post);
-                      }}
-                      className="text-[10px] font-semibold text-stone-500 hover:text-[#C44D34] flex items-center gap-1 cursor-pointer"
-                    >
-                      <ImagePlus className="w-3 h-3" />
-                      <span>+ Add Media</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
+                  <h3 className="text-sm font-bold text-stone-900 dark:text-white truncate">
+                    {post.title}
+                  </h3>
+                  <p className="text-xs text-stone-500 dark:text-stone-400 line-clamp-2 mt-1">
+                    {post.caption}
+                  </p>
+
+                  {/* Media Preview or Add Media */}
+                  {((post.media && post.media.length > 0) || post.mediaUrl) ? (
+                    <div className="mt-2.5 pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between">
+                      <span className="text-[10px] text-stone-400 font-medium tabular-nums">
+                        {post.media?.length || 1} asset{(post.media?.length || 1) > 1 ? 's' : ''} attached
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const targetUrl =
+                            post.media?.[0]?.url ||
+                            post.media?.[0]?.thumbnailUrl ||
+                            post.mediaUrl ||
+                            '';
+                          downloadMediaFile(targetUrl, post.title);
+                        }}
+                        className="text-[10px] font-bold text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer"
+                        title="Download media file"
+                      >
+                        <Download className="w-3 h-3" />
+                        <span>Download</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-2.5 pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between">
+                      <span className="text-[10px] text-stone-400">No media</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditPost(post);
+                        }}
+                        className="text-[10px] font-semibold text-stone-500 hover:text-[#C44D34] flex items-center gap-1 cursor-pointer"
+                      >
+                        <ImagePlus className="w-3 h-3" />
+                        <span>+ Add Media</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* Floating Action Button (+) */}
+      {/* Floating Action Button (+) positioned above sticky mobile bottom nav */}
       <button
         id="fab-new-post"
         onClick={() =>
@@ -750,11 +836,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
             selectedClientId !== 'ALL' ? selectedClientId : undefined
           )
         }
-        className="fixed bottom-20 right-6 z-20 w-13 h-13 rounded-full bg-[#C44D34] hover:bg-[#B33E26] text-white shadow-lg shadow-[#C44D34]/30 flex items-center justify-center transition-transform active:scale-95 focus:outline-none cursor-pointer"
+        className="fixed bottom-20 lg:bottom-8 right-5 sm:right-6 z-20 w-12 h-12 sm:w-13 sm:h-13 rounded-full bg-[#C44D34] hover:bg-[#B33E26] text-white shadow-lg shadow-[#C44D34]/30 flex items-center justify-center transition-transform active:scale-95 focus:outline-none cursor-pointer"
         aria-label="Create new post"
       >
-        <Plus className="w-7 h-7 stroke-[2.5]" />
+        <Plus className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.5]" />
       </button>
-    </div>
+      </div>
+    </PullToRefreshContainer>
   );
 };

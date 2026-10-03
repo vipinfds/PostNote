@@ -33,6 +33,7 @@ import {
 
 // Component imports
 import { MobileNavDrawer } from './components/MobileNavDrawer';
+import { BottomNav } from './components/BottomNav';
 import { HomeView } from './components/HomeView';
 import { ClientsView } from './components/ClientsView';
 import { ClientDetailView } from './components/ClientDetailView';
@@ -226,6 +227,11 @@ export default function App() {
     } catch {
       // offline or local dev fallback
     }
+  };
+
+  const handleManualRefresh = async () => {
+    await fetchServerSync(activeWorkspaceId || undefined);
+    showToast('Workspace synced');
   };
 
   useEffect(() => {
@@ -941,6 +947,7 @@ export default function App() {
           onOpenNewPost={handleOpenNewPost}
           onEditPost={handleEditPost}
           isDark={isDark}
+          onRefresh={handleManualRefresh}
         />
       );
     }
@@ -1009,6 +1016,7 @@ export default function App() {
           onOpenNewPost={() => handleOpenNewPost()}
           onEditPost={handleEditPost}
           isDark={isDark}
+          onRefresh={handleManualRefresh}
         />
       );
     }
@@ -1058,6 +1066,7 @@ export default function App() {
             onEditPost={handleEditPost}
             initialTab="campaigns"
             isDark={isDark}
+            onRefresh={handleManualRefresh}
           />
         );
       }
@@ -1093,6 +1102,8 @@ export default function App() {
             theme={theme}
             onSetTheme={setTheme}
             subscription={subscription}
+            currentUser={currentUser}
+            myRole={myRole}
             onNavigateToBilling={() => setActiveMoreSubScreen('billing')}
             onBack={handleSubScreenBack}
             onNavigateToTeam={() => setActiveMoreSubScreen('team')}
@@ -1358,6 +1369,17 @@ export default function App() {
         <main className="flex-1 flex flex-col">
           {renderScreenContent()}
         </main>
+
+        {/* Sticky Mobile Bottom Navigation Bar (Visible on mobile/tablet < 1024px) */}
+        {!portalClient && !isPostFormOpen && (
+          <div className="lg:hidden sticky bottom-0 z-30">
+            <BottomNav
+              activeTab={activeTab === 'queue' ? 'content' : activeTab}
+              onSelectTab={(tab) => handleSelectTab(tab)}
+              isDark={isDark}
+            />
+          </div>
+        )}
 
         {/* Slide-out Mobile Navigation Drawer (Houses all Studio, Workflow, Intelligence, and Management items) */}
         <MobileNavDrawer

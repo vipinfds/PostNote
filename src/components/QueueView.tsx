@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { Plus, Film, Image as ImageIcon, Play } from 'lucide-react';
-import { Post, PostStatus } from '../types';
-import { STATUS_STYLES, CATEGORY_COLORS } from '../utils/theme';
+import { Plus, Film, Play } from 'lucide-react';
+import { Post } from '../types';
+import { STATUS_STYLES, CATEGORY_COLORS, getTodayDateStr } from '../utils/theme';
+import { PullToRefreshContainer } from './PullToRefreshContainer';
 
 interface QueueViewProps {
   posts: Post[];
   onOpenNewPost: () => void;
   onEditPost: (post: Post) => void;
   isDark?: boolean;
+  onRefresh?: () => Promise<void> | void;
 }
 
 export const QueueView: React.FC<QueueViewProps> = ({
@@ -15,17 +17,35 @@ export const QueueView: React.FC<QueueViewProps> = ({
   onOpenNewPost,
   onEditPost,
   isDark,
+  onRefresh,
 }) => {
   const [statusFilter, setStatusFilter] = useState<'All' | 'Planned' | 'Scheduled' | 'Published'>('All');
+  const [dateRangeFilter, setDateRangeFilter] = useState<'upcoming' | 'past' | 'all'>('upcoming');
+  const todayStr = getTodayDateStr();
 
-  // Filter posts
-  const filteredPosts = posts.filter((post) => {
+  // Filter posts by status first
+  const statusMatchingPosts = posts.filter((post) => {
     if (statusFilter === 'All') return true;
     return post.status === statusFilter;
   });
 
-  // Sort chronological by date
-  filteredPosts.sort((a, b) => a.date.localeCompare(b.date));
+  const upcomingCount = statusMatchingPosts.filter((p) => p.date >= todayStr).length;
+  const pastCount = statusMatchingPosts.filter((p) => p.date < todayStr).length;
+  const allCount = statusMatchingPosts.length;
+
+  // Apply date-range filter ('upcoming' | 'past' | 'all')
+  const filteredPosts = statusMatchingPosts
+    .filter((post) => {
+      if (dateRangeFilter === 'upcoming') return post.date >= todayStr;
+      if (dateRangeFilter === 'past') return post.date < todayStr;
+      return true;
+    })
+    .slice()
+    .sort((a, b) =>
+      dateRangeFilter === 'past'
+        ? b.date.localeCompare(a.date)
+        : a.date.localeCompare(b.date)
+    );
 
   // Helper for date column: "AUG" and "5"
   const getDateParts = (dateStr: string) => {
@@ -48,12 +68,13 @@ export const QueueView: React.FC<QueueViewProps> = ({
   ];
 
   return (
-    <div
-      id="queue-view"
-      className={`min-h-[780px] pb-24 px-4 pt-5 transition-colors ${
-        isDark ? 'text-stone-100' : 'text-[#1E252B]'
-      }`}
-    >
+    <PullToRefreshContainer onRefresh={onRefresh} isDark={isDark}>
+      <div
+        id="queue-view"
+        className={`min-h-[780px] pb-24 px-4 pt-5 transition-colors ${
+          isDark ? 'text-stone-100' : 'text-[#1E252B]'
+        }`}
+      >
       {/* Top Header */}
       <div className="flex items-start justify-between pb-3">
         <div>
@@ -73,24 +94,67 @@ export const QueueView: React.FC<QueueViewProps> = ({
         </button>
       </div>
 
-      {/* Pill Filter Tabs: All, Planned, Scheduled, Published */}
-      <div className="flex items-center gap-1.5 pb-4 border-b border-stone-200 dark:border-stone-800">
-        {filterOptions.map((opt) => (
-          <button
-            key={opt}
-            id={`queue-filter-${opt.toLowerCase()}`}
-            onClick={() => setStatusFilter(opt)}
-            className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all ${
-              statusFilter === opt
-                ? 'bg-[#181E24] dark:bg-[#C44D34] text-white shadow-xs'
-                : isDark
-                ? 'text-stone-400 hover:text-stone-200'
-                : 'text-stone-500 hover:text-stone-900'
-            }`}
-          >
-            {opt}
-          </button>
-        ))}
+      {/* Filter Bar: Status Tabs + Upcoming / Past / All Toggle */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 pb-4 border-b border-stone-200 dark:border-stone-800">
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {filterOptions.map((opt) => (
+            <button
+              key={opt}
+              id={`queue-filter-${opt.toLowerCase()}`}
+              onClick={() => setStatusFilter(opt)}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all ${
+                statusFilter === opt
+                  ? 'bg-[#181E24] dark:bg-[#C44D34] text-white shadow-xs'
+                  : isDark
+                  ? 'text-stone-400 hover:text-stone-200'
+                  : 'text-stone-500 hover:text-stone-900'
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+
+        <div
+          className={`flex items-center gap-1 p-1 rounded-xl border ${
+            isDark ? 'bg-[#18202A] border-[#2A3646]' : 'bg-stone-200/70 border-stone-200'
+          }`}
+        >
+          {(
+            [
+              { id: 'upcoming', label: 'Upcoming', count: upcomingCount },
+              { id: 'past', label: 'Past', count: pastCount },
+              { id: 'all', label: 'All', count: allCount },
+            ] as const
+          ).map((range) => {
+            const active = dateRangeFilter === range.id;
+            return (
+              <button
+                key={range.id}
+                type="button"
+                onClick={() => setDateRangeFilter(range.id)}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
+                  active
+                    ? 'bg-[#181E24] dark:bg-[#C44D34] text-white shadow-xs font-bold'
+                    : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
+                }`}
+              >
+                <span>{range.label}</span>
+                <span
+                  className={`text-[10px] px-1 rounded tabular-nums ${
+                    active
+                      ? 'bg-white/20 text-white'
+                      : isDark
+                      ? 'bg-stone-800 text-stone-400'
+                      : 'bg-white/70 text-stone-500'
+                  }`}
+                >
+                  {range.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Posts List with Date Column (Responsive Grid on Tablet/PC) */}
@@ -198,6 +262,7 @@ export const QueueView: React.FC<QueueViewProps> = ({
           })
         )}
       </div>
-    </div>
+      </div>
+    </PullToRefreshContainer>
   );
 };

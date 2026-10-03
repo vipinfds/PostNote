@@ -19,6 +19,7 @@ import {
 import { Post, Client, Campaign, PostStatus } from '../types';
 import { CATEGORY_COLORS, STATUS_STYLES, formatSectionDate, getTodayDateStr } from '../utils/theme';
 import { downloadMediaFile } from '../utils/mediaDownload';
+import { PullToRefreshContainer } from './PullToRefreshContainer';
 
 interface ContentOverviewViewProps {
   posts: Post[];
@@ -29,6 +30,7 @@ interface ContentOverviewViewProps {
   onEditPost: (post: Post) => void;
   initialTab?: 'feed' | 'campaigns';
   isDark?: boolean;
+  onRefresh?: () => Promise<void> | void;
 }
 
 export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
@@ -40,11 +42,12 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
   onEditPost,
   initialTab = 'feed',
   isDark,
+  onRefresh,
 }) => {
   const [activeTab, setActiveTab] = useState<'feed' | 'campaigns'>(initialTab);
   const [selectedClientId, setSelectedClientId] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'All' | PostStatus>('All');
-  const [filterMode, setFilterMode] = useState<'upcoming' | 'all'>('upcoming');
+  const [filterMode, setFilterMode] = useState<'upcoming' | 'past' | 'all'>('upcoming');
   const [searchQuery, setSearchQuery] = useState('');
   const [isClientPickerOpen, setIsClientPickerOpen] = useState(false);
 
@@ -58,23 +61,14 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
   // Today reference date synced with system clock
   const todayStr = getTodayDateStr();
 
-  // Filter posts
-  let filteredPosts = posts.filter((p) => {
-    // 1. Client filter
+  // Base posts filtered by Client, Status, and Search (used for Upcoming / Past / All counts)
+  const baseMatchingPosts = posts.filter((p) => {
     if (selectedClientId !== 'all' && p.clientId !== selectedClientId) {
       return false;
     }
-    // 2. Status filter
     if (statusFilter !== 'All' && p.status !== statusFilter) {
       return false;
     }
-    // 3. Upcoming filter
-    if (filterMode === 'upcoming') {
-      if (p.date < todayStr && p.status === 'Published') {
-        return false;
-      }
-    }
-    // 4. Search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchTitle = p.title?.toLowerCase().includes(q);
@@ -88,8 +82,23 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
     return true;
   });
 
-  // Sort chronologically
-  filteredPosts.sort((a, b) => a.date.localeCompare(b.date));
+  const upcomingCount = baseMatchingPosts.filter((p) => p.date >= todayStr).length;
+  const pastCount = baseMatchingPosts.filter((p) => p.date < todayStr).length;
+  const allRangeCount = baseMatchingPosts.length;
+
+  // Apply Date-Range filter ('upcoming' | 'past' | 'all')
+  const filteredPosts = baseMatchingPosts
+    .filter((p) => {
+      if (filterMode === 'upcoming') return p.date >= todayStr;
+      if (filterMode === 'past') return p.date < todayStr;
+      return true;
+    })
+    .slice()
+    .sort((a, b) =>
+      filterMode === 'past'
+        ? b.date.localeCompare(a.date)
+        : a.date.localeCompare(b.date)
+    );
 
   // Group by date
   const groupedByDate: Record<string, Post[]> = {};
@@ -140,12 +149,13 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
   });
 
   return (
-    <div
-      id="content-overview-view"
-      className={`min-h-[780px] pb-24 px-4 sm:px-6 pt-5 transition-colors ${
-        isDark ? 'text-stone-100' : 'text-[#1E252B]'
-      }`}
-    >
+    <PullToRefreshContainer onRefresh={onRefresh} isDark={isDark}>
+      <div
+        id="content-overview-view"
+        className={`min-h-[780px] pb-24 px-4 sm:px-6 pt-5 transition-colors ${
+          isDark ? 'text-stone-100' : 'text-[#1E252B]'
+        }`}
+      >
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-200 dark:border-stone-800">
         <div>
@@ -181,24 +191,24 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
       </div>
 
       {/* Main Mode Toggle: Queue & Feed vs Campaigns */}
-      <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mt-3">
         <div
-          className={`p-1 rounded-xl border flex items-center gap-1 ${
+          className={`p-1 rounded-xl border grid grid-cols-2 sm:flex items-center gap-1 ${
             isDark ? 'bg-[#18202A] border-[#2A3646]' : 'bg-stone-100 border-stone-200'
           }`}
         >
           <button
             onClick={() => setActiveTab('feed')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
               activeTab === 'feed'
                 ? 'bg-white dark:bg-[#253242] text-stone-900 dark:text-white shadow-xs font-bold'
                 : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
             }`}
           >
-            <Clock className="w-3.5 h-3.5" />
-            <span>Post Queue & Feed</span>
+            <Clock className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Post Queue</span>
             <span
-              className={`px-1.5 py-0.2 rounded-md text-[10px] font-bold ${
+              className={`px-1.5 py-0.2 rounded-md text-[10px] font-bold tabular-nums ${
                 activeTab === 'feed'
                   ? 'bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-200'
                   : 'bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300'
@@ -210,16 +220,16 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
 
           <button
             onClick={() => setActiveTab('campaigns')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
               activeTab === 'campaigns'
                 ? 'bg-white dark:bg-[#253242] text-stone-900 dark:text-white shadow-xs font-bold'
                 : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
             }`}
           >
-            <FolderKanban className="w-3.5 h-3.5" />
-            <span>Campaigns</span>
+            <FolderKanban className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Campaigns</span>
             <span
-              className={`px-1.5 py-0.2 rounded-md text-[10px] font-bold ${
+              className={`px-1.5 py-0.2 rounded-md text-[10px] font-bold tabular-nums ${
                 activeTab === 'campaigns'
                   ? 'bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-200'
                   : 'bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300'
@@ -231,14 +241,14 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
         </div>
 
         {/* Search input */}
-        <div className="relative flex-1 min-w-[200px] max-w-xs">
+        <div className="relative w-full sm:w-64">
           <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
           <input
             type="text"
             placeholder={activeTab === 'feed' ? 'Search posts or clients...' : 'Search campaigns...'}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className={`w-full pl-8 pr-3 py-1.5 rounded-xl border text-xs transition-colors focus:outline-none focus:ring-1 focus:ring-[#C44D34] ${
+            className={`w-full pl-8 pr-3 py-2 sm:py-1.5 rounded-xl border text-xs transition-colors focus:outline-none focus:ring-1 focus:ring-[#C44D34] ${
               isDark
                 ? 'bg-[#1D242C] border-[#2A3440] text-stone-100 placeholder-stone-500'
                 : 'bg-white border-[#E8E4DC] text-stone-900 placeholder-stone-400'
@@ -249,7 +259,7 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
 
       {/* Secondary Filter Bar for Queue & Feed Tab */}
       {activeTab === 'feed' && (
-        <div className="space-y-2 mt-3 pt-3 border-t border-stone-200 dark:border-stone-800">
+        <div className="space-y-2.5 mt-3 pt-3 border-t border-stone-200 dark:border-stone-800">
           {/* Status filters row */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
             {(['All', 'Planned', 'In review', 'Scheduled', 'Published'] as const).map((status) => {
@@ -260,7 +270,7 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                 <button
                   key={status}
                   onClick={() => setStatusFilter(status)}
-                  className={`px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-all ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-all cursor-pointer ${
                     isSelected
                       ? 'bg-[#181E24] dark:bg-[#C44D34] text-white shadow-xs font-bold'
                       : isDark
@@ -270,7 +280,7 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                 >
                   <span>{status === 'All' ? 'All Queue' : status}</span>
                   <span
-                    className={`text-[10px] px-1 rounded-md ${
+                    className={`text-[10px] px-1 rounded-md tabular-nums ${
                       isSelected
                         ? 'bg-white/20 text-white'
                         : isDark
@@ -285,11 +295,11 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
             })}
           </div>
 
-          {/* Client filter & Upcoming toggle row */}
-          <div className="flex items-center justify-between gap-2 pt-1">
+          {/* Client filter & Date-Range toggle row (Upcoming | Past | All) */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
             <button
               onClick={() => setIsClientPickerOpen(true)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all cursor-pointer ${
                 isDark
                   ? 'bg-[#1D242C] border-[#2A3440] text-stone-200 hover:bg-[#252E38]'
                   : 'bg-white border-[#E8E4DC] text-stone-700 hover:bg-stone-50 shadow-xs'
@@ -301,32 +311,54 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                   style={{ backgroundColor: selectedClient.color }}
                 />
               )}
-              <span>{selectedClient ? selectedClient.name : 'All clients'}</span>
-              <ChevronDown className="w-3.5 h-3.5 stroke-[2.5] text-stone-400" />
+              <span className="truncate max-w-[140px] sm:max-w-[200px]">
+                {selectedClient ? selectedClient.name : 'All clients'}
+              </span>
+              <ChevronDown className="w-3.5 h-3.5 stroke-[2.5] text-stone-400 shrink-0" />
             </button>
 
-            {/* Upcoming vs All Dates */}
-            <div className="flex items-center gap-1 bg-stone-200/70 dark:bg-stone-800 p-1 rounded-xl">
-              <button
-                onClick={() => setFilterMode('upcoming')}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
-                  filterMode === 'upcoming'
-                    ? 'bg-[#181E24] dark:bg-[#C44D34] text-white shadow-xs'
-                    : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
-                }`}
-              >
-                Upcoming
-              </button>
-              <button
-                onClick={() => setFilterMode('all')}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
-                  filterMode === 'all'
-                    ? 'bg-[#181E24] dark:bg-[#C44D34] text-white shadow-xs'
-                    : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
-                }`}
-              >
-                All posts
-              </button>
+            {/* Date-Range Segmented Toggle: Upcoming | Past | All */}
+            <div
+              id="queue-date-range-filter"
+              className={`flex items-center gap-1 p-1 rounded-xl border ${
+                isDark ? 'bg-[#18202A] border-[#2A3646]' : 'bg-stone-200/70 border-stone-200'
+              }`}
+            >
+              {(
+                [
+                  { id: 'upcoming', label: 'Upcoming', count: upcomingCount },
+                  { id: 'past', label: 'Past', count: pastCount },
+                  { id: 'all', label: 'All', count: allRangeCount },
+                ] as const
+              ).map((range) => {
+                const active = filterMode === range.id;
+                return (
+                  <button
+                    key={range.id}
+                    id={`queue-range-${range.id}`}
+                    type="button"
+                    onClick={() => setFilterMode(range.id)}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
+                      active
+                        ? 'bg-[#181E24] dark:bg-[#C44D34] text-white shadow-xs font-bold'
+                        : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
+                    }`}
+                  >
+                    <span>{range.label}</span>
+                    <span
+                      className={`text-[10px] px-1 rounded tabular-nums ${
+                        active
+                          ? 'bg-white/20 text-white'
+                          : isDark
+                          ? 'bg-stone-800 text-stone-400'
+                          : 'bg-white/70 text-stone-500'
+                      }`}
+                    >
+                      {range.count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -876,6 +908,7 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </PullToRefreshContainer>
   );
 };

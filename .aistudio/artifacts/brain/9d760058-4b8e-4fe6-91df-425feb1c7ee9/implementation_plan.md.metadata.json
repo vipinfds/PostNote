@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for adding the 'Upcoming' / 'Past' / 'All' date-range filter to both the Home Agenda and Content Queue views (defaulting to Upcoming), restoring the sticky mobile Bottom Navigation Bar alongside the Hamburger Drawer, and optimizing the overall mobile UI across all screens.",
-  "updatedAt":  "2026-10-03T21:08:03.081793169Z",
+  "summary":  "Implementation plan for adding a native-style touch pull-to-refresh gesture to the Home and Queue views, triggering fetchServerSync() with an elastic pull spinner and a toast notification upon completion.",
+  "updatedAt":  "2026-10-03T21:15:07.473597028Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

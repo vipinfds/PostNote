@@ -1,6 +1,6 @@
 import React from 'react';
 import { ArrowLeft, Sun, Moon, Monitor, Users, Trash2, LogOut, Sparkles, ChevronRight } from 'lucide-react';
-import { ThemeMode, SubscriptionState } from '../types';
+import { ThemeMode, SubscriptionState, WorkspaceRole } from '../types';
 
 interface SettingsViewProps {
   theme: ThemeMode;
@@ -9,6 +9,12 @@ interface SettingsViewProps {
   onNavigateToTeam: () => void;
   onNavigateToBilling: () => void;
   subscription?: SubscriptionState;
+  currentUser?: {
+    name: string;
+    email: string;
+    role?: string;
+  } | null;
+  myRole?: WorkspaceRole;
   onSignOut: () => void;
   onDeleteAccount: () => void;
   isDark?: boolean;
@@ -21,6 +27,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onNavigateToTeam,
   onNavigateToBilling,
   subscription,
+  currentUser,
+  myRole = 'Owner',
   onSignOut,
   onDeleteAccount,
   isDark,
@@ -36,10 +44,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       ? 'Enterprise'
       : 'Agency Plan';
 
+  const displayName = currentUser?.name || 'Studio User';
+  const displayEmail = currentUser?.email || 'Not signed in';
+  const initials = displayName
+    .split(' ')
+    .map((p) => p[0])
+    .join('')
+    .substring(0, 2)
+    .toUpperCase() || 'ST';
+
   return (
     <div
       id="settings-view"
-      className={`min-h-[780px] pb-24 px-4 pt-4 animate-fade-in transition-colors ${
+      className={`min-h-[780px] pb-28 lg:pb-24 px-4 pt-4 animate-fade-in transition-colors ${
         isDark ? 'text-stone-100' : 'text-[#1E252B]'
       }`}
     >
@@ -48,7 +65,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={onBack}
-            className="p-1.5 -ml-1 text-stone-600 dark:text-stone-400 hover:text-stone-900 transition-colors"
+            className="p-1.5 -ml-1 text-stone-600 dark:text-stone-400 hover:text-stone-900 transition-colors cursor-pointer"
           >
             <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
           </button>
@@ -57,27 +74,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       <div className="space-y-4 mt-4">
-        {/* User profile card */}
+        {/* User profile card (Dynamic authenticated user & mobile-friendly layout) */}
         <div
-          className={`p-4 rounded-2xl border flex items-center justify-between shadow-xs transition-colors ${
+          className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs transition-colors ${
             isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
           }`}
         >
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full bg-stone-300 dark:bg-stone-700 text-stone-700 dark:text-stone-200 font-bold flex items-center justify-center text-sm">
-              VI
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-11 h-11 rounded-full bg-[#C44D34]/15 text-[#C44D34] font-bold flex items-center justify-center text-sm shrink-0">
+              {initials}
             </div>
-            <div>
-              <h3 className="text-sm font-bold text-stone-900 dark:text-white">vipin</h3>
-              <p className="text-xs text-stone-500 dark:text-stone-400">
-                vipin@firstdraftstudio.in
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-bold text-stone-900 dark:text-white truncate">
+                  {displayName}
+                </h3>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#C44D34]/10 text-[#C44D34]">
+                  {myRole}
+                </span>
+              </div>
+              <p className="text-xs text-stone-500 dark:text-stone-400 truncate">
+                {displayEmail}
               </p>
             </div>
           </div>
 
           <button
             onClick={onSignOut}
-            className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+            className={`px-3.5 py-2 sm:py-1.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shrink-0 cursor-pointer ${
               isDark
                 ? 'border-stone-700 text-stone-300 hover:bg-stone-800'
                 : 'border-stone-200 text-stone-600 hover:bg-stone-100'
@@ -102,11 +126,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </h3>
             </div>
             {subscription?.isTrial ? (
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold uppercase">
+              <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold uppercase">
                 {subscription.trialDaysLeft}d Trial
               </span>
             ) : (
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-extrabold uppercase">
+              <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-extrabold uppercase">
                 Active Pro
               </span>
             )}
@@ -127,7 +151,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <button
             onClick={onNavigateToBilling}
-            className="w-full mt-3.5 py-2.5 rounded-xl bg-[#C44D34] hover:bg-[#B03E26] text-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs flex items-center justify-center gap-1.5"
+            className="w-full mt-3.5 py-2.5 rounded-xl bg-[#C44D34] hover:bg-[#B03E26] text-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <span>Manage Plans & Pricing</span>
             <ChevronRight className="w-4 h-4" />
@@ -147,7 +171,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="grid grid-cols-3 gap-2">
             <button
               onClick={() => onSetTheme('light')}
-              className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center gap-2 transition-all ${
+              className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center gap-2 transition-all cursor-pointer ${
                 theme === 'light'
                   ? 'border-[#C44D34] bg-[#C44D34]/5 text-[#C44D34]'
                   : isDark
@@ -161,7 +185,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             <button
               onClick={() => onSetTheme('dark')}
-              className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center gap-2 transition-all ${
+              className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center gap-2 transition-all cursor-pointer ${
                 theme === 'dark'
                   ? 'border-[#C44D34] bg-[#C44D34]/5 text-[#C44D34]'
                   : isDark
@@ -175,7 +199,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             <button
               onClick={() => onSetTheme('system')}
-              className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center gap-2 transition-all ${
+              className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center gap-2 transition-all cursor-pointer ${
                 theme === 'system'
                   ? 'border-[#C44D34] bg-[#C44D34]/5 text-[#C44D34]'
                   : isDark
@@ -203,12 +227,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
 
           <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed mb-4">
-            Invite your team — everyone you invite shares this private workspace. Other workspaces can't see your clients or posts.
+            Invite your team — everyone you invite shares this private workspace. Other workspaces can&apos;t see your clients or posts.
           </p>
 
           <button
             onClick={onNavigateToTeam}
-            className="w-full py-2.5 rounded-xl bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs"
+            className="w-full py-2.5 rounded-xl bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs cursor-pointer"
           >
             Manage team
           </button>
@@ -229,7 +253,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <button
             onClick={onDeleteAccount}
-            className="px-4 py-2 rounded-xl border border-red-200 dark:border-red-950 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+            className="px-4 py-2 rounded-xl border border-red-200 dark:border-red-950 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span>Delete account</span>

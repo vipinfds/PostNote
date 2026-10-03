@@ -319,70 +319,75 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </div>
 
                 {/* 4. Action Buttons */}
-                <div className="col-span-3 flex items-center justify-end gap-1.5 w-full md:w-auto pt-2.5 md:pt-0 border-t md:border-t-0 border-stone-100 dark:border-stone-800/80">
-                  {/* Direct Analytics */}
-                  <button
-                    onClick={() => onSelectClient(client, 'analytics')}
-                    className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                      isDark
-                        ? 'border-[#2C3848] bg-[#161E27] text-stone-300 hover:border-[#C44D34] hover:text-[#C44D34]'
-                        : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-[#C44D34] hover:text-[#C44D34]'
-                    }`}
-                    title={`View ${client.name} Analytics`}
-                  >
-                    <BarChart3 className="w-3.5 h-3.5 text-[#C44D34]" />
-                    <span className="hidden sm:inline">Analytics</span>
-                  </button>
-
-                  {/* Direct Share Portal */}
-                  <button
-                    onClick={() => setSharingClient(client)}
-                    className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                      isDark
-                        ? 'border-[#2C3848] bg-[#161E27] text-stone-300 hover:border-[#C44D34] hover:text-[#C44D34]'
-                        : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-[#C44D34] hover:text-[#C44D34]'
-                    }`}
-                    title={`Share client profile / portal with ${client.name}`}
-                  >
-                    <Share2 className="w-3.5 h-3.5 text-[#C44D34]" />
-                    <span className="hidden sm:inline">Share</span>
-                  </button>
-
-                  {/* + New Post */}
-                  {onNewPostForClient && (
+                <div className="col-span-3 flex items-center justify-between md:justify-end gap-1.5 w-full md:w-auto pt-2.5 md:pt-0 border-t md:border-t-0 border-stone-100 dark:border-stone-800/80">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Direct Analytics */}
                     <button
-                      onClick={() => onNewPostForClient(client.id)}
-                      className="p-1.5 rounded-xl bg-[#181E24] hover:bg-black text-white shrink-0 shadow-xs transition-colors"
-                      title={`Create post for ${client.name}`}
+                      onClick={() => onSelectClient(client, 'analytics')}
+                      className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        isDark
+                          ? 'border-[#2C3848] bg-[#161E27] text-stone-300 hover:border-[#C44D34] hover:text-[#C44D34]'
+                          : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-[#C44D34] hover:text-[#C44D34]'
+                      }`}
+                      title={`View ${client.name} Analytics`}
                     >
-                      <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <BarChart3 className="w-3.5 h-3.5 text-[#C44D34]" />
+                      <span>Analytics</span>
                     </button>
-                  )}
 
-                  {/* Edit */}
-                  <button
-                    onClick={(e) => onEditClient(client, e)}
-                    className="p-1.5 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition-colors rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700/50"
-                    title="Edit client profile"
-                    aria-label={`Edit ${client.name}`}
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
+                    {/* Direct Share Portal */}
+                    <button
+                      onClick={() => setSharingClient(client)}
+                      className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        isDark
+                          ? 'border-[#2C3848] bg-[#161E27] text-stone-300 hover:border-[#C44D34] hover:text-[#C44D34]'
+                          : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-[#C44D34] hover:text-[#C44D34]'
+                      }`}
+                      title={`Share client profile / portal with ${client.name}`}
+                    >
+                      <Share2 className="w-3.5 h-3.5 text-[#C44D34]" />
+                      <span>Share</span>
+                    </button>
 
-                  {/* Delete */}
-                  <button
-                    onClick={(e) => onDeleteClient(client.id, e)}
-                    className="p-1.5 text-stone-400 hover:text-red-500 transition-colors rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700/50"
-                    title="Delete client"
-                    aria-label={`Delete ${client.name}`}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                    {/* + New Post */}
+                    {onNewPostForClient && (
+                      <button
+                        onClick={() => onNewPostForClient(client.id)}
+                        className="px-2.5 py-1.5 rounded-xl bg-[#181E24] hover:bg-black text-white text-xs font-semibold flex items-center gap-1 shrink-0 shadow-xs transition-colors cursor-pointer"
+                        title={`Create post for ${client.name}`}
+                      >
+                        <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span className="md:hidden">Post</span>
+                      </button>
+                    )}
+                  </div>
 
-                  <ChevronRight
-                    onClick={() => onSelectClient(client, 'overview')}
-                    className="w-4 h-4 text-stone-400 group-hover:text-stone-700 dark:group-hover:text-stone-200 cursor-pointer hidden md:block group-hover:translate-x-0.5 transition-transform"
-                  />
+                  <div className="flex items-center gap-1 shrink-0">
+                    {/* Edit */}
+                    <button
+                      onClick={(e) => onEditClient(client, e)}
+                      className="p-2 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition-colors rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700/50 cursor-pointer"
+                      title="Edit client profile"
+                      aria-label={`Edit ${client.name}`}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Delete */}
+                    <button
+                      onClick={(e) => onDeleteClient(client.id, e)}
+                      className="p-2 text-stone-400 hover:text-red-500 transition-colors rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700/50 cursor-pointer"
+                      title="Delete client"
+                      aria-label={`Delete ${client.name}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+
+                    <ChevronRight
+                      onClick={() => onSelectClient(client, 'overview')}
+                      className="w-4 h-4 text-stone-400 group-hover:text-stone-700 dark:group-hover:text-stone-200 cursor-pointer hidden md:block group-hover:translate-x-0.5 transition-transform"
+                    />
+                  </div>
                 </div>
               </div>
             );
