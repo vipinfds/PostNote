@@ -1,69 +1,62 @@
-# Firebase Auth Error Handling & Firestore State Synchronization Plan
+# Fix GitHub Pages Deployment (`https://vipinfds.github.io/PostNote/`) & Standalone Static Mode
 
-This plan completes the end-to-end synchronization between **Firebase Authentication** (both Google Sign-In and Email/Password Sign-In & Sign-Up), the **React application session state (`onAuthStateChanged`)**, and **Cloud Firestore** security rules and document helpers.
+This plan resolves why `https://vipinfds.github.io/PostNote/` stopped loading after `firebase-applet-config.json` was added to `.gitignore`, and makes the app work 100% seamlessly on both **AI Studio / Full-Stack Node** and **GitHub Pages (Static Hosting)**.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
 > Confirmed decisions from your selections:
-> - **Confirmed Decision 1 (Immediate Firestore Sync for Email/Password & Google Users)**: Allow all authenticated Firebase users (both Google OAuth and newly created Email/Password accounts) to create and sync their isolated workspaces, clients, posts, and team members in Firestore immediately without being blocked by `emailVerified === false`.
-> - **Confirmed Decision 2 (Automatic Session Restoration via `onAuthStateChanged`)**: When `onAuthStateChanged` detects an active Firebase Auth user on page load or tab refresh, automatically restore `currentUser`, hydrate their workspaces from `/api/auth/signin`, and synchronize their Firestore workspace document.
+> - **Confirmed Decision 1 (Crash-Safe Firebase Init + Standalone GitHub Pages Mode)**: Guard Firebase initialization so missing `firebase-applet-config.json` in GitHub Actions never crashes the app at startup (`auth/invalid-api-key`), and provide a complete client-side multi-tenant fallback when `/api/*` backend routes return `404` on GitHub Pages.
+> - **Confirmed Decision 2 (Default FirstDraft Studio Portfolio on GitHub Pages)**: When signing into `vipin@firstdraftstudio.in` on GitHub Pages, automatically hydrate the full **FirstDraft Studio** portfolio (`INITIAL_POSTS`, `INITIAL_CLIENTS`, `INITIAL_CAMPAIGNS`, `INITIAL_IDEAS`) and persist changes in `localStorage`.
 
 ---
 
-## 1. Overview & Key Alignment Fixes
+## 1. Root Causes Why `https://vipinfds.github.io/PostNote/` Broke
 
-1. **Support Both Google and Email/Password Users in Firestore Sync**:
-   - Currently, `ensureFirestoreWorkspace`, `syncClientToFirestore`, `syncPostToFirestore`, `deletePostFromFirestore`, `syncMemberToFirestore`, and `deleteMemberFromFirestore` exit early if `!user.emailVerified`, which skips Firestore writes for Email/Password accounts because `createUserWithEmailAndPassword` initializes `emailVerified` as `false`.
-   - Update both the client-side sync guards and `firestore.rules` (`isAuthenticatedUser()`) so any authenticated user with a valid UID and email (`request.auth != null && request.auth.token.email is string`) can read and write their own isolated workspace documents, while keeping `isBootstrappedAdmin()` strictly requiring `request.auth.token.email_verified == true`.
-2. **Canonical Workspace ID Consistency (`makeWorkspaceIdForEmail`)**:
-   - Standardize the workspace ID generator across `App.tsx`, `SignInView.tsx`, `firebase.ts`, and `server.ts` so `vipin@firstdraftstudio.in` always resolves to `ws_vipin` and any other email resolves to `ws_<sanitized_email>`, preventing mismatched workspace paths during `onAuthStateChanged`.
-3. **Full `onAuthStateChanged` Session Hydration & Error Handling**:
-   - Track `isAuthReady` in `App.tsx` and automatically restore `currentUser` + workspaces when Firebase Auth has an active session, even if `localStorage` was cleared.
-   - Ensure `ensureFirestoreWorkspace` and all Firestore sync calls use `handleFirestoreError` for structured diagnostic logging while gracefully handling network or rule errors in the UI so user workflows are never interrupted.
+1. **Top-Level `getAuth(app)` Crash When `firebase-applet-config.json` Is Gitignored**:
+   - Earlier, `firebase-applet-config.json` was added to `.gitignore` so GitHub’s secret scanner wouldn't block your push.
+   - However, when GitHub Actions built the app for GitHub Pages (`deploy-pages.yml`), `localFirebaseConfig` was `{}` and `resolvedFirebaseConfig.apiKey` evaluated to `""` (empty string).
+   - Calling `export const auth = getAuth(app)` at module import time with an empty `apiKey` immediately throws an uncaught `FirebaseError: Firebase: Error (auth/invalid-api-key)` before React even mounts—resulting in a **blank white screen** on `https://vipinfds.github.io/PostNote/`.
+2. **Static Hosting on GitHub Pages Has No Express Backend (`/api/auth/*`, `/api/sync`)**:
+   - GitHub Pages serves static files from `./dist` and does not run `server.ts`. Any `fetch('/api/auth/signin')` or `fetch('/api/sync')` on `vipinfds.github.io` returns a `404` HTML page from GitHub Pages.
+3. **GitHub Pages SPA Routing (`404.html`) & Build Artifact Hygiene**:
+   - `npm run build` previously bundled `dist/server.cjs` directly inside `./dist`, which got uploaded to GitHub Pages, and lacked a `404.html` SPA fallback for deep links (like client portals).
 
 ---
 
-## 2. Technical Architecture & Data Flow
+## 2. Technical Architecture & Dual-Mode Design
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Firebase Auth (Google & Email/Pass)                  │
-│  • signInWithPopup / signInWithEmailAndPassword / createUserWithEmail   │
-│  • Emits auth state via onAuthStateChanged(auth, callback)              │
-└───────────────────────────────────┬─────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│             App.tsx Auth State & Session Synchronizer                   │
-│  1. Canonical Workspace ID: makeWorkspaceIdForEmail(email)              │
-│  2. If fbUser is signed in & currentUser is null:                       │
-│     • Hydrates user & workspaces via /api/auth/signin                   │
-│     • Sets currentUser, activeWorkspaceId, and persists session         │
-│  3. Calls ensureFirestoreWorkspace(wsId, studioName)                    │
-└───────────────────────────────────┬─────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                Cloud Firestore (/workspaces/{workspaceId})              │
-│  • Guarded by isAuthenticatedUser() + ownerId / member RBAC checks      │
-│  • Syncs Workspace, Clients, Posts, and Team Members in real time       │
-│  • Structured error reporting via handleFirestoreError                  │
-└─────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     PostNote Application Boot                            │
+│  1. Safe Firebase Initializer (src/firebase.ts)                          │
+│     • Checks if apiKey is non-empty before calling getAuth/getFirestore  │
+│     • If apiKey is absent (e.g. unconfigured GitHub Actions build),      │
+│       exports safe no-op Auth/Firestore adapters — ZERO startup crash!   │
+└────────────────────────────────────┬─────────────────────────────────────┘
+                                     │
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│           Dual-Runtime Auth & Workspace Sync Engine                      │
+│  ┌────────────────────────────────┐  ┌────────────────────────────────┐  │
+│  │  Full-Stack Mode (AI Studio)   │  │  Static Mode (GitHub Pages)    │  │
+│  │  • Uses /api/auth/* & /api/sync│  │  • Detects 404/non-JSON on /api│  │
+│  │  • Syncs live with server.ts   │  │  • Uses persistent localStorage│  │
+│  │    and Cloud Firestore         │  │  • Loads FirstDraft Studio data│  │
+│  └────────────────────────────────┘  └────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Planned Component & Rule Updates
+## 3. Planned Fixes
 
-1. **Firebase Service Layer**:
-   - Export `makeWorkspaceIdForEmail(email)` so `App.tsx` and `SignInView.tsx` compute the exact same workspace ID as the backend.
-   - Update `ensureFirestoreWorkspace`, `syncClientToFirestore`, `syncPostToFirestore`, `deletePostFromFirestore`, `syncMemberToFirestore`, and `deleteMemberFromFirestore` to allow any authenticated user (`if (!user || !user.email) return;`) instead of blocking Email/Password users on `!user.emailVerified`.
-   - Ensure `syncPostToFirestore` also ensures the parent client document exists in Firestore before creating a post so the relational `exists(.../clients/$(incoming().clientId))` rule in `firestore.rules` always succeeds.
-2. **Application Auth State (`onAuthStateChanged` in `App.tsx`)**:
-   - Upgrade the `onAuthStateChanged` listener to use `makeWorkspaceIdForEmail(cleanEmail)`, automatically restore `currentUser` and `activeWorkspaceId` if a Firebase Auth session is active on reload, and synchronize with `/api/auth/signin` and `ensureFirestoreWorkspace`.
-3. **Authentication View (`SignInView.tsx`)**:
-   - Map all Firebase Auth error codes (`auth/invalid-credential`, `auth/email-already-in-use`, `auth/wrong-password`, `auth/user-not-found`, `auth/weak-password`, `auth/too-many-requests`, `auth/popup-blocked`, `auth/unauthorized-domain`) to clear, actionable messages.
-   - If `authMode === 'signup'` encounters `auth/email-already-in-use` in Firebase Auth, automatically attempt `firebaseSignInWithEmail` with the provided password so the user's `firebaseUid` is still linked for Firestore sync.
-4. **Firestore Security Rules (`firestore.rules`)**:
-   - Allow authenticated Email/Password and Google users (`request.auth != null && request.auth.token.email is string`) to manage their own `/workspaces/{workspaceId}` and subcollections (`clients`, `posts`, `members`) while preserving strict `ownerId == request.auth.uid` ownership checks and keeping `email_verified == true` on `isBootstrappedAdmin()`.
+1. **Crash-Safe Firebase Initialization (`src/firebase.ts`)**:
+   - Check `Boolean(resolvedFirebaseConfig.apiKey)` before calling `initializeApp`, `getAuth`, and `getFirestore`.
+   - Export a safe `subscribeToAuthChanges(callback)` helper instead of calling `onAuthStateChanged(auth, ...)` directly on an uninitialized `auth` instance, so the app boots cleanly even if built in GitHub Actions without `firebase-applet-config.json`.
+   - Support passing `VITE_FIREBASE_API_KEY` in `.github/workflows/deploy-pages.yml` (via GitHub Actions Secrets if configured) while working 100% without it if not set.
+2. **Standalone Static Host Fallback for Auth & Workspace Sync (`src/App.tsx` & `src/components/SignInView.tsx`)**:
+   - In `SignInView.tsx`: If `/api/auth/signin` or `/api/auth/signup` returns non-JSON or `404` (as happens on `vipinfds.github.io/PostNote/`), automatically authenticate against the browser's persistent multi-tenant store (`postnote_static_tenants_v1`), pre-seeded with `vipin@firstdraftstudio.in` (`postnote2026`) and the full **FirstDraft Studio** dataset.
+   - In `App.tsx`: Upgrade `fetchServerSync` and the save `useEffect` so when `/api/sync` is unavailable (on GitHub Pages), workspace data (`posts`, `clients`, `campaigns`, `ideas`, `teamMembers`) is loaded from and persisted to `localStorage` scoped by `workspaceId` (`ws_vipin` pre-populated with `INITIAL_POSTS`, `INITIAL_CLIENTS`, `INITIAL_CAMPAIGNS`, `INITIAL_IDEAS`).
+3. **GitHub Pages Build & Workflow Optimization (`vite.config.ts` & `.github/workflows/deploy-pages.yml`)**:
+   - Ensure `.github/workflows/deploy-pages.yml` builds the Vite SPA cleanly (`npx vite build`) and copies `dist/index.html` to `dist/404.html` so direct URL refreshes and Client Portal links work on `https://vipinfds.github.io/PostNote/`.
