@@ -96,3 +96,37 @@ export function parseInputDate(displayStr: string): string {
     return displayStr;
   }
 }
+
+// Get current local date as "YYYY-MM-DD" synced with user's system clock
+export function getTodayDateStr(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Get current local year, 0-indexed month, day, and short label ("Oct 3")
+export function getTodayParts(): {
+  year: number;
+  monthIndex: number;
+  day: number;
+  dateStr: string;
+  shortLabel: string;
+} {
+  const now = new Date();
+  const year = now.getFullYear();
+  const monthIndex = now.getMonth();
+  const day = now.getDate();
+  const month = String(monthIndex + 1).padStart(2, '0');
+  const dayPadded = String(day).padStart(2, '0');
+  const shortMonth = now.toLocaleDateString('en-US', { month: 'short' });
+  return {
+    year,
+    monthIndex,
+    day,
+    dateStr: `${year}-${month}-${dayPadded}`,
+    shortLabel: `${shortMonth} ${day}`,
+  };
+}
+

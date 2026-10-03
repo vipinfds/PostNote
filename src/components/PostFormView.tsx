@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Post, Client, Campaign, PostCategory, PostPlatform, PostStatus, MediaItem } from '../types';
 import { downloadMediaFile } from '../utils/mediaDownload';
+import { getTodayDateStr, getTodayParts } from '../utils/theme';
 
 interface PostFormViewProps {
   initialPost?: Post | null;
@@ -100,7 +101,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
     initialPost?.campaignId || ''
   );
   const [date, setDate] = useState<string>(
-    initialPost?.date || preselectedDate || '2026-09-20'
+    initialPost?.date || preselectedDate || getTodayDateStr()
   );
   const [status, setStatus] = useState<PostStatus>(
     initialPost?.status || 'Planned'
@@ -141,14 +142,15 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
   const [previewMediaItem, setPreviewMediaItem] = useState<MediaItem | null>(null);
 
   // Date picker popover state
+  const todayParts = getTodayParts();
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [pickerYear, setPickerYear] = useState(() => {
-    const d = initialPost?.date || preselectedDate || '2026-09-20';
-    return parseInt(d.split('-')[0], 10) || 2026;
+    const d = initialPost?.date || preselectedDate || todayParts.dateStr;
+    return parseInt(d.split('-')[0], 10) || todayParts.year;
   });
   const [pickerMonth, setPickerMonth] = useState(() => {
-    const d = initialPost?.date || preselectedDate || '2026-09-20';
-    return (parseInt(d.split('-')[1], 10) || 9) - 1;
+    const d = initialPost?.date || preselectedDate || todayParts.dateStr;
+    return (parseInt(d.split('-')[1], 10) || todayParts.monthIndex + 1) - 1;
   });
 
   const monthNames = [
@@ -655,12 +657,15 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setDate('2026-09-20');
+                      const latest = getTodayParts();
+                      setDate(latest.dateStr);
+                      setPickerYear(latest.year);
+                      setPickerMonth(latest.monthIndex);
                       setIsDatePickerOpen(false);
                     }}
                     className="text-[#C44D34] hover:underline"
                   >
-                    Today (Sep 20)
+                    Today ({todayParts.shortLabel})
                   </button>
                   <button
                     type="button"

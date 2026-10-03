@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for enforcing private workspace isolation with a post-login Workspace Selector screen for multi-workspace team members, full Firebase Auth Sign-Up/Sign-In synchronization, and an inline Today's Schedule card on mobile positioned directly below the Calendar and above the Upcoming Agenda.",
-  "updatedAt":  "2026-10-03T20:22:23.275992943Z",
+  "summary":  "Implementation plan for adding the 'Upcoming' / 'Past' / 'All' date-range filter to both the Home Agenda and Content Queue views (defaulting to Upcoming), restoring the sticky mobile Bottom Navigation Bar alongside the Hamburger Drawer, and optimizing the overall mobile UI across all screens.",
+  "updatedAt":  "2026-10-03T21:08:03.081793169Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

@@ -17,7 +17,7 @@ import {
   ImagePlus,
 } from 'lucide-react';
 import { Post, Client, Campaign, PostStatus } from '../types';
-import { CATEGORY_COLORS, STATUS_STYLES, formatSectionDate } from '../utils/theme';
+import { CATEGORY_COLORS, STATUS_STYLES, formatSectionDate, getTodayDateStr } from '../utils/theme';
 import { downloadMediaFile } from '../utils/mediaDownload';
 
 interface ContentOverviewViewProps {
@@ -55,8 +55,8 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
   const [newCampaignDesc, setNewCampaignDesc] = useState('');
   const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
 
-  // Today reference date: 2026-09-20
-  const todayStr = '2026-09-20';
+  // Today reference date synced with system clock
+  const todayStr = getTodayDateStr();
 
   // Filter posts
   let filteredPosts = posts.filter((p) => {

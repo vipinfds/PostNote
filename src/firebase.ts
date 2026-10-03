@@ -18,11 +18,64 @@ import {
   deleteDoc,
   serverTimestamp,
 } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
 import { Client, Post, TeamMember, WorkspaceRole } from './types';
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+interface FirebaseAppletConfig {
+  apiKey?: string;
+  authDomain?: string;
+  projectId?: string;
+  storageBucket?: string;
+  messagingSenderId?: string;
+  appId?: string;
+  firestoreDatabaseId?: string;
+}
+
+const localConfigModules = (
+  import.meta as unknown as {
+    glob: (
+      pattern: string,
+      options: { eager: boolean; import: string }
+    ) => Record<string, FirebaseAppletConfig>;
+  }
+).glob('../firebase-applet-config.json', { eager: true, import: 'default' });
+
+const localFirebaseConfig: FirebaseAppletConfig =
+  Object.values(localConfigModules)[0] || {};
+
+const env =
+  (import.meta as unknown as { env?: Record<string, string | undefined> }).env ||
+  {};
+
+const resolvedFirebaseConfig = {
+  apiKey: env.VITE_FIREBASE_API_KEY || localFirebaseConfig.apiKey || '',
+  authDomain:
+    env.VITE_FIREBASE_AUTH_DOMAIN ||
+    localFirebaseConfig.authDomain ||
+    'gen-lang-client-0534314559.firebaseapp.com',
+  projectId:
+    env.VITE_FIREBASE_PROJECT_ID ||
+    localFirebaseConfig.projectId ||
+    'gen-lang-client-0534314559',
+  storageBucket:
+    env.VITE_FIREBASE_STORAGE_BUCKET ||
+    localFirebaseConfig.storageBucket ||
+    'gen-lang-client-0534314559.firebasestorage.app',
+  messagingSenderId:
+    env.VITE_FIREBASE_MESSAGING_SENDER_ID ||
+    localFirebaseConfig.messagingSenderId ||
+    '215951254221',
+  appId:
+    env.VITE_FIREBASE_APP_ID ||
+    localFirebaseConfig.appId ||
+    '1:215951254221:web:84c4d37d6fcb5aedda3f84',
+  firestoreDatabaseId:
+    env.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
+    localFirebaseConfig.firestoreDatabaseId ||
+    'ai-studio-postnote-9d760058-4b8e-4fe6-91df-425feb1c7ee9',
+};
+
+const app = initializeApp(resolvedFirebaseConfig);
+export const db = getFirestore(app, resolvedFirebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 

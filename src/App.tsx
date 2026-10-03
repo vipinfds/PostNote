@@ -17,6 +17,7 @@ import {
   INITIAL_MEDIA,
 } from './data/initialData';
 import { INITIAL_SUBSCRIPTION_STATE } from './data/pricingData';
+import { getTodayDateStr } from './utils/theme';
 import { Menu, Plus, Building2, Shield, ArrowRight, Lock, Users, LogOut } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
 import {
@@ -638,9 +639,10 @@ export default function App() {
       showToast('Viewers have read-only access');
       return;
     }
+    const todayDate = getTodayDateStr();
     setEditingPost(null);
     setPreselectedClientId(idea.clientId);
-    setPreselectedDate('2026-09-20');
+    setPreselectedDate(todayDate);
     setEditingPost({
       id: '',
       title: idea.title,
@@ -648,7 +650,7 @@ export default function App() {
       category: idea.category,
       clientId: idea.clientId,
       clientName: idea.clientName,
-      date: '2026-09-20',
+      date: todayDate,
       status: 'Planned',
       platform: 'Instagram',
       createdAt: new Date().toISOString(),

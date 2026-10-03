@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -11,7 +11,12 @@ import {
   Users,
 } from 'lucide-react';
 import { Post, Client, PostCategory, SubscriptionState } from '../types';
-import { CATEGORY_COLORS, STATUS_STYLES, formatLongDate } from '../utils/theme';
+import {
+  CATEGORY_COLORS,
+  STATUS_STYLES,
+  formatLongDate,
+  getTodayParts,
+} from '../utils/theme';
 import { downloadMediaFile } from '../utils/mediaDownload';
 
 interface HomeViewProps {
@@ -33,12 +38,34 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onEditPost,
   isDark,
 }) => {
-  // Default to September 2026 and Today (2026-09-20) so Today's Schedule is populated immediately
-  const TODAY_REF_DATE = '2026-09-20';
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [currentMonth, setCurrentMonth] = useState(8); // 0-indexed: 8 is September
-  const [selectedDayDate, setSelectedDayDate] = useState<string>(TODAY_REF_DATE);
+  // Sync with actual real-time local date and automatically roll over if date changes
+  const [todayParts, setTodayParts] = useState(() => getTodayParts());
+  const TODAY_REF_DATE = todayParts.dateStr;
+  const [currentYear, setCurrentYear] = useState(() => todayParts.year);
+  const [currentMonth, setCurrentMonth] = useState(() => todayParts.monthIndex);
+  const [selectedDayDate, setSelectedDayDate] = useState<string>(() => todayParts.dateStr);
   const [selectedClientId, setSelectedClientId] = useState<string>('ALL');
+
+  useEffect(() => {
+    const syncClock = () => {
+      const latest = getTodayParts();
+      setTodayParts((prev) => {
+        if (prev.dateStr !== latest.dateStr) {
+          setSelectedDayDate((sel) => (sel === prev.dateStr ? latest.dateStr : sel));
+          setCurrentYear(latest.year);
+          setCurrentMonth(latest.monthIndex);
+          return latest;
+        }
+        return prev;
+      });
+    };
+    const interval = setInterval(syncClock, 60_000);
+    window.addEventListener('focus', syncClock);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', syncClock);
+    };
+  }, []);
 
   // Month navigation
   const prevMonth = () => {
@@ -60,9 +87,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
   };
 
   const jumpToToday = () => {
-    setCurrentYear(2026);
-    setCurrentMonth(8); // September 2026
-    setSelectedDayDate(TODAY_REF_DATE);
+    const latest = getTodayParts();
+    setTodayParts(latest);
+    setCurrentYear(latest.year);
+    setCurrentMonth(latest.monthIndex);
+    setSelectedDayDate(latest.dateStr);
   };
 
   const monthNames = [
@@ -107,7 +136,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     const mStr = String(currentMonth + 1).padStart(2, '0');
     const dStr = String(i).padStart(2, '0');
     const dateStr = `${currentYear}-${mStr}-${dStr}`;
-    const isToday = currentYear === 2026 && currentMonth === 8 && i === 20;
+    const isToday = dateStr === TODAY_REF_DATE;
     calendarDays.push({
       dayNum: i,
       monthOffset: 0,
