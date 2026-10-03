@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Film, Image as ImageIcon, Play, Download, ImagePlus, Sparkles, Users } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Film,
+  Play,
+  Download,
+  ImagePlus,
+  Sparkles,
+  Users,
+} from 'lucide-react';
 import { Post, Client, PostCategory, SubscriptionState } from '../types';
 import { CATEGORY_COLORS, STATUS_STYLES, formatLongDate } from '../utils/theme';
 import { downloadMediaFile } from '../utils/mediaDownload';
@@ -23,11 +33,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onEditPost,
   isDark,
 }) => {
-  // Calendar month state (default to September 2026 as in the video)
+  // Default to September 2026 and Today (2026-09-20) so Today's Schedule is populated immediately
+  const TODAY_REF_DATE = '2026-09-20';
   const [currentYear, setCurrentYear] = useState(2026);
   const [currentMonth, setCurrentMonth] = useState(8); // 0-indexed: 8 is September
-  const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'agenda'>('calendar');
-  const [selectedDayDate, setSelectedDayDate] = useState<string | null>(null);
+  const [selectedDayDate, setSelectedDayDate] = useState<string>(TODAY_REF_DATE);
   const [selectedClientId, setSelectedClientId] = useState<string>('ALL');
 
   // Month navigation
@@ -52,7 +62,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const jumpToToday = () => {
     setCurrentYear(2026);
     setCurrentMonth(8); // September 2026
-    setSelectedDayDate('2026-09-20');
+    setSelectedDayDate(TODAY_REF_DATE);
   };
 
   const monthNames = [
@@ -61,10 +71,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   ];
 
   // Generate calendar grid days (Monday-first)
-  // First day of current month
   const firstDayObj = new Date(currentYear, currentMonth, 1);
-  // getDay(): 0 = Sun, 1 = Mon ... 6 = Sat
-  // We want Monday = 0, Sunday = 6
   let firstDayIndex = firstDayObj.getDay() - 1;
   if (firstDayIndex === -1) firstDayIndex = 6;
 
@@ -110,7 +117,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
   }
 
   // Next month leading days (fill up to 35 or 42 cells)
-  const remaining = 35 - calendarDays.length > 0 ? 35 - calendarDays.length : (42 - calendarDays.length > 0 ? 42 - calendarDays.length : 0);
+  const remaining =
+    35 - calendarDays.length > 0
+      ? 35 - calendarDays.length
+      : 42 - calendarDays.length > 0
+      ? 42 - calendarDays.length
+      : 0;
   for (let i = 1; i <= remaining; i++) {
     const nextM = currentMonth === 11 ? 0 : currentMonth + 1;
     const nextY = currentMonth === 11 ? currentYear + 1 : currentYear;
@@ -140,10 +152,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
     return filteredPosts.filter((p) => p.date === dateStr);
   };
 
-  const selectedDayPosts = selectedDayDate ? getPostsForDate(selectedDayDate) : [];
+  const activeScheduleDate = selectedDayDate || TODAY_REF_DATE;
+  const isTodaySelected = activeScheduleDate === TODAY_REF_DATE;
+  const selectedDayPosts = getPostsForDate(activeScheduleDate);
 
   // Filter upcoming posts for Agenda (today 2026-09-20 and future dates only, excluding past dates)
-  const TODAY_REF_DATE = '2026-09-20';
   const upcomingAgendaPosts = filteredPosts
     .filter((p) => p.date >= TODAY_REF_DATE)
     .slice()
@@ -291,7 +304,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
       </div>
 
-      {/* 1. Calendar View Section */}
+      {/* 1. Calendar View + Inline Today's Schedule (On Mobile: stacked after Calendar and above Agenda; On Desktop: side-by-side) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Left Column (lg:col-span-7): Calendar Grid & Legend */}
         <div className="lg:col-span-7 space-y-4">
@@ -320,7 +333,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <div className="grid grid-cols-7 gap-y-1 pt-1.5">
               {calendarDays.map((cell, idx) => {
                 const dayPosts = getPostsForDate(cell.dateStr);
-                const isSelected = selectedDayDate === cell.dateStr;
+                const isSelected = activeScheduleDate === cell.dateStr;
                 const isOffMonth = cell.monthOffset !== 0;
 
                 return (
@@ -339,12 +352,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     {/* Day number with circular today badge */}
                     <div className="w-6 h-6 flex items-center justify-center">
                       {cell.isToday ? (
-                        <span className="w-6 h-6 rounded-full bg-[#181E24] dark:bg-white text-white dark:text-[#181E24] font-bold text-xs flex items-center justify-center shadow-xs">
+                        <span className="w-6 h-6 rounded-full bg-[#181E24] dark:bg-white text-white dark:text-[#181E24] font-bold text-xs flex items-center justify-center shadow-xs tabular-nums">
                           {cell.dayNum}
                         </span>
                       ) : (
                         <span
-                          className={`text-xs font-medium ${
+                          className={`text-xs font-medium tabular-nums ${
                             isOffMonth
                               ? 'text-stone-300 dark:text-stone-600'
                               : isDark
@@ -399,19 +412,21 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         </div>
 
-        {/* Right Column (lg:col-span-5 hidden lg:block): Desktop Side Schedule */}
-        <div className="hidden lg:block lg:col-span-5 space-y-4">
+        {/* Today’s Schedule Card (Visible on BOTH Mobile and Desktop: right after Calendar and above Agenda on mobile) */}
+        <div id="todays-schedule-section" className="lg:col-span-5 space-y-4">
           <div
-            className={`p-4 rounded-2xl border ${
+            className={`p-4 rounded-2xl border shadow-xs ${
               isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
             }`}
           >
             <div className="flex items-center justify-between pb-3 border-b border-stone-200 dark:border-stone-800">
               <div>
                 <h3 className="text-sm font-bold tracking-tight">
-                  {selectedDayDate ? formatLongDate(selectedDayDate) : 'Today’s Schedule'}
+                  {isTodaySelected
+                    ? `Today’s Schedule • ${formatLongDate(activeScheduleDate)}`
+                    : formatLongDate(activeScheduleDate)}
                 </h3>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 tabular-nums">
                   {selectedDayPosts.length} post{selectedDayPosts.length === 1 ? '' : 's'} scheduled
                   {selectedClientObj ? ` • ${selectedClientObj.name}` : ''}
                 </span>
@@ -420,11 +435,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <button
                 onClick={() =>
                   onOpenNewPost(
-                    selectedDayDate || undefined,
+                    activeScheduleDate,
                     selectedClientId !== 'ALL' ? selectedClientId : undefined
                   )
                 }
-                className="px-2.5 py-1 text-xs font-bold rounded-lg bg-[#C44D34] text-white hover:bg-[#B33E26] shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-[#C44D34] text-white hover:bg-[#B33E26] shadow-xs transition-colors flex items-center gap-1 cursor-pointer whitespace-nowrap"
               >
                 <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                 <span>Schedule</span>
@@ -434,15 +449,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
             {/* Day's posts */}
             <div className="space-y-2.5 mt-3 max-h-[380px] overflow-y-auto pr-1">
               {selectedDayPosts.length === 0 ? (
-                <div className="text-center py-10">
+                <div className="text-center py-8">
                   <p className="text-xs text-stone-400">
-                    No posts queued for {selectedDayDate ? formatLongDate(selectedDayDate) : 'today'}
+                    No posts queued for {isTodaySelected ? 'today' : formatLongDate(activeScheduleDate)}
                     {selectedClientObj ? ` (${selectedClientObj.name})` : ''}.
                   </p>
                   <button
                     onClick={() =>
                       onOpenNewPost(
-                        selectedDayDate || undefined,
+                        activeScheduleDate,
                         selectedClientId !== 'ALL' ? selectedClientId : undefined
                       )
                     }
@@ -475,10 +490,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
                           <span
                             className="font-bold text-[9px] uppercase tracking-wider"
                             style={{ color: catStyle.text }}
-                          />
-                          <span
-                            className="font-bold text-[9px] uppercase tracking-wider"
-                            style={{ color: catStyle.text }}
                           >
                             {post.category}
                           </span>
@@ -499,6 +510,76 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       <p className="text-[11px] text-stone-500 line-clamp-1 mt-0.5">
                         {post.caption}
                       </p>
+
+                      {/* Attached Media Previews inside Today's Schedule */}
+                      {((post.media && post.media.length > 0) || post.mediaUrl) && (
+                        <div className="mt-2 flex items-center justify-between pt-2 border-t border-stone-200/60 dark:border-stone-800">
+                          <div className="flex items-center gap-1.5 overflow-x-auto">
+                            {post.media && post.media.length > 0 ? (
+                              post.media.slice(0, 3).map((m, idx) => (
+                                <div
+                                  key={m.id || idx}
+                                  className="relative w-12 h-9 rounded-md bg-stone-900 overflow-hidden shrink-0 border border-stone-200 dark:border-stone-700"
+                                >
+                                  {m.type === 'video' ? (
+                                    <div className="w-full h-full relative">
+                                      {m.thumbnailUrl ? (
+                                        <img
+                                          src={m.thumbnailUrl}
+                                          alt={m.title}
+                                          className="w-full h-full object-cover"
+                                          referrerPolicy="no-referrer"
+                                        />
+                                      ) : (
+                                        <div className="w-full h-full bg-stone-800 flex items-center justify-center">
+                                          <Film className="w-3.5 h-3.5 text-stone-400" />
+                                        </div>
+                                      )}
+                                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                                        <Play className="w-2.5 h-2.5 fill-white text-white" />
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <img
+                                      src={m.url || m.thumbnailUrl}
+                                      alt={m.title}
+                                      className="w-full h-full object-cover"
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  )}
+                                </div>
+                              ))
+                            ) : post.mediaUrl ? (
+                              <div className="relative w-12 h-9 rounded-md bg-stone-900 overflow-hidden shrink-0 border border-stone-200 dark:border-stone-700">
+                                <img
+                                  src={post.mediaUrl}
+                                  alt={post.title}
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const targetUrl =
+                                post.media?.[0]?.url ||
+                                post.media?.[0]?.thumbnailUrl ||
+                                post.mediaUrl ||
+                                '';
+                              downloadMediaFile(targetUrl, post.title);
+                            }}
+                            className="text-[10px] font-bold text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer shrink-0 ml-2"
+                            title="Download media file"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>Download</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })
@@ -508,7 +589,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
       </div>
 
-      {/* 2. Agenda Section Directly Below Calendar View (Upcoming Posts Only, Filtered by Selected Client) */}
+      {/* 2. Agenda Section Directly Below Calendar & Today's Schedule (Upcoming Posts Only, Filtered by Selected Client) */}
       <div className="mt-7">
         <div className="flex items-center justify-between border-b border-stone-300/70 dark:border-stone-800 mb-4 px-2">
           <div className="flex items-center gap-2 pb-2.5 relative">
@@ -518,7 +599,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             >
               AGENDA • {selectedClientObj ? `${selectedClientObj.name} (UPCOMING)` : 'UPCOMING POSTS'}
             </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#C44D34]/10 text-[#C44D34]">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#C44D34]/10 text-[#C44D34] tabular-nums">
               {upcomingAgendaPosts.length} upcoming
             </span>
             <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#C44D34] rounded-full" />
@@ -538,7 +619,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               type="button"
               onClick={() =>
                 onOpenNewPost(
-                  selectedDayDate || undefined,
+                  activeScheduleDate,
                   selectedClientId !== 'ALL' ? selectedClientId : undefined
                 )
               }
@@ -574,7 +655,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       {post.clientName}
                     </span>
                   </div>
-                  <span className="text-[10px] uppercase font-bold text-stone-400">
+                  <span className="text-[10px] uppercase font-bold text-stone-400 tabular-nums">
                     {post.date}
                   </span>
                 </div>
@@ -588,14 +669,18 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 {/* Media Preview or Add Media */}
                 {((post.media && post.media.length > 0) || post.mediaUrl) ? (
                   <div className="mt-2.5 pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between">
-                    <span className="text-[10px] text-stone-400 font-medium">
-                      {post.media?.length || 1} asset{((post.media?.length || 1) > 1) ? 's' : ''} attached
+                    <span className="text-[10px] text-stone-400 font-medium tabular-nums">
+                      {post.media?.length || 1} asset{(post.media?.length || 1) > 1 ? 's' : ''} attached
                     </span>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        const targetUrl = post.media?.[0]?.url || post.media?.[0]?.thumbnailUrl || post.mediaUrl || '';
+                        const targetUrl =
+                          post.media?.[0]?.url ||
+                          post.media?.[0]?.thumbnailUrl ||
+                          post.mediaUrl ||
+                          '';
                         downloadMediaFile(targetUrl, post.title);
                       }}
                       className="text-[10px] font-bold text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer"
@@ -632,7 +717,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         id="fab-new-post"
         onClick={() =>
           onOpenNewPost(
-            selectedDayDate || undefined,
+            activeScheduleDate,
             selectedClientId !== 'ALL' ? selectedClientId : undefined
           )
         }
@@ -641,207 +726,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
       >
         <Plus className="w-7 h-7 stroke-[2.5]" />
       </button>
-
-      {/* Day Details Bottom Sheet Modal (as in video 00:09 - 00:14) */}
-      {selectedDayDate && (
-        <div
-          id="day-bottom-sheet-backdrop"
-          onClick={() => setSelectedDayDate(null)}
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] flex flex-col justify-end animate-fade-in"
-        >
-          <div
-            id="day-bottom-sheet"
-            onClick={(e) => e.stopPropagation()}
-            className={`w-full max-w-md mx-auto rounded-t-3xl border-t px-5 pt-3 pb-8 max-h-[75vh] overflow-y-auto animate-slide-up shadow-2xl transition-colors ${
-              isDark
-                ? 'bg-[#181F26] border-[#2E3A47] text-white'
-                : 'bg-[#FAF7F2] border-[#E8E3DA] text-[#1E252B]'
-            }`}
-          >
-            {/* Top drag handle */}
-            <div className="w-12 h-1.5 bg-stone-300 dark:bg-stone-700 rounded-full mx-auto mb-4" />
-
-            {/* Header: Date + Count */}
-            <div className="flex items-center justify-between pb-3 border-b border-stone-200 dark:border-stone-800">
-              <h3 className="text-base font-bold tracking-tight">
-                {formatLongDate(selectedDayDate)}
-              </h3>
-              <span className="text-xs font-bold uppercase tracking-widest text-stone-500 dark:text-stone-400">
-                {selectedDayPosts.length} POST{selectedDayPosts.length === 1 ? '' : 'S'}
-                {selectedClientObj ? ` • ${selectedClientObj.name}` : ''}
-              </span>
-            </div>
-
-            {/* Post Cards */}
-            <div className="space-y-3 mt-4">
-              {selectedDayPosts.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-xs text-stone-500">
-                    No posts scheduled for this date
-                    {selectedClientObj ? ` (${selectedClientObj.name})` : ''}.
-                  </p>
-                  <button
-                    onClick={() => {
-                      onOpenNewPost(
-                        selectedDayDate,
-                        selectedClientId !== 'ALL' ? selectedClientId : undefined
-                      );
-                      setSelectedDayDate(null);
-                    }}
-                    className="mt-3 px-4 py-2 text-xs font-bold rounded-xl bg-[#C44D34] text-white hover:bg-[#B33E26] shadow-xs cursor-pointer"
-                  >
-                    + Schedule Post for this day
-                  </button>
-                </div>
-              ) : (
-                selectedDayPosts.map((post) => {
-                  const catStyle = CATEGORY_COLORS[post.category] || CATEGORY_COLORS.POST;
-                  const statStyle = STATUS_STYLES[post.status] || STATUS_STYLES.Planned;
-
-                  return (
-                    <div
-                      key={post.id}
-                      onClick={() => {
-                        onEditPost(post);
-                        setSelectedDayDate(null);
-                      }}
-                      className={`p-4 rounded-2xl border shadow-xs cursor-pointer hover:border-[#C44D34] transition-all ${
-                        isDark
-                          ? 'bg-[#202832] border-[#2C3744]'
-                          : 'bg-white border-[#E8E4DC]'
-                      }`}
-                    >
-                      {/* Meta header */}
-                      <div className="flex items-center justify-between text-xs mb-1">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="font-bold text-[10px] tracking-wider uppercase px-1.5 py-0.5 rounded"
-                            style={{
-                              color: catStyle.text,
-                              backgroundColor: catStyle.bg,
-                            }}
-                          >
-                            {post.category}
-                          </span>
-                          <span className="text-stone-600 dark:text-stone-300 font-medium text-xs">
-                            {post.clientName}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-stone-400 font-medium">
-                          {post.platform}
-                        </span>
-                      </div>
-
-                      {/* Post Title */}
-                      <h4 className="text-sm font-bold text-stone-900 dark:text-white mt-1">
-                        {post.title}
-                      </h4>
-
-                      {/* Caption */}
-                      <p className="text-xs text-stone-600 dark:text-stone-400 line-clamp-2 mt-1">
-                        {post.caption}
-                      </p>
-
-                      {/* Attached Media Previews */}
-                      {((post.media && post.media.length > 0) || post.mediaUrl) && (
-                        <div className="mt-2.5 flex items-center gap-2 overflow-x-auto pb-1">
-                          {post.media && post.media.length > 0 ? (
-                            post.media.slice(0, 3).map((m, idx) => (
-                              <div
-                                key={m.id || idx}
-                                className="relative w-16 h-12 rounded-lg bg-stone-900 overflow-hidden shrink-0 border border-stone-200 dark:border-stone-700"
-                              >
-                                {m.type === 'video' ? (
-                                  <div className="w-full h-full relative">
-                                    {m.thumbnailUrl ? (
-                                      <img
-                                        src={m.thumbnailUrl}
-                                        alt={m.title}
-                                        className="w-full h-full object-cover"
-                                        referrerPolicy="no-referrer"
-                                      />
-                                    ) : (
-                                      <div className="w-full h-full bg-stone-800 flex items-center justify-center">
-                                        <Film className="w-4 h-4 text-stone-400" />
-                                      </div>
-                                    )}
-                                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                                      <Play className="w-3 h-3 fill-white text-white" />
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <img
-                                    src={m.url || m.thumbnailUrl}
-                                    alt={m.title}
-                                    className="w-full h-full object-cover"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                )}
-                              </div>
-                            ))
-                          ) : post.mediaUrl ? (
-                            <div className="relative w-16 h-12 rounded-lg bg-stone-900 overflow-hidden shrink-0 border border-stone-200 dark:border-stone-700">
-                              <img
-                                src={post.mediaUrl}
-                                alt={post.title}
-                                className="w-full h-full object-cover"
-                                referrerPolicy="no-referrer"
-                              />
-                            </div>
-                          ) : null}
-                          {post.media && post.media.length > 3 && (
-                            <span className="text-[10px] font-semibold text-stone-400">
-                              +{post.media.length - 3}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Status Tag & Download / Add Media */}
-                      <div className="mt-3 flex items-center justify-between">
-                        <span
-                          className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md ${statStyle.badge}`}
-                        >
-                          {statStyle.text}
-                        </span>
-
-                        {((post.media && post.media.length > 0) || post.mediaUrl) ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const targetUrl = post.media?.[0]?.url || post.media?.[0]?.thumbnailUrl || post.mediaUrl || '';
-                              downloadMediaFile(targetUrl, post.title);
-                            }}
-                            className="flex items-center gap-1 text-[11px] font-bold text-stone-600 dark:text-stone-300 hover:text-[#C44D34] transition-colors cursor-pointer"
-                            title="Download media asset to device"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>Download Media</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedDayDate(null);
-                              onEditPost(post);
-                            }}
-                            className="flex items-center gap-1 text-[11px] font-semibold text-stone-500 hover:text-[#C44D34] transition-colors cursor-pointer"
-                          >
-                            <ImagePlus className="w-3.5 h-3.5" />
-                            <span>+ Add Media</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

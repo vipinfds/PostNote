@@ -17,10 +17,12 @@ import {
   INITIAL_MEDIA,
 } from './data/initialData';
 import { INITIAL_SUBSCRIPTION_STATE } from './data/pricingData';
-import { Menu, Plus, Building2, Shield } from 'lucide-react';
+import { Menu, Plus, Building2, Shield, ArrowRight, Lock, Users, LogOut } from 'lucide-react';
+import { onAuthStateChanged } from 'firebase/auth';
 import {
   auth,
   signOutFirebase,
+  ensureFirestoreWorkspace,
   syncClientToFirestore,
   syncPostToFirestore,
   deletePostFromFirestore,
@@ -76,13 +78,27 @@ export default function App() {
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>('');
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [myRole, setMyRole] = useState<WorkspaceRole>('Owner');
+  const [isSelectingWorkspace, setIsSelectingWorkspace] = useState<boolean>(false);
   const hasLoadedWorkspaceRef = useRef(false);
+
+  // Synchronize Firebase Auth state with isolated tenant session
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (!fbUser || !fbUser.email) return;
+      const cleanEmail = fbUser.email.trim().toLowerCase();
+      const displayName = fbUser.displayName || cleanEmail.split('@')[0] || 'Studio User';
+      const personalWsId = `ws_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      ensureFirestoreWorkspace(personalWsId, `${displayName}'s Studio`).catch(() => {});
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleSignOut = async () => {
     await signOutFirebase();
     localStorage.removeItem('postnote_auth_user');
     sessionStorage.removeItem('postnote_auth_user');
     hasLoadedWorkspaceRef.current = false;
+    setIsSelectingWorkspace(false);
     setCurrentUser(null);
     setPosts([]);
     setClients([]);
@@ -1141,12 +1157,20 @@ export default function App() {
       <SignInView
         onSignInSuccess={(user, initialWorkspaces) => {
           hasLoadedWorkspaceRef.current = false;
+          setPosts([]);
+          setClients([]);
+          setCampaigns([]);
+          setIdeas([]);
+          setTeamMembers([]);
           setCurrentUser(user);
           if (initialWorkspaces && initialWorkspaces.length > 0) {
             setWorkspaces(initialWorkspaces);
             const defaultWs =
               initialWorkspaces.find((w) => w.isPersonal) || initialWorkspaces[0];
             setActiveWorkspaceId(defaultWs.id);
+            if (initialWorkspaces.length > 1) {
+              setIsSelectingWorkspace(true);
+            }
           } else if (user.personalWorkspaceId) {
             setActiveWorkspaceId(user.personalWorkspaceId);
           }
@@ -1154,6 +1178,102 @@ export default function App() {
         }}
         isDark={isDark}
       />
+    );
+  }
+
+  // Post-Sign-In Workspace Selector Screen (shown when user has access to multiple workspaces)
+  if (currentUser && isSelectingWorkspace && workspaces.length > 1 && !isLockedPortalSession) {
+    return (
+      <div
+        id="workspace-selector-screen"
+        className={`min-h-screen w-full flex flex-col items-center justify-center px-4 py-12 transition-colors ${
+          isDark ? 'bg-[#151C24] text-stone-100' : 'bg-[#FAF7F2] text-[#1E252B]'
+        }`}
+      >
+        <div
+          className={`w-full max-w-lg rounded-3xl border p-6 sm:p-8 shadow-xl ${
+            isDark ? 'bg-[#1C242E] border-[#2B3746]' : 'bg-white border-[#E6E0D5]'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-widest text-[#C44D34]">
+                PostNote Studio
+              </span>
+              <h1
+                className="font-serif text-2xl font-bold tracking-tight mt-0.5"
+                style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+              >
+                Select a Workspace
+              </h1>
+              <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
+                Signed in as <span className="font-semibold">{currentUser.email}</span>. Choose which isolated workspace you want to open:
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              title="Sign Out"
+              className="p-2 rounded-xl border border-stone-200 dark:border-stone-700 text-stone-400 hover:text-red-500 transition-colors cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {workspaces.map((ws) => {
+              const isPersonal = ws.isPersonal;
+              return (
+                <button
+                  key={ws.id}
+                  type="button"
+                  onClick={() => {
+                    hasLoadedWorkspaceRef.current = false;
+                    setActiveWorkspaceId(ws.id);
+                    setIsSelectingWorkspace(false);
+                    fetchServerSync(ws.id);
+                    showToast(`Opened ${ws.name} (${ws.myRole})`);
+                  }}
+                  className={`w-full p-4 rounded-2xl border text-left transition-all flex items-center justify-between group cursor-pointer ${
+                    isDark
+                      ? 'bg-[#161D26] border-[#2A3646] hover:border-[#C44D34]'
+                      : 'bg-[#FAF8F5] border-[#E5DFD3] hover:border-[#C44D34] hover:bg-white'
+                  }`}
+                >
+                  <div className="flex items-start gap-3.5 min-w-0 pr-3">
+                    <div
+                      className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 font-bold text-sm ${
+                        isPersonal
+                          ? 'bg-[#C44D34] text-white'
+                          : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                      }`}
+                    >
+                      {isPersonal ? <Lock className="w-4 h-4" /> : <Users className="w-4 h-4" />}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-sm font-bold truncate">{ws.name}</h3>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#C44D34]">
+                          {isPersonal ? 'Private · Owner' : `Team · ${ws.myRole}`}
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 truncate">
+                        {isPersonal
+                          ? 'Your private personal workspace'
+                          : `Shared by ${ws.ownerName} (${ws.ownerEmail})`}
+                      </p>
+                      <p className="text-[11px] text-stone-400 mt-1 tabular-nums">
+                        {ws.clientsCount} client{ws.clientsCount === 1 ? '' : 's'} · {ws.postsCount} post{ws.postsCount === 1 ? '' : 's'} · {ws.membersCount} member{ws.membersCount === 1 ? '' : 's'}
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-stone-400 group-hover:text-[#C44D34] group-hover:translate-x-0.5 transition-all shrink-0" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     );
   }
 
