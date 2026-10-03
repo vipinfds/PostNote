@@ -55,6 +55,7 @@ import { PostFormView } from './components/PostFormView';
 import { ClientModal } from './components/ClientModal';
 import { Toast } from './components/Toast';
 import { ScreenLoader } from './components/ScreenLoader';
+import { PWAInstallButton, OfflineIndicator } from './components/PWAInstallButton';
 
 // Screen imports
 import { IdeasBankView } from './components/IdeasBankView';
@@ -941,6 +942,19 @@ export default function App() {
     const targetPost = posts.find((p) => p.id === postId);
     const submitter = targetPost?.submittedBy || targetPost?.createdBy;
 
+    const editorsList = teamMembers
+      .filter((m) => m.role === 'Editor' || m.role === 'Manager')
+      .map((m) => m.name || m.email)
+      .slice(0, 2);
+
+    const recipientLabel = submitter
+      ? `${submitter.name} (${submitter.role || 'Submitter'})${
+          editorsList.length > 0 ? ` & Content Team (${editorsList.join(', ')})` : ' & Content Team'
+        }`
+      : editorsList.length > 0
+      ? `Content Team (${editorsList.join(', ')})`
+      : 'Content Team';
+
     const approvalActivity: PostActivityItem = {
       id: `act-${Date.now()}`,
       type: 'approved',
@@ -948,33 +962,31 @@ export default function App() {
       actorEmail,
       actorRole: myRole,
       timestamp: new Date().toISOString(),
-      details: submitter
-        ? `Approved post submitted by ${submitter.name}`
-        : 'Approved post for publishing',
+      details: `Approved post for publishing · Notified ${recipientLabel}`,
     };
 
     setPosts((prev) =>
-      prev.map((p) =>
-        p.id === postId
-          ? {
-              ...p,
-              status: 'Approved',
-              activityLog: [...(p.activityLog || []), approvalActivity],
-            }
-          : p
-      )
+      prev.map((p) => {
+        if (p.id !== postId) return p;
+        const updated = {
+          ...p,
+          status: 'Approved' as const,
+          activityLog: [...(p.activityLog || []), approvalActivity],
+        };
+        if (editingPost?.id === postId) {
+          setEditingPost(updated);
+        }
+        return updated;
+      })
     );
 
     if (targetPost) {
-      const recipientLabel = submitter
-        ? `${submitter.name} (${submitter.email}) & Content Team`
-        : 'Content Team';
       pushTeamNotification({
         postId: targetPost.id,
         postTitle: targetPost.title,
         clientName: targetPost.clientName,
         type: 'approved',
-        message: `${actorName} approved "${targetPost.title}".`,
+        message: `${actorName} approved "${targetPost.title}" for publishing.`,
         actorName,
         actorEmail,
         targetSummary: recipientLabel,
@@ -1111,6 +1123,124 @@ export default function App() {
     showToast('Comment added & team notified');
   };
 
+  const handleDeletePostComment = (postId: string, activityId: string) => {
+    const targetPost = posts.find((p) => p.id === postId);
+    if (!targetPost) return;
+    const targetActivity = (targetPost.activityLog || []).find((a) => a.id === activityId);
+    if (!targetActivity) return;
+
+    const myEmail = (currentUser?.email || '').toLowerCase();
+    const myName = (currentUser?.name || '').toLowerCase();
+    const isAdminOrOwner = myRole === 'Owner' || myRole === 'Admin';
+    const isOwnComment =
+      (myEmail && (targetActivity.actorEmail || '').toLowerCase() === myEmail) ||
+      (myName && (targetActivity.actorName || '').toLowerCase() === myName);
+
+    if (!isAdminOrOwner && !isOwnComment) {
+      showToast('You can only delete your own comments (Admins can delete any)');
+      return;
+    }
+
+    setPosts((prev) =>
+      prev.map((p) => {
+        if (p.id !== postId) return p;
+        const updated = {
+          ...p,
+          activityLog: (p.activityLog || []).filter((a) => a.id !== activityId),
+        };
+        if (editingPost?.id === postId) {
+          setEditingPost(updated);
+        }
+        if (auth?.currentUser && activeWorkspaceId) {
+          syncPostToFirestore(activeWorkspaceId, auth.currentUser.uid, updated, false).catch(
+            () => {}
+          );
+        }
+        return updated;
+      })
+    );
+    showToast('Comment deleted');
+  };
+
+  const handleAddClientFeedback = (
+    postId: string,
+    comment: string,
+    clientAuthorName?: string
+  ) => {
+    if (!comment.trim()) return;
+    const targetPost = posts.find((p) => p.id === postId);
+    const submitter = targetPost?.submittedBy || targetPost?.createdBy;
+    const actorName =
+      clientAuthorName?.trim() ||
+      `${targetPost?.clientName || portalClient?.name || 'Client'} (Client)`;
+    const actorEmail = `client@${(targetPost?.clientName || portalClient?.name || 'client')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')}.com`;
+
+    const editorsList = teamMembers
+      .filter((m) => m.role === 'Editor' || m.role === 'Manager')
+      .map((m) => m.name || m.email)
+      .slice(0, 2);
+
+    const targetSummary = submitter
+      ? `${submitter.name} (${submitter.role || 'Submitter'})${
+          editorsList.length > 0 ? ` & Content Team (${editorsList.join(', ')})` : ' & Content Team'
+        }`
+      : editorsList.length > 0
+      ? `Content Team (${editorsList.join(', ')})`
+      : 'Content Team';
+
+    const feedbackActivity: PostActivityItem = {
+      id: `act-${Date.now()}`,
+      type: 'client_feedback',
+      actorName,
+      actorEmail,
+      actorRole: 'Client Feedback',
+      timestamp: new Date().toISOString(),
+      comment: comment.trim(),
+      details: `Marked as Client Feedback · Notified ${targetSummary}`,
+    };
+
+    setPosts((prev) =>
+      prev.map((p) => {
+        if (p.id !== postId) return p;
+        const updated = {
+          ...p,
+          activityLog: [...(p.activityLog || []), feedbackActivity],
+        };
+        if (editingPost?.id === postId) {
+          setEditingPost(updated);
+        }
+        if (auth?.currentUser && activeWorkspaceId) {
+          syncPostToFirestore(activeWorkspaceId, auth.currentUser.uid, updated, false).catch(
+            () => {}
+          );
+        }
+        return updated;
+      })
+    );
+
+    if (targetPost) {
+      pushTeamNotification({
+        postId: targetPost.id,
+        postTitle: targetPost.title,
+        clientName: targetPost.clientName,
+        type: 'client_feedback',
+        message: `[Client Feedback] ${actorName} commented on "${targetPost.title}"`,
+        comment: comment.trim(),
+        actorName,
+        actorEmail,
+        targetSummary,
+      });
+    }
+
+    showToast(
+      submitter
+        ? `Client Feedback added · Notified ${submitter.name} & Studio Team`
+        : 'Client Feedback added · Studio Team notified'
+    );
+  };
+
   // Media Library handlers
   const handleUploadMedia = (item: Omit<MediaItem, 'id' | 'createdAt'>) => {
     const newMedia: MediaItem = {
@@ -1123,17 +1253,24 @@ export default function App() {
   };
 
   // Campaign handlers
-  const handleSaveCampaign = (campData: Omit<Campaign, 'id'>) => {
+  const handleSaveCampaign = (campData: Omit<Campaign, 'id'> & { id?: string }) => {
     if (myRole === 'Viewer') {
       showToast('Viewers have read-only access');
       return;
     }
-    const newCamp: Campaign = {
-      ...campData,
-      id: `camp-${Date.now()}`,
-    };
-    setCampaigns((prev) => [...prev, newCamp]);
-    showToast('Campaign created');
+    if (campData.id) {
+      setCampaigns((prev) =>
+        prev.map((c) => (c.id === campData.id ? { ...c, ...campData, id: campData.id! } : c))
+      );
+      showToast('Campaign updated');
+    } else {
+      const newCamp: Campaign = {
+        ...campData,
+        id: `camp-${Date.now()}`,
+      };
+      setCampaigns((prev) => [...prev, newCamp]);
+      showToast('Campaign created');
+    }
   };
 
   // Team & RBAC handlers (with static GitHub Pages fallback)
@@ -1309,24 +1446,71 @@ export default function App() {
         <ClientPortalView
           client={portalClient}
           posts={clientScopedPosts}
+          campaigns={campaigns}
           subscription={subscription}
           initialTab={portalTab}
           isViewOnly={portalIsViewOnly}
           isLockedPortal={isLockedPortalSession}
           onApprovePost={handleApprovePost}
-          onRequestChanges={(postId, notes) => {
+          onAddClientFeedback={handleAddClientFeedback}
+          onRequestChanges={(postId, notes, clientAuthorName) => {
+            const targetPost = posts.find((p) => p.id === postId);
+            const submitter = targetPost?.submittedBy || targetPost?.createdBy;
+            const actorName =
+              clientAuthorName?.trim() || `${portalClient.name} (Client)`;
+            const actorEmail = `client@${portalClient.name
+              .toLowerCase()
+              .replace(/[^a-z0-9]/g, '')}.com`;
+            const targetSummary = submitter
+              ? `${submitter.name} (${submitter.role || 'Submitter'}) & Studio Team`
+              : 'Studio Content Team';
+
+            const feedbackActivity: PostActivityItem = {
+              id: `act-${Date.now()}`,
+              type: 'client_feedback',
+              actorName,
+              actorEmail,
+              actorRole: 'Client Feedback',
+              timestamp: new Date().toISOString(),
+              comment: notes || 'Client requested revisions before approval.',
+              details: `Client requested changes · Returned status to Planned · Notified ${targetSummary}`,
+            };
+
             setPosts((prev) =>
-              prev.map((p) =>
-                p.id === postId
-                  ? {
-                      ...p,
-                      status: 'Planned',
-                      caption: notes ? `${p.caption}\n\n[Client Feedback]: ${notes}` : p.caption,
-                    }
-                  : p
-              )
+              prev.map((p) => {
+                if (p.id !== postId) return p;
+                const updated = {
+                  ...p,
+                  status: 'Planned' as const,
+                  activityLog: [...(p.activityLog || []), feedbackActivity],
+                };
+                if (auth?.currentUser && activeWorkspaceId) {
+                  syncPostToFirestore(
+                    activeWorkspaceId,
+                    auth.currentUser.uid,
+                    updated,
+                    false
+                  ).catch(() => {});
+                }
+                return updated;
+              })
             );
-            showToast('Feedback submitted to studio team');
+
+            if (targetPost) {
+              pushTeamNotification({
+                postId: targetPost.id,
+                postTitle: targetPost.title,
+                clientName: targetPost.clientName,
+                type: 'client_feedback',
+                message: `[Client Feedback] ${actorName} requested changes on "${targetPost.title}"`,
+                comment: notes || 'Client requested revisions before approval.',
+                actorName,
+                actorEmail,
+                targetSummary,
+              });
+            }
+
+            showToast('Client Feedback submitted & studio team notified');
           }}
           onExit={
             isLockedPortalSession
@@ -1452,6 +1636,7 @@ export default function App() {
         return (
           <ApprovalsView
             posts={posts}
+            clients={clients}
             onBack={handleSubScreenBack}
             onApprovePost={handleApprovePost}
             onRequestChanges={handleRequestChanges}
@@ -1488,6 +1673,7 @@ export default function App() {
             posts={posts}
             clients={clients}
             onBack={handleSubScreenBack}
+            onSelectPost={(post) => handleEditPost(post)}
             isDark={isDark}
           />
         );
@@ -1710,6 +1896,7 @@ export default function App() {
     >
       {/* Toast alert bubble */}
       <Toast message={toastMessage} isDark={isDark} />
+      <OfflineIndicator />
 
       {/* Desktop Navigation Sidebar (Shown on Desktop screens lg: >= 1024px) */}
       {!portalClient && (
@@ -1810,6 +1997,8 @@ export default function App() {
                 )}
               </button>
 
+              <PWAInstallButton variant="header" isDark={isDark} />
+
               <button
                 onClick={() => handleOpenNewPost()}
                 className="px-2.5 py-1.5 bg-[#C44D34] hover:bg-[#b04028] text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs transition-colors"
@@ -1842,6 +2031,8 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2.5">
+              <PWAInstallButton variant="header" isDark={isDark} />
+
               {/* Desktop Notification Bell Button */}
               <button
                 id="header-notification-bell-btn"
@@ -2075,6 +2266,7 @@ export default function App() {
           preselectedDate={preselectedDate}
           initialModalTab={initialPostModalTab}
           currentUser={currentUser}
+          myRole={myRole}
           onBack={() => {
             setIsPostFormOpen(false);
             setEditingPost(null);
@@ -2085,6 +2277,7 @@ export default function App() {
           onApprovePost={handleApprovePost}
           onRequestChanges={handleRequestChanges}
           onAddPostComment={handleAddPostComment}
+          onDeletePostComment={handleDeletePostComment}
           onUploadToLibrary={handleUploadMedia}
           isDark={isDark}
         />

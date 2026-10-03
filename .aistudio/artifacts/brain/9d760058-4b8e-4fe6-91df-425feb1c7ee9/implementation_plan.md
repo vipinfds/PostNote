@@ -1,60 +1,61 @@
-# Unified Single-Scroll Post Details + Activity & Comments Pop-up & Approval Notifications
+# Android App Conversion: Installable PWA + Capacitor Native APK Setup & Guide
 
-This plan removes the separate tab switcher inside the Post Details pop-up modal and places **Activity & Comments** directly below the post details, media carousel, and approval actions in a single continuous vertical scroll—while ensuring **Approve** actions explicitly notify the employee who submitted the post and the responsible content team.
+This plan equips PostNote with full **Progressive Web App (PWA)** installability on Android & iOS (`vite-plugin-pwa`, Web App Manifest, Service Worker, offline support, and one-tap **Install App** button) alongside a complete **Capacitor Android** configuration (`capacitor.config.ts`, `android:*` build scripts, and an interactive **Android APK & Mobile App Hub** inside Settings) so you can either install PostNote directly from Chrome on Android in one tap or compile a native `.apk` / `.aab` for Google Play Store distribution.
 
-## User Review & Critical Decisions
+### User Review & Critical Decisions
 
 > [!IMPORTANT]
-> Both requirements from your prompt are clear and self-contained:
+> Confirmed choice from Phase 1:
 
-- **Single Continuous Scroll Layout**: When opening any existing post pop-up, users see the post metadata, title, full caption, interactive media carousel, and **Approve / Request Changes** buttons at the top, followed immediately below by the **Activity & Comments** timeline and comment input box so they can swipe/scroll down naturally on one page.
-- **Approval Notifications to Submitter & Content Team**: Clicking **Approve** (either on the Approvals screen or inside the Post Details pop-up) logs an `Approved Post` entry in the activity timeline, displays a confirmation banner/toast naming the employee who submitted the post (`submittedBy` / `createdBy`) and the content team, and pushes an approval notification to the header **Notification Bell**.
+- **Confirmed Approach**: **Add PWA support + Capacitor Android setup & APK guide**
+  1. **Instant Android Install (PWA / TWA-ready)**: Configures `vite-plugin-pwa` with a standalone Web App Manifest (`display: 'standalone'`, theme color `#C44D34`, background `#FAF7F2`, 192×192, 512×512, and maskable icons), automatic Service Worker caching, and an in-app **Install App** button in the top header and Settings.
+  2. **Native Android APK / Play Store Packaging (Capacitor)**: Adds `capacitor.config.ts` (`appId: 'in.firstdraftstudio.postnote'`, `appName: 'PostNote'`, `webDir: 'dist'`) and `package.json` helper scripts (`android:init`, `android:sync`, `android:open`, `android:apk`) plus an interactive **Android App & APK Builder Guide** directly in **Settings** with copyable terminal commands for Capacitor and Bubblewrap (TWA).
 
----
-
-## 1. Overview & Core Concept
+### 1. Overview & Core Concept
 
 - **What It Does**:
-  1. **Single-Page Scrollable Post Modal**: Consolidates **Post Details** and **Activity & Comments** into one seamless view inside the read-only pop-up modal. Users no longer have to click a separate tab—scrolling or swiping down reveals the responsible content creator card, the chronological employee activity log, and the comment composer.
-  2. **Explicit Approval Notification Feedback**: When a post is approved, the system records the approval in `post.activityLog`, dispatches a `StudioNotification` (`type: 'approved'`) to the employee who submitted the post for review and the content team (`Editor` / `Manager` roles), and shows an explicit confirmation banner inside the activity feed and toast alert.
-  3. **Direct Scroll-to-Activity on Notification Click**: Clicking any notification in the top header **Notification Bell** opens the post pop-up and smoothly scrolls to the **Activity & Comments** section at the bottom of the modal.
+  - Turns PostNote into a standalone mobile app with no browser address bar (`display: 'standalone'`), custom PostNote app icons, offline asset caching, and native install prompts.
+  - Pre-configures Capacitor for Android so exporting or cloning the project lets you generate the native `android/` Gradle project and build a signed `.apk` or `.aab` in minutes.
+  - Provides a built-in **Android & Mobile App Hub** inside **Settings** (and quick header install trigger) where you can trigger 1-click PWA installation or copy the exact CLI commands to build the Android `.apk`.
+- **Target Audience / Persona**: Studio owners, team members, and clients who want PostNote installed on their Android home screen or distributed as an Android `.apk` / Google Play Store app.
+- **Key Value**: Gives you immediate Android installation today via Chrome/PWA while providing zero-friction native Android Studio APK compilation via Capacitor.
 
----
+### 2. User Experience & Visual Design
 
-## 2. User Experience & Visual Design
+- **Key User Flows**:
+  1. **One-Tap Android / Desktop PWA Install**:
+     - When opening PostNote in Chrome on Android (or desktop), an **Install App** button appears in the top bar and inside **Settings → Android & Mobile App**.
+     - Tapping **Install App** triggers the native Android install sheet and places the **PostNote** icon on the Android home screen and app drawer.
+  2. **Interactive Android APK & Play Store Guide (Inside Settings)**:
+     - Open **Settings** (`More → Settings`) to view the new **Android App & PWA Installation** card.
+     - Switch between **Method 1: Instant Android Install (PWA)**, **Method 2: Native Android APK via Capacitor**, and **Method 3: Google Play Store TWA (Bubblewrap)** with one-click copyable commands and step-by-step instructions.
+- **Visual Identity & Theme**:
+  - Matches PostNote's Warm Editorial Studio palette (`#FAF7F2` cream, `#151C24` dark slate, `#C44D34` terracotta brand icon with the serif `P` monogram).
 
-- **Single-Page Modal Flow (Top to Bottom)**:
-  1. **Sticky Modal Header**: Client color dot, `"Post Details"`, **Edit (`Pencil`)** button (unlocks edit mode only when clicked), and **Close (`X`)** button.
-  2. **Post Overview & Content**: Client name · Category · Platform · Date · Status, Submitter attribution line, Title, Full Caption, and Left/Right **Media Carousel**.
-  3. **Approval Action Bar**: **Approve Post** and **Request Changes** buttons (with inline comment prompt when requesting changes, plus a clear note that approving or requesting changes notifies the submitter and content team).
-  4. **Divider + Activity & Comments Section (Directly Below)**:
-     - **Responsible Content Creator / Submitter** summary row.
-     - **Employee Activity Log**: Chronological entries (`Created Post`, `Edited Post`, `Submitted for Approval`, `Requested Changes`, `Approved Post`, `Commented`) with employee name, role, timestamp, and highlighted comment callouts.
-     - **Add Team Comment Bar**: Input field and **Comment** button at the bottom of the scroll container.
+### 3. Key Product Decisions & Trade-Offs
 
----
+- **Decision 1: Dual PWA + Capacitor Architecture**
+  - *Chosen Approach*: Configure `vite-plugin-pwa` for immediate over-the-air Android installation and offline caching, and include `capacitor.config.ts` + `package.json` scripts for native Android Studio APK builds.
+  - *Why*: PWA lets you and your team install the app on Android devices immediately without needing Android Studio installed, while Capacitor uses the exact same `dist/` build output to wrap the app into a native Android `.apk` or `.aab` with zero code duplication.
 
-## 3. Technical Architecture & Data Strategy *(Technical Reference)*
+### 4. Technical Architecture & Data Strategy *(Technical Reference)*
 
 ```
-┌───────────────────────────────────────────────────────────────────┐
-│                    Post Details Pop-up Modal                      │
-│  [Header: Post Details]                        [✏ Edit]   [✕]     │
-├───────────────────────────────────────────────────────────────────┤
-│  1. Meta Row (Client · Category · Platform · Date · Status)       │
-│  2. Title & Full Caption (Read-only)                              │
-│  3. Interactive Media Carousel (< Left / Right > · 1/N)           │
-│  4. Approval Controls: [✓ Approve Post]  [↺ Request Changes]      │
-│     (Both notify Submitter + Content Team & log to Activity)      │
-│  ───────────────────────────────────────────────────────────────  │
-│  5. Activity & Comments (Directly Below — Swipe/Scroll Down)      │
-│     • Responsible Submitter / Creator Badge                       │
-│     • Chronological Employee Activity Timeline                    │
-│     • Inline Comment Composer ([Write a comment...] [Comment])    │
-└───────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│                     Vite Build + PWA Service Worker                        │
+│  • vite-plugin-pwa generates manifest.webmanifest & sw.js                  │
+│  • Public icons: icon.svg, pwa-192x192.png, pwa-512x512.png, maskable      │
+└───────────────┬────────────────────────────────────────┬───────────────────┘
+                │                                        │
+                ▼                                        ▼
+┌──────────────────────────────────────┐  ┌──────────────────────────────────┐
+│     In-App PWA Install & Offline     │  │   Capacitor Android Packaging    │
+│  • usePWAInstall() hook              │  │  • capacitor.config.ts           │
+│  • PWAInstallButton (Header/Settings)│  │  • appId: in.firstdraftstudio... │
+│  • Android APK Guide Modal/Section   │  │  • npm run android:sync / open   │
+└──────────────────────────────────────┘  └──────────────────────────────────┘
 ```
 
-- **State & Notification Updates**:
-  - Remove `activeModalTab` segmentation from `PostFormView` so the read-only view renders both the post details and the **Activity & Comments** section in a single scrollable container.
-  - Auto-scroll to `#post-activity-section` when opened from a notification click (`initialModalTab === 'activity'`).
-  - Ensure `handleApprovePost` updates `editingPost` in real time if the modal stays open or transitions, logs the approval with a notification summary (`"Notified <Submitter> & Content Team"`), and increments the unread badge in the header **Notification Bell**.
+- **Interactive Component & State Mapping**:
+  - `usePWAInstall`: Captures `beforeinstallprompt`, detects standalone mode (`display-mode: standalone`), detects Android/iOS user agents, and exposes `install()`.
+  - `PWAInstallButton`: Renders a compact install button in the header and a full interactive card in `SettingsView` with an expandable **Android APK Build Guide** containing copy-to-clipboard buttons for every command.

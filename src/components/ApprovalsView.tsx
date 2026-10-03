@@ -8,13 +8,17 @@ import {
   Send,
   X,
   Activity,
+  Users,
 } from 'lucide-react';
-import { Post, MediaItem } from '../types';
-import { getCategoryBadgeStyle } from '../utils/theme';
+import { Post, MediaItem, Client } from '../types';
+import { getCategoryBadgeStyle, normalizePostStatus } from '../utils/theme';
 import { MediaCarousel } from './MediaCarousel';
+import { PlatformLogo } from './PlatformLogo';
+import { StatusStageBadge } from './StatusStageBadge';
 
 interface ApprovalsViewProps {
   posts: Post[];
+  clients?: Client[];
   onBack: () => void;
   onApprovePost: (postId: string) => void;
   onRequestChanges: (postId: string, comment?: string) => void;
@@ -24,6 +28,7 @@ interface ApprovalsViewProps {
 
 export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
   posts,
+  clients = [],
   onBack,
   onApprovePost,
   onRequestChanges,
@@ -31,11 +36,45 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
   isDark,
 }) => {
   const [activeTab, setActiveTab] = useState<'needs-review' | 'approved'>('needs-review');
+  const [selectedClientId, setSelectedClientId] = useState<string>('ALL');
   const [requestChangesPostId, setRequestChangesPostId] = useState<string | null>(null);
   const [changeRequestComment, setChangeRequestComment] = useState<string>('');
 
-  const needsReviewPosts = posts.filter((p) => p.status === 'In review');
-  const approvedPosts = posts.filter((p) => p.status === 'Approved');
+  // Derive unique clients from clients prop + posts
+  const clientFilterOptions = React.useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    clients.forEach((c) => {
+      map.set(c.id, { id: c.id, name: c.name });
+    });
+    posts.forEach((p) => {
+      if (p.clientId && !map.has(p.clientId)) {
+        map.set(p.clientId, { id: p.clientId, name: p.clientName });
+      }
+    });
+    return Array.from(map.values());
+  }, [clients, posts]);
+
+  const allNeedsReviewPosts = posts.filter(
+    (p) => normalizePostStatus(p.status) === 'In review'
+  );
+  const allApprovedPosts = posts.filter(
+    (p) => normalizePostStatus(p.status) === 'Approved'
+  );
+
+  const needsReviewPosts =
+    selectedClientId === 'ALL'
+      ? allNeedsReviewPosts
+      : allNeedsReviewPosts.filter((p) => p.clientId === selectedClientId);
+
+  const approvedPosts =
+    selectedClientId === 'ALL'
+      ? allApprovedPosts
+      : allApprovedPosts.filter((p) => p.clientId === selectedClientId);
+
+  const selectedClientName =
+    selectedClientId === 'ALL'
+      ? null
+      : clientFilterOptions.find((c) => c.id === selectedClientId)?.name || null;
 
   const getMediaItemsForPost = (post: Post): MediaItem[] => {
     if (post.media && post.media.length > 0) return post.media;
@@ -85,9 +124,97 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
               <span>{needsReviewPosts.length} WAITING</span>
               <span>•</span>
               <span>{approvedPosts.length} APPROVED</span>
+              {selectedClientName && (
+                <>
+                  <span>•</span>
+                  <span className="text-[#C44D34]">{selectedClientName}</span>
+                </>
+              )}
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Client-Wise Filter Bar */}
+      <div
+        id="approvals-client-filter-bar"
+        className="mt-3.5 flex items-center gap-2 overflow-x-auto pb-1.5 no-scrollbar"
+      >
+        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-400 shrink-0 mr-1">
+          <Users className="w-3.5 h-3.5 text-[#C44D34]" />
+          <span>Client:</span>
+        </div>
+
+        <button
+          id="approvals-client-filter-all"
+          type="button"
+          onClick={() => setSelectedClientId('ALL')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 shrink-0 transition-all cursor-pointer border ${
+            selectedClientId === 'ALL'
+              ? 'bg-[#181E24] dark:bg-[#C44D34] text-white border-transparent shadow-xs font-bold'
+              : isDark
+              ? 'bg-[#1D242C] border-[#2A3440] text-stone-300 hover:border-stone-600'
+              : 'bg-white border-[#E8E4DC] text-stone-700 hover:border-stone-300'
+          }`}
+        >
+          <span>All Clients</span>
+          <span
+            className={`text-[10px] px-1.5 py-0.2 rounded-md font-bold tabular-nums ${
+              selectedClientId === 'ALL'
+                ? 'bg-white/20 text-white'
+                : isDark
+                ? 'bg-stone-800 text-stone-400'
+                : 'bg-stone-100 text-stone-600'
+            }`}
+          >
+            {activeTab === 'needs-review'
+              ? allNeedsReviewPosts.length
+              : allApprovedPosts.length}
+          </span>
+        </button>
+
+        {clientFilterOptions.map((c) => {
+          const isSelected = selectedClientId === c.id;
+          const clientWaitingCount = allNeedsReviewPosts.filter(
+            (p) => p.clientId === c.id
+          ).length;
+          const clientApprovedCount = allApprovedPosts.filter(
+            (p) => p.clientId === c.id
+          ).length;
+          const displayCount =
+            activeTab === 'needs-review' ? clientWaitingCount : clientApprovedCount;
+
+          return (
+            <button
+              key={c.id}
+              id={`approvals-client-filter-${c.id}`}
+              type="button"
+              onClick={() => setSelectedClientId(c.id)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 shrink-0 transition-all cursor-pointer border ${
+                isSelected
+                  ? 'bg-[#181E24] dark:bg-[#C44D34] text-white border-transparent shadow-xs font-bold'
+                  : isDark
+                  ? 'bg-[#1D242C] border-[#2A3440] text-stone-300 hover:border-stone-600'
+                  : 'bg-white border-[#E8E4DC] text-stone-700 hover:border-stone-300'
+              }`}
+            >
+              <span>{c.name}</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-md font-bold tabular-nums ${
+                  isSelected
+                    ? 'bg-white/20 text-white'
+                    : displayCount > 0 && activeTab === 'needs-review'
+                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                    : isDark
+                    ? 'bg-stone-800 text-stone-400'
+                    : 'bg-stone-100 text-stone-600'
+                }`}
+              >
+                {displayCount}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Sub Tabs */}
@@ -132,8 +259,19 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
             <div className="text-center py-16">
               <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2 opacity-80" />
               <p className="text-xs text-stone-500">
-                All caught up! No posts currently waiting for approval.
+                {selectedClientName
+                  ? `No posts waiting for approval for ${selectedClientName}.`
+                  : 'All caught up! No posts currently waiting for approval.'}
               </p>
+              {selectedClientId !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedClientId('ALL')}
+                  className="mt-2.5 text-xs font-bold text-[#C44D34] hover:underline cursor-pointer"
+                >
+                  Show all clients
+                </button>
+              )}
             </div>
           ) : (
             needsReviewPosts.map((post) => {
@@ -153,8 +291,7 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                 >
                   {/* Meta row */}
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs mb-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-stone-400" />
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-xs font-semibold text-stone-700 dark:text-stone-300">
                         {post.clientName}
                       </span>
@@ -166,12 +303,11 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                         {post.category}
                       </span>
                       <span className="text-stone-300 dark:text-stone-700">•</span>
-                      <span className="text-[11px] text-stone-500 dark:text-stone-400">
-                        {post.platform}
-                      </span>
+                      <PlatformLogo platform={post.platform} size="xs" />
                     </div>
 
                     <div className="flex items-center gap-2 text-[11px] text-stone-400 font-medium tabular-nums">
+                      <StatusStageBadge status={post.status} size="xs" />
                       {activityCount > 0 && (
                         <span className="inline-flex items-center gap-1 text-[#C44D34] font-semibold">
                           <Activity className="w-3 h-3" />
@@ -250,7 +386,7 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                             ? `${submitter.name} (${submitter.email})`
                             : 'the content team'}
                         </strong>{' '}
-                        and log your comment in the post Activity tab:
+                        and log your comment in the post Activity & Comments section:
                       </p>
 
                       <textarea
@@ -330,7 +466,20 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
         ) : /* Approved list */
         approvedPosts.length === 0 ? (
           <div className="text-center py-16">
-            <p className="text-xs text-stone-500">No approved posts yet.</p>
+            <p className="text-xs text-stone-500">
+              {selectedClientName
+                ? `No approved posts for ${selectedClientName} yet.`
+                : 'No approved posts yet.'}
+            </p>
+            {selectedClientId !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedClientId('ALL')}
+                className="mt-2.5 text-xs font-bold text-[#C44D34] hover:underline cursor-pointer"
+              >
+                Show all clients
+              </button>
+            )}
           </div>
         ) : (
           approvedPosts.map((post) => {
@@ -343,16 +492,15 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                   isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
                 }`}
               >
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <div className="flex items-center justify-between text-xs gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-semibold">{post.clientName}</span>
+                    <span className="text-stone-400">•</span>
+                    <PlatformLogo platform={post.platform} size="xs" />
                     <span className="text-stone-400">•</span>
                     <span className="text-stone-500 tabular-nums">{post.date}</span>
                   </div>
-                  <span className="text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400">
-                    APPROVED
-                  </span>
+                  <StatusStageBadge status={post.status} size="xs" />
                 </div>
                 <h4 className="text-sm font-bold text-stone-900 dark:text-white mt-1.5">
                   {post.title}

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Trash2,
   Calendar as CalendarIcon,
@@ -20,11 +20,11 @@ import {
   CheckCircle2,
   RotateCcw,
   Activity,
-  FileText,
   Send,
   MessageSquare,
   UserCheck,
   Clock,
+  Bell,
 } from 'lucide-react';
 import {
   Post,
@@ -37,8 +37,17 @@ import {
   PostActivityItem,
 } from '../types';
 import { downloadMediaFile } from '../utils/mediaDownload';
-import { getTodayDateStr, getTodayParts, getCategoryBadgeStyle } from '../utils/theme';
+import {
+  getTodayDateStr,
+  getTodayParts,
+  getCategoryBadgeStyle,
+  POST_STAGES,
+  STATUS_STYLES,
+  normalizePostStatus,
+} from '../utils/theme';
 import { MediaCarousel } from './MediaCarousel';
+import { StatusStageBadge, getStageIcon } from './StatusStageBadge';
+import { PlatformLogo } from './PlatformLogo';
 
 interface PostFormViewProps {
   initialPost?: Post | null;
@@ -62,6 +71,7 @@ interface PostFormViewProps {
   onApprovePost?: (postId: string) => void;
   onRequestChanges?: (postId: string, comment?: string) => void;
   onAddPostComment?: (postId: string, comment: string) => void;
+  onDeletePostComment?: (postId: string, activityId: string) => void;
   onUploadToLibrary?: (item: Omit<MediaItem, 'id' | 'createdAt'>) => void;
   isDark?: boolean;
 }
@@ -122,6 +132,11 @@ function getActivityLabel(item: PostActivityItem): {
         badgeText: 'Requested Changes',
         colorClass: 'text-amber-600 dark:text-amber-400',
       };
+    case 'client_feedback':
+      return {
+        badgeText: 'Client Feedback',
+        colorClass: 'text-[#C44D34] font-extrabold uppercase tracking-wider',
+      };
     case 'comment':
     default:
       return {
@@ -147,6 +162,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
   onApprovePost,
   onRequestChanges,
   onAddPostComment,
+  onDeletePostComment,
   onUploadToLibrary,
   isDark,
 }) => {
@@ -156,9 +172,17 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
     if (initialMode) return initialMode === 'edit';
     return !isExistingPost;
   });
-  const [activeModalTab, setActiveModalTab] = useState<'details' | 'activity'>(
-    initialModalTab
-  );
+
+  const activitySectionRef = useRef<HTMLDivElement>(null);
+
+  // If opened from a notification click targeting activity, smoothly scroll down to Activity & Comments
+  useEffect(() => {
+    if (initialModalTab === 'activity' && !isEditMode && activitySectionRef.current) {
+      setTimeout(() => {
+        activitySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 80);
+    }
+  }, [initialModalTab, isEditMode]);
 
   // Request changes inline state inside modal
   const [isRequestingChanges, setIsRequestingChanges] = useState(false);
@@ -207,7 +231,9 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
   const [date, setDate] = useState<string>(
     initialPost?.date || preselectedDate || getTodayDateStr()
   );
-  const [status, setStatus] = useState<PostStatus>(initialPost?.status || 'Planned');
+  const [status, setStatus] = useState<PostStatus>(
+    normalizePostStatus(initialPost?.status || 'Planned')
+  );
   const [category, setCategory] = useState<PostCategory>(initialPost?.category || 'POST');
   const [platform, setPlatform] = useState<PostPlatform>(
     initialPost?.platform || 'Instagram'
@@ -462,13 +488,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
     'Other',
   ];
 
-  const statuses: PostStatus[] = [
-    'Planned',
-    'In review',
-    'Approved',
-    'Scheduled',
-    'Published',
-  ];
+  const statuses: PostStatus[] = POST_STAGES;
 
   const availableCampaigns = campaigns.filter(
     (camp) => !camp.clientId || camp.clientId === clientId
@@ -525,10 +545,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
               <button
                 id="post-modal-edit-pencil-btn"
                 type="button"
-                onClick={() => {
-                  setActiveModalTab('details');
-                  setIsEditMode(true);
-                }}
+                onClick={() => setIsEditMode(true)}
                 title="Edit post"
                 aria-label="Edit post"
                 className={`p-2 rounded-xl border transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer ${
@@ -598,195 +615,11 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
           </div>
         </div>
 
-        {/* Sub-Navigation Tabs for Existing Posts: [Post Details] | [Activity & Comments] */}
-        {isExistingPost && !isEditMode && (
-          <div
-            className={`flex items-center border-b px-5 shrink-0 ${
-              isDark ? 'bg-[#19212B] border-[#2A3543]' : 'bg-[#F5F1E8] border-[#E8E4DC]'
-            }`}
-          >
-            <button
-              type="button"
-              onClick={() => setActiveModalTab('details')}
-              className={`py-2.5 px-3 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 border-b-2 transition-colors cursor-pointer ${
-                activeModalTab === 'details'
-                  ? 'border-[#C44D34] text-[#C44D34]'
-                  : 'border-transparent text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200'
-              }`}
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Post Details</span>
-            </button>
-
-            <button
-              id="post-modal-activity-tab-btn"
-              type="button"
-              onClick={() => setActiveModalTab('activity')}
-              className={`py-2.5 px-3 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 border-b-2 transition-colors cursor-pointer tabular-nums ${
-                activeModalTab === 'activity'
-                  ? 'border-[#C44D34] text-[#C44D34]'
-                  : 'border-transparent text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200'
-              }`}
-            >
-              <Activity className="w-3.5 h-3.5" />
-              <span>Activity & Comments ({activityItems.length})</span>
-            </button>
-          </div>
-        )}
-
-        {/* Scrollable Modal Body */}
+        {/* Scrollable Modal Body — Single Continuous Page for Post Details + Activity & Comments */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {!isEditMode && initialPost && activeModalTab === 'activity' ? (
+          {!isEditMode && initialPost ? (
             /* =========================================================
-               EMPLOYEE ACTIVITY & COMMENTS TAB
-               ========================================================= */
-            <div className="space-y-4">
-              {/* Submitter / Responsible Team Summary */}
-              <div
-                className={`p-3.5 rounded-2xl border flex flex-wrap items-center justify-between gap-2 text-xs ${
-                  isDark
-                    ? 'bg-[#1D252F] border-[#2A3543]'
-                    : 'bg-white border-[#E8E4DC]'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <UserCheck className="w-4 h-4 text-[#C44D34] shrink-0" />
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block">
-                      Responsible Content Creator / Submitter
-                    </span>
-                    <span className="font-semibold text-stone-800 dark:text-stone-200">
-                      {submitter
-                        ? `${submitter.name} (${submitter.email})`
-                        : currentUser
-                        ? `${currentUser.name} (${currentUser.email})`
-                        : 'Studio Content Team'}
-                    </span>
-                  </div>
-                </div>
-                {submitter?.role && (
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#C44D34]">
-                    {submitter.role}
-                  </span>
-                )}
-              </div>
-
-              {/* Chronological Employee Activity Feed */}
-              <div className="space-y-3">
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                  Employee Activity Log ({activityItems.length})
-                </h4>
-
-                {activityItems.length === 0 ? (
-                  <div
-                    className={`p-6 rounded-2xl border text-center text-xs text-stone-400 ${
-                      isDark ? 'bg-[#1D252F] border-[#2A3543]' : 'bg-white border-[#E8E4DC]'
-                    }`}
-                  >
-                    <Clock className="w-6 h-6 mx-auto mb-1.5 opacity-60" />
-                    <p>No employee activity recorded on this post yet.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2.5">
-                    {activityItems.map((act) => {
-                      const labelInfo = getActivityLabel(act);
-                      return (
-                        <div
-                          key={act.id}
-                          className={`p-3.5 rounded-2xl border text-xs space-y-1.5 ${
-                            isDark
-                              ? 'bg-[#1D252F] border-[#2A3543]'
-                              : 'bg-white border-[#E8E4DC]'
-                          }`}
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-stone-900 dark:text-white">
-                                {act.actorName}
-                              </span>
-                              {act.actorRole && (
-                                <>
-                                  <span className="text-stone-300 dark:text-stone-700">·</span>
-                                  <span className="text-[10px] font-semibold text-stone-500">
-                                    {act.actorRole}
-                                  </span>
-                                </>
-                              )}
-                              <span className="text-stone-300 dark:text-stone-700">·</span>
-                              <span className={`font-bold text-[11px] ${labelInfo.colorClass}`}>
-                                {labelInfo.badgeText}
-                              </span>
-                            </div>
-
-                            <span className="text-[10px] text-stone-400 font-mono tabular-nums">
-                              {formatActivityTimestamp(act.timestamp)}
-                            </span>
-                          </div>
-
-                          {act.details && (
-                            <p className="text-[11px] text-stone-500 dark:text-stone-400">
-                              {act.details}
-                            </p>
-                          )}
-
-                          {act.comment && (
-                            <div
-                              className={`mt-1.5 p-2.5 rounded-xl border text-xs leading-relaxed ${
-                                act.type === 'changes_requested'
-                                  ? isDark
-                                    ? 'bg-amber-950/30 border-amber-800/50 text-amber-200'
-                                    : 'bg-amber-50 border-amber-200 text-amber-900'
-                                  : isDark
-                                  ? 'bg-[#151C24] border-[#283342] text-stone-200'
-                                  : 'bg-[#FAF7F2] border-[#E6E0D5] text-stone-800'
-                              }`}
-                            >
-                              {act.comment}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Add Comment Form */}
-              {onAddPostComment && (
-                <form
-                  onSubmit={handlePostCommentSubmit}
-                  className="pt-3 border-t border-stone-200 dark:border-stone-800 space-y-2"
-                >
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400">
-                    Add Team Comment or Review Note
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newActivityComment}
-                      onChange={(e) => setNewActivityComment(e.target.value)}
-                      placeholder="Write a comment for the content team..."
-                      className={`flex-1 px-3.5 py-2 rounded-xl border text-xs focus:outline-none focus:ring-2 focus:ring-[#C44D34] ${
-                        isDark
-                          ? 'bg-[#1D252F] border-[#2A3543] text-white placeholder-stone-500'
-                          : 'bg-white border-[#E8E4DC] text-stone-900 placeholder-stone-400'
-                      }`}
-                    />
-                    <button
-                      type="submit"
-                      disabled={!newActivityComment.trim()}
-                      className="px-4 py-2 rounded-xl bg-[#C44D34] hover:bg-[#A93E27] disabled:opacity-40 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shrink-0"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Comment</span>
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-          ) : !isEditMode && initialPost ? (
-            /* =========================================================
-               READ-ONLY VIEW MODE (Default when opening any existing post)
+               READ-ONLY SINGLE-PAGE VIEW (Post Details + Activity Below)
                ========================================================= */
             <div className="space-y-5">
               {/* Top Meta Summary */}
@@ -803,9 +636,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                     {category}
                   </span>
                   <span className="text-stone-300 dark:text-stone-700">·</span>
-                  <span className="font-semibold text-stone-500 dark:text-stone-400">
-                    {platform}
-                  </span>
+                  <PlatformLogo platform={platform} size="xs" />
                 </div>
 
                 <div className="flex items-center gap-2 text-xs tabular-nums">
@@ -813,38 +644,9 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                     {date}
                   </span>
                   <span className="text-stone-300 dark:text-stone-700">·</span>
-                  <span
-                    className={`font-bold uppercase text-[10px] tracking-wider ${
-                      status === 'Approved' || status === 'Published'
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : status === 'In review'
-                        ? 'text-amber-600 dark:text-amber-400'
-                        : 'text-[#C44D34]'
-                    }`}
-                  >
-                    {status}
-                  </span>
+                  <StatusStageBadge status={status} size="sm" />
                 </div>
               </div>
-
-              {submitter && (
-                <div className="flex items-center justify-between text-xs text-stone-500 dark:text-stone-400">
-                  <span>
-                    Submitted by{' '}
-                    <strong className="text-stone-700 dark:text-stone-200">
-                      {submitter.name}
-                    </strong>
-                    {submitter.role ? ` · ${submitter.role}` : ''}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setActiveModalTab('activity')}
-                    className="text-[11px] font-bold text-[#C44D34] hover:underline cursor-pointer"
-                  >
-                    View Activity ({activityItems.length})
-                  </button>
-                </div>
-              )}
 
               {selectedCampaignObj && (
                 <div className="text-xs text-stone-500 dark:text-stone-400">
@@ -949,7 +751,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                         ? `${submitter.name} (${submitter.email})`
                         : 'the content team'}
                     </strong>{' '}
-                    and logs your feedback in the Activity tab:
+                    and logs your feedback below in Activity & Comments:
                   </p>
 
                   <textarea
@@ -990,7 +792,6 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                         setStatus('Planned');
                         setIsRequestingChanges(false);
                         setChangeRequestNote('');
-                        onBack();
                       }}
                       className="px-4 py-1.5 rounded-xl bg-[#C44D34] hover:bg-[#A93E27] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
                     >
@@ -1003,20 +804,19 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
 
               {/* Quick Approval Actions when Post is in Review or Approved */}
               {!isRequestingChanges && (onApprovePost || onRequestChanges) && initialPost.id && (
-                <div className="pt-3 border-t border-stone-200 dark:border-stone-800 flex flex-wrap items-center justify-between gap-2.5">
-                  <div className="flex items-center gap-2 flex-1">
+                <div className="pt-3 border-t border-stone-200 dark:border-stone-800 space-y-2">
+                  <div className="flex items-center gap-2">
                     {onApprovePost && status !== 'Approved' && (
                       <button
                         type="button"
                         onClick={() => {
                           onApprovePost(initialPost.id);
                           setStatus('Approved');
-                          onBack();
                         }}
                         className="flex-1 py-2.5 px-4 rounded-xl bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                       >
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Approve Post</span>
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 dark:text-emerald-600" />
+                        <span>Approve & Notify Team</span>
                       </button>
                     )}
                     {onRequestChanges && (
@@ -1034,8 +834,210 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                       </button>
                     )}
                   </div>
+                  <p className="text-[11px] text-stone-400 flex items-center gap-1.5">
+                    <Bell className="w-3 h-3 text-[#C44D34] shrink-0" />
+                    <span>
+                      Approving or requesting changes automatically notifies{' '}
+                      <strong className="text-stone-600 dark:text-stone-300">
+                        {submitter ? `${submitter.name} (${submitter.role || 'Submitter'})` : 'the submitter'}
+                      </strong>{' '}
+                      and the content team.
+                    </span>
+                  </p>
                 </div>
               )}
+
+              {/* =========================================================
+                  ACTIVITY & COMMENTS SECTION (Directly Below on Same Page)
+                  ========================================================= */}
+              <div
+                id="post-activity-section"
+                ref={activitySectionRef}
+                className="pt-5 border-t border-stone-200 dark:border-stone-800 space-y-4"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Activity className="w-4 h-4 text-[#C44D34]" />
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-stone-700 dark:text-stone-200 tabular-nums">
+                      Activity & Comments ({activityItems.length})
+                    </h4>
+                  </div>
+                  <span className="text-[10px] text-stone-400">
+                    Employee Audit & Review Thread
+                  </span>
+                </div>
+
+                {/* Responsible Content Creator / Submitter Card */}
+                <div
+                  className={`p-3.5 rounded-2xl border flex flex-wrap items-center justify-between gap-2 text-xs ${
+                    isDark
+                      ? 'bg-[#1D252F] border-[#2A3543]'
+                      : 'bg-white border-[#E8E4DC]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-[#C44D34] shrink-0" />
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block">
+                        Submitted for Approval By / Content Owner
+                      </span>
+                      <span className="font-semibold text-stone-800 dark:text-stone-200">
+                        {submitter
+                          ? `${submitter.name} (${submitter.email})`
+                          : currentUser
+                          ? `${currentUser.name} (${currentUser.email})`
+                          : 'Studio Content Team'}
+                      </span>
+                    </div>
+                  </div>
+                  {submitter?.role && (
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#C44D34]">
+                      {submitter.role}
+                    </span>
+                  )}
+                </div>
+
+                {/* Chronological Employee Activity Feed */}
+                {activityItems.length === 0 ? (
+                  <div
+                    className={`p-5 rounded-2xl border text-center text-xs text-stone-400 ${
+                      isDark ? 'bg-[#1D252F] border-[#2A3543]' : 'bg-white border-[#E8E4DC]'
+                    }`}
+                  >
+                    <Clock className="w-5 h-5 mx-auto mb-1 opacity-60" />
+                    <p>No employee activity recorded on this post yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {activityItems.map((act) => {
+                      const labelInfo = getActivityLabel(act);
+                      const isSelfAuthor =
+                        Boolean(currentUser?.email) &&
+                        act.actorEmail?.toLowerCase() === currentUser?.email?.toLowerCase();
+                      const isAdminOrOwner =
+                        currentUser?.role === 'Owner' || currentUser?.role === 'Admin';
+                      const canDeleteThisComment =
+                        Boolean(onDeletePostComment && initialPost?.id) &&
+                        (Boolean(act.comment) || act.type === 'comment') &&
+                        (isSelfAuthor || isAdminOrOwner);
+
+                      return (
+                        <div
+                          key={act.id}
+                          className={`p-3.5 rounded-2xl border text-xs space-y-1.5 ${
+                            isDark
+                              ? 'bg-[#1D252F] border-[#2A3543]'
+                              : 'bg-white border-[#E8E4DC]'
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-stone-900 dark:text-white">
+                                {act.actorName}
+                              </span>
+                              {act.actorRole && (
+                                <>
+                                  <span className="text-stone-300 dark:text-stone-700">·</span>
+                                  <span className="text-[10px] font-semibold text-stone-500">
+                                    {act.actorRole}
+                                  </span>
+                                </>
+                              )}
+                              <span className="text-stone-300 dark:text-stone-700">·</span>
+                              <span className={`font-bold text-[11px] ${labelInfo.colorClass}`}>
+                                {labelInfo.badgeText}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-stone-400 font-mono tabular-nums">
+                                {formatActivityTimestamp(act.timestamp)}
+                              </span>
+                              {canDeleteThisComment && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (initialPost?.id && onDeletePostComment) {
+                                      onDeletePostComment(initialPost.id, act.id);
+                                    }
+                                  }}
+                                  title={
+                                    isSelfAuthor
+                                      ? 'Delete your comment'
+                                      : 'Delete comment (Admin)'
+                                  }
+                                  className="p-1 rounded-lg text-stone-400 hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {act.details && (
+                            <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                              {act.details}
+                            </p>
+                          )}
+
+                          {act.comment && (
+                            <div
+                              className={`mt-1.5 p-2.5 rounded-xl border text-xs leading-relaxed ${
+                                act.type === 'client_feedback'
+                                  ? isDark
+                                    ? 'bg-[#C44D34]/15 border-[#C44D34]/40 text-stone-100'
+                                    : 'bg-[#C44D34]/[0.07] border-[#C44D34]/30 text-stone-900'
+                                  : act.type === 'changes_requested'
+                                  ? isDark
+                                    ? 'bg-amber-950/30 border-amber-800/50 text-amber-200'
+                                    : 'bg-amber-50 border-amber-200 text-amber-900'
+                                  : isDark
+                                  ? 'bg-[#151C24] border-[#283342] text-stone-200'
+                                  : 'bg-[#FAF7F2] border-[#E6E0D5] text-stone-800'
+                              }`}
+                            >
+                              {act.comment}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Add Comment Form */}
+                {onAddPostComment && (
+                  <form
+                    onSubmit={handlePostCommentSubmit}
+                    className="pt-2 space-y-2"
+                  >
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                      Add Team Comment or Review Note
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newActivityComment}
+                        onChange={(e) => setNewActivityComment(e.target.value)}
+                        placeholder="Write a comment for the content team..."
+                        className={`flex-1 px-3.5 py-2 rounded-xl border text-xs focus:outline-none focus:ring-2 focus:ring-[#C44D34] ${
+                          isDark
+                            ? 'bg-[#1D252F] border-[#2A3543] text-white placeholder-stone-500'
+                            : 'bg-white border-[#E8E4DC] text-stone-900 placeholder-stone-400'
+                        }`}
+                      />
+                      <button
+                        type="submit"
+                        disabled={!newActivityComment.trim()}
+                        className="px-4 py-2 rounded-xl bg-[#C44D34] hover:bg-[#A93E27] disabled:opacity-40 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shrink-0"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Comment</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
             </div>
           ) : (
             /* =========================================================
@@ -1341,31 +1343,36 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                   )}
                 </div>
 
-                {/* STATUS */}
+                {/* STATUS (4 Color-Coded Stages with Icons) */}
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-1.5">
-                    STATUS
+                    STAGE
                   </label>
-                  <select
-                    id="post-form-status-select"
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as PostStatus)}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#C44D34] transition-all ${
-                      isDark
-                        ? 'bg-[#1D242C] border-[#2A3440] text-stone-200'
-                        : 'bg-white border-[#E8E4DC] text-stone-800 shadow-xs'
-                    }`}
-                  >
-                    {statuses.map((s) => (
-                      <option
-                        key={s}
-                        value={s}
-                        className="bg-white dark:bg-[#1D242C] text-stone-800 dark:text-stone-200"
-                      >
-                        {s}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {statuses.map((s) => {
+                      const active = status === s;
+                      const stStyle = STATUS_STYLES[s];
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setStatus(s)}
+                          className={`px-2.5 py-2 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                            active
+                              ? `${stStyle.badge} ring-2 ring-[#C44D34]/40 shadow-xs`
+                              : isDark
+                              ? 'bg-[#1D242C] border-[#2A3440] text-stone-400 hover:text-stone-200'
+                              : 'bg-white border-[#E8E4DC] text-stone-600 hover:text-stone-900'
+                          }`}
+                        >
+                          <span className={active ? '' : stStyle.iconColor}>
+                            {getStageIcon(s, 'w-3.5 h-3.5 shrink-0')}
+                          </span>
+                          <span className="truncate">{s}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
@@ -1398,31 +1405,36 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                   </select>
                 </div>
 
-                {/* PLATFORM */}
+                {/* PLATFORM (With Brand Logos) */}
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-1.5">
                     PLATFORM
                   </label>
-                  <select
-                    id="post-form-platform-select"
-                    value={platform}
-                    onChange={(e) => setPlatform(e.target.value as PostPlatform)}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#C44D34] transition-all ${
-                      isDark
-                        ? 'bg-[#1D242C] border-[#2A3440] text-stone-200'
-                        : 'bg-white border-[#E8E4DC] text-stone-800 shadow-xs'
-                    }`}
-                  >
-                    {platforms.map((plat) => (
-                      <option
-                        key={plat}
-                        value={plat}
-                        className="bg-white dark:bg-[#1D242C] text-stone-800 dark:text-stone-200"
-                      >
-                        {plat}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {platforms.map((plat) => {
+                      const isActive = platform === plat;
+                      return (
+                        <button
+                          key={plat}
+                          type="button"
+                          onClick={() => setPlatform(plat)}
+                          className={`px-2.5 py-2 rounded-xl border text-[11px] font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                            isActive
+                              ? 'bg-[#181E24] dark:bg-[#C44D34] text-white border-transparent shadow-xs font-bold'
+                              : isDark
+                              ? 'bg-[#1D242C] border-[#2A3440] text-stone-300 hover:border-stone-600'
+                              : 'bg-white border-[#E8E4DC] text-stone-700 hover:border-stone-300'
+                          }`}
+                        >
+                          <PlatformLogo
+                            platform={plat}
+                            size="xs"
+                            className={isActive ? '!text-white' : ''}
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 

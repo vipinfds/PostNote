@@ -16,8 +16,10 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { Client, Post } from '../types';
-import { CATEGORY_COLORS, STATUS_STYLES } from '../utils/theme';
+import { CATEGORY_COLORS, normalizePostStatus } from '../utils/theme';
 import { ClientShareModal } from './ClientShareModal';
+import { StatusStageBadge } from './StatusStageBadge';
+import { PlatformLogo } from './PlatformLogo';
 
 interface ClientDetailViewProps {
   client: Client;
@@ -46,13 +48,20 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
 
   const clientPosts = posts.filter((p) => p.clientId === client.id);
 
-  // Statistics
+  // Statistics across the 4 stages
   const totalPosts = clientPosts.length;
-  const plannedCount = clientPosts.filter((p) => p.status === 'Planned').length;
-  const inReviewCount = clientPosts.filter((p) => p.status === 'In review').length;
-  const scheduledCount = clientPosts.filter((p) => p.status === 'Scheduled').length;
-  const publishedCount = clientPosts.filter((p) => p.status === 'Published').length;
-  const approvedCount = clientPosts.filter((p) => p.status === 'Approved').length;
+  const plannedCount = clientPosts.filter(
+    (p) => normalizePostStatus(p.status) === 'Planned'
+  ).length;
+  const inReviewCount = clientPosts.filter(
+    (p) => normalizePostStatus(p.status) === 'In review'
+  ).length;
+  const approvedCount = clientPosts.filter(
+    (p) => normalizePostStatus(p.status) === 'Approved'
+  ).length;
+  const scheduledCount = clientPosts.filter(
+    (p) => normalizePostStatus(p.status) === 'Scheduled'
+  ).length;
 
   // Posts by type distribution
   const typeCounts: Record<string, number> = {};
@@ -90,7 +99,7 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
 
   // Upcoming / planned / scheduled posts sorted by date
   const upcomingPosts = clientPosts
-    .filter((p) => p.status !== 'Published')
+    .slice()
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const formatShortDate = (dateStr: string) => {
@@ -106,8 +115,8 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
   };
 
   // Performance simulation metrics
-  const estImpressions = (publishedCount * 3420) + (scheduledCount * 1200);
-  const estEngagementRate = totalPosts > 0 ? (4.2 + (publishedCount * 0.1)).toFixed(1) : '0.0';
+  const estImpressions = (scheduledCount * 3420) + (approvedCount * 1200);
+  const estEngagementRate = totalPosts > 0 ? (4.2 + (scheduledCount * 0.1)).toFixed(1) : '0.0';
 
   return (
     <div
@@ -270,11 +279,11 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
                   isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
                 }`}
               >
-                <div className="text-2xl font-black text-amber-500">
-                  {scheduledCount}
+                <div className="text-2xl font-black text-emerald-600">
+                  {approvedCount}
                 </div>
                 <div className="text-[9px] font-bold uppercase tracking-wider text-stone-400 mt-1">
-                  Scheduled
+                  Approved
                 </div>
               </div>
 
@@ -283,11 +292,11 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
                   isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
                 }`}
               >
-                <div className="text-2xl font-black text-emerald-600">
-                  {publishedCount}
+                <div className="text-2xl font-black text-blue-600">
+                  {scheduledCount}
                 </div>
                 <div className="text-[9px] font-bold uppercase tracking-wider text-stone-400 mt-1">
-                  Published
+                  Scheduled
                 </div>
               </div>
             </div>
@@ -391,7 +400,6 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
                 <div className="space-y-2.5">
                   {upcomingPosts.map((post) => {
                     const catStyle = CATEGORY_COLORS[post.category] || CATEGORY_COLORS.POST;
-                    const statStyle = STATUS_STYLES[post.status] || STATUS_STYLES.Planned;
 
                     return (
                       <div
@@ -416,9 +424,7 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
                               {post.category}
                             </span>
                             <span className="text-stone-400">•</span>
-                            <span className="text-[11px] text-stone-500 font-medium">
-                              {post.platform}
-                            </span>
+                            <PlatformLogo platform={post.platform} size="xs" />
                           </div>
                           <h4 className="text-xs font-bold text-stone-900 dark:text-white truncate">
                             {post.title}
@@ -428,15 +434,11 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
                           </p>
                         </div>
 
-                        <div className="text-right shrink-0">
+                        <div className="text-right shrink-0 space-y-1">
                           <div className="text-xs font-bold text-stone-700 dark:text-stone-300">
                             {formatShortDate(post.date)}
                           </div>
-                          <span
-                            className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md mt-1 inline-block ${statStyle.badge}`}
-                          >
-                            {statStyle.text}
-                          </span>
+                          <StatusStageBadge status={post.status} size="xs" />
                         </div>
                       </div>
                     );
@@ -519,13 +521,13 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
               }`}
             >
               <div className="text-2xl font-black text-emerald-600 font-serif">
-                {publishedCount} / {totalPosts}
+                {scheduledCount} / {totalPosts}
               </div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mt-1">
-                Content Delivered
+                Scheduled
               </div>
               <span className="text-[10px] text-stone-400 font-semibold mt-1 block">
-                {scheduledCount} scheduled
+                {approvedCount} approved
               </span>
             </div>
 
@@ -538,7 +540,7 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
                 {inReviewCount === 0 ? '0' : inReviewCount}
               </div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mt-1">
-                Pending Client Review
+                In Review
               </div>
               <span className="text-[10px] text-stone-400 font-semibold mt-1 block">
                 {inReviewCount === 0 ? 'All caught up' : 'Awaiting sign-off'}
@@ -561,23 +563,19 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
                 {platformEntries.map((p) => (
                   <div key={p.platform}>
                     <div className="flex items-center justify-between text-xs mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className="w-2.5 h-2.5 rounded-full"
-                          style={{ backgroundColor: p.color }}
-                        />
-                        <span className="font-semibold text-stone-800 dark:text-stone-200">
-                          {p.platform}
-                        </span>
-                      </div>
+                      <PlatformLogo
+                        platform={p.platform}
+                        size="sm"
+                        className="font-semibold text-stone-800 dark:text-stone-200"
+                      />
                       <span className="text-[11px] font-bold text-stone-500">
                         {p.count} posts ({p.percent}%)
                       </span>
                     </div>
                     <div className="w-full h-2.5 rounded-full bg-stone-100 dark:bg-stone-800 overflow-hidden">
                       <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${p.percent}%`, backgroundColor: p.color }}
+                        className="h-full rounded-full transition-all duration-500 bg-[#C44D34]"
+                        style={{ width: `${p.percent}%` }}
                       />
                     </div>
                   </div>
@@ -585,30 +583,28 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
               </div>
             </div>
 
-            {/* Chart 2: Status Breakdown & Approval Velocity */}
+            {/* Chart 2: 4-Stage Breakdown */}
             <div
               className={`p-4 rounded-2xl border ${
                 isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
               }`}
             >
               <h4 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-3">
-                Content Pipeline Health
+                4-Stage Content Pipeline
               </h4>
               <div className="space-y-3">
                 {[
-                  { label: 'Published & Live', count: publishedCount, color: '#16A34A' },
-                  { label: 'Approved & Scheduled', count: scheduledCount + approvedCount, color: '#2563EB' },
-                  { label: 'In Review (Client Side)', count: inReviewCount, color: '#D97706' },
-                  { label: 'In Draft / Planned', count: plannedCount, color: '#9CA3AF' },
+                  { label: 'Scheduled', count: scheduledCount, color: '#2563EB' },
+                  { label: 'Approved', count: approvedCount, color: '#16A34A' },
+                  { label: 'In review', count: inReviewCount, color: '#D97706' },
+                  { label: 'Planned', count: plannedCount, color: '#78716C' },
                 ].map((s) => {
                   const pct = totalPosts > 0 ? Math.round((s.count / totalPosts) * 100) : 0;
                   return (
                     <div key={s.label}>
                       <div className="flex items-center justify-between text-xs mb-1">
-                        <span className="font-medium text-stone-700 dark:text-stone-300">
-                          {s.label}
-                        </span>
-                        <span className="text-[11px] font-bold text-stone-500">
+                        <StatusStageBadge status={s.label} size="xs" />
+                        <span className="text-[11px] font-bold text-stone-500 tabular-nums">
                           {s.count} ({pct}%)
                         </span>
                       </div>

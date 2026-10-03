@@ -45,8 +45,7 @@ export type PostStatus =
   | 'Planned'
   | 'In review'
   | 'Approved'
-  | 'Scheduled'
-  | 'Published';
+  | 'Scheduled';
 
 export type Platform =
   | 'Instagram'
@@ -74,7 +73,8 @@ export type PostActivityType =
   | 'submitted_for_review'
   | 'approved'
   | 'changes_requested'
-  | 'comment';
+  | 'comment'
+  | 'client_feedback';
 
 export interface PostActor {
   name: string;
@@ -98,7 +98,12 @@ export interface StudioNotification {
   postId: string;
   postTitle: string;
   clientName: string;
-  type: 'changes_requested' | 'submitted_for_review' | 'approved' | 'comment';
+  type:
+    | 'changes_requested'
+    | 'submitted_for_review'
+    | 'approved'
+    | 'comment'
+    | 'client_feedback';
   message: string;
   comment?: string;
   actorName: string;
@@ -150,6 +155,11 @@ export interface MediaItem {
   createdAt?: string;
 }
 
+export interface CampaignExternalLink {
+  label: string;
+  url: string;
+}
+
 export interface Campaign {
   id: string;
   name: string;
@@ -157,6 +167,10 @@ export interface Campaign {
   clientName?: string;
   description?: string;
   postsCount?: number;
+  metaAdLink?: string;
+  externalLinks?: CampaignExternalLink[];
+  startDate?: string;
+  endDate?: string;
 }
 
 export type WorkspaceRole = 'Owner' | 'Admin' | 'Manager' | 'Editor' | 'Viewer';

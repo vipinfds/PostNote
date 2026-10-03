@@ -1,5 +1,19 @@
 import { PostCategory, PostStatus } from '../types';
 
+export const POST_STAGES: PostStatus[] = [
+  'Planned',
+  'In review',
+  'Approved',
+  'Scheduled',
+];
+
+export function normalizePostStatus(status?: string): PostStatus {
+  if (status === 'In review') return 'In review';
+  if (status === 'Approved') return 'Approved';
+  if (status === 'Scheduled' || status === 'Published') return 'Scheduled';
+  return 'Planned';
+}
+
 export const CATEGORY_COLORS: Record<
   PostCategory,
   { dot: string; text: string; bg: string; darkText: string; darkBg: string }
@@ -21,26 +35,52 @@ export function getCategoryBadgeStyle(category: PostCategory, isDark?: boolean) 
   };
 }
 
-export const STATUS_STYLES: Record<PostStatus, { badge: string; text: string }> = {
-  Published: {
-    badge: 'bg-[#EAF7EE] dark:bg-emerald-950/70 text-[#15803D] dark:text-emerald-400 border border-[#CDEED5] dark:border-emerald-800/60',
-    text: 'PUBLISHED',
-  },
-  Scheduled: {
-    badge: 'bg-[#EBF3FC] dark:bg-blue-950/70 text-[#1D4ED8] dark:text-blue-400 border border-[#CFE2FA] dark:border-blue-800/60',
-    text: 'SCHEDULED',
+export const STATUS_STYLES: Record<
+  PostStatus,
+  {
+    badge: string;
+    text: string;
+    label: string;
+    hex: string;
+    dotClass: string;
+    iconColor: string;
+  }
+> = {
+  Planned: {
+    badge:
+      'bg-[#F2F1ED] dark:bg-stone-800 text-[#57534E] dark:text-stone-300 border border-[#E5E2DC] dark:border-stone-700',
+    text: 'PLANNED',
+    label: 'Planned',
+    hex: '#78716C',
+    dotClass: 'bg-stone-500',
+    iconColor: 'text-stone-600 dark:text-stone-300',
   },
   'In review': {
-    badge: 'bg-[#F4EFFB] dark:bg-purple-950/70 text-[#7E22CE] dark:text-purple-400 border border-[#E5DAF6] dark:border-purple-800/60',
-    text: 'IN_REVIEW',
+    badge:
+      'bg-[#FFFBEB] dark:bg-amber-950/70 text-[#D97706] dark:text-amber-400 border border-[#FDE68A] dark:border-amber-800/60',
+    text: 'IN REVIEW',
+    label: 'In review',
+    hex: '#D97706',
+    dotClass: 'bg-amber-500',
+    iconColor: 'text-amber-600 dark:text-amber-400',
   },
   Approved: {
-    badge: 'bg-[#E8F8F5] dark:bg-teal-950/70 text-[#0F766E] dark:text-teal-400 border border-[#C8EFE7] dark:border-teal-800/60',
+    badge:
+      'bg-[#EAF7EE] dark:bg-emerald-950/70 text-[#15803D] dark:text-emerald-400 border border-[#CDEED5] dark:border-emerald-800/60',
     text: 'APPROVED',
+    label: 'Approved',
+    hex: '#16A34A',
+    dotClass: 'bg-emerald-500',
+    iconColor: 'text-emerald-600 dark:text-emerald-400',
   },
-  Planned: {
-    badge: 'bg-[#F2F1ED] dark:bg-stone-800 text-[#57534E] dark:text-stone-300 border border-[#E5E2DC] dark:border-stone-700',
-    text: 'PLANNED',
+  Scheduled: {
+    badge:
+      'bg-[#EBF3FC] dark:bg-blue-950/70 text-[#1D4ED8] dark:text-blue-400 border border-[#CFE2FA] dark:border-blue-800/60',
+    text: 'SCHEDULED',
+    label: 'Scheduled',
+    hex: '#2563EB',
+    dotClass: 'bg-blue-500',
+    iconColor: 'text-blue-600 dark:text-blue-400',
   },
 };
 
@@ -130,3 +170,53 @@ export function getTodayParts(): {
   };
 }
 
+// Compute campaign duration summary from a list of posts and optional campaign start/end dates
+export function computeCampaignDuration(
+  posts: { date: string }[],
+  startDate?: string,
+  endDate?: string
+): {
+  startStr: string | null;
+  endStr: string | null;
+  daysSpan: number;
+  label: string;
+} {
+  const dates = posts.map((p) => p.date).filter(Boolean).sort();
+  const minDate = startDate || (dates.length > 0 ? dates[0] : null);
+  const maxDate = endDate || (dates.length > 0 ? dates[dates.length - 1] : null);
+
+  if (!minDate || !maxDate) {
+    return {
+      startStr: null,
+      endStr: null,
+      daysSpan: 0,
+      label: 'No schedule dates yet',
+    };
+  }
+
+  try {
+    const d1 = new Date(`${minDate}T00:00:00`);
+    const d2 = new Date(`${maxDate}T00:00:00`);
+    const diffMs = Math.max(0, d2.getTime() - d1.getTime());
+    const daysSpan = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1);
+    const fmt = (d: Date) =>
+      d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const label =
+      minDate === maxDate
+        ? `${fmt(d1)} (1 Day)`
+        : `${fmt(d1)} – ${fmt(d2)} · ${daysSpan} Days`;
+    return {
+      startStr: minDate,
+      endStr: maxDate,
+      daysSpan,
+      label,
+    };
+  } catch {
+    return {
+      startStr: minDate,
+      endStr: maxDate,
+      daysSpan: 1,
+      label: `${minDate} – ${maxDate}`,
+    };
+  }
+}

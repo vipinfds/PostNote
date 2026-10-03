@@ -20,6 +20,8 @@ import {
 import { downloadMediaFile } from '../utils/mediaDownload';
 import { PullToRefreshContainer } from './PullToRefreshContainer';
 import { MediaCarousel } from './MediaCarousel';
+import { StatusStageBadge } from './StatusStageBadge';
+import { PlatformLogo } from './PlatformLogo';
 
 interface HomeViewProps {
   posts: Post[];
@@ -545,12 +547,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
                           <span className="text-stone-500 font-medium text-[11px] truncate">
                             {post.clientName}
                           </span>
+                          <span className="text-stone-400">•</span>
+                          <PlatformLogo platform={post.platform} size="xs" showLabel={false} />
                         </div>
-                        <span
-                          className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0 ${statStyle.badge}`}
-                        >
-                          {statStyle.text}
-                        </span>
+                        <StatusStageBadge status={post.status} size="xs" />
                       </div>
                       <h4 className="text-xs font-bold text-stone-900 dark:text-white truncate">
                         {post.title}
@@ -758,13 +758,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       <span className="text-stone-600 dark:text-stone-300 font-medium truncate">
                         {post.clientName}
                       </span>
+                      <span className="text-stone-400">•</span>
+                      <PlatformLogo platform={post.platform} size="xs" showLabel={false} />
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <span
-                        className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${statStyle.badge}`}
-                      >
-                        {statStyle.text}
-                      </span>
+                      <StatusStageBadge status={post.status} size="xs" />
                       <span
                         className={`text-[10px] uppercase font-bold tabular-nums ${
                           isPast ? 'text-stone-400' : 'text-[#C44D34]'

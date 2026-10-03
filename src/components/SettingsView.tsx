@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowLeft, Sun, Moon, Monitor, Users, Trash2, LogOut, Sparkles, ChevronRight } from 'lucide-react';
 import { ThemeMode, SubscriptionState, WorkspaceRole } from '../types';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface SettingsViewProps {
   theme: ThemeMode;
@@ -212,6 +213,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Android App & Mobile Installation Card */}
+        <PWAInstallButton variant="card" isDark={isDark} />
 
         {/* Your team card */}
         <div

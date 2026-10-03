@@ -231,7 +231,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           {filteredClients.map((client) => {
             const clientPosts = posts.filter((p) => p.clientId === client.id);
             const clientPostsCount = clientPosts.length;
-            const liveCount = clientPosts.filter((p) => p.status === 'Published').length;
+            const approvedCount = clientPosts.filter((p) => p.status === 'Approved').length;
             const inReviewCount = clientPosts.filter((p) => p.status === 'In review').length;
             const scheduledCount = clientPosts.filter((p) => p.status === 'Scheduled').length;
 
@@ -290,12 +290,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     {clientPostsCount} <span className="text-[9px] font-medium opacity-70">posts</span>
                   </span>
 
-                  {liveCount > 0 && (
+                  {approvedCount > 0 && (
                     <span
-                      title="Published live posts"
+                      title="Approved posts"
                       className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
                     >
-                      {liveCount} live
+                      {approvedCount} app
                     </span>
                   )}
 
@@ -401,7 +401,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           {filteredClients.map((client) => {
             const clientPosts = posts.filter((p) => p.clientId === client.id);
             const clientPostsCount = clientPosts.length;
-            const liveCount = clientPosts.filter((p) => p.status === 'Published').length;
+            const approvedCount = clientPosts.filter((p) => p.status === 'Approved').length;
             const inReviewCount = clientPosts.filter((p) => p.status === 'In review').length;
             const scheduledCount = clientPosts.filter((p) => p.status === 'Scheduled').length;
 
@@ -481,10 +481,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </div>
                     <div className="p-2 rounded-xl bg-stone-50 dark:bg-stone-800/50">
                       <div className="text-xs font-bold text-emerald-600">
-                        {liveCount}
+                        {approvedCount}
                       </div>
                       <div className="text-[9px] uppercase font-semibold text-stone-400 tracking-wider">
-                        Live
+                        Approved
                       </div>
                     </div>
                     <div className="p-2 rounded-xl bg-stone-50 dark:bg-stone-800/50">

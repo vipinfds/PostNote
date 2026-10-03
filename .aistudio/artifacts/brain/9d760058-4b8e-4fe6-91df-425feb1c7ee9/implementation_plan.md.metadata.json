@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to unify Post Details and Activity & Comments into a single continuous scrollable pop-up modal (no separate tab switching needed) and ensure post approvals explicitly notify the submitting employee and content team.",
-  "updatedAt":  "2026-10-03T22:14:33.898166869Z",
+  "summary":  "Implementation plan for converting PostNote into an Android app using both installable Progressive Web App (PWA) support via vite-plugin-pwa and native Android APK / Google Play packaging via Capacitor (capacitor.config.ts, npm scripts, and an interactive in-app Android & PWA Install Guide in Settings and the Header).",
+  "updatedAt":  "2026-10-03T23:35:22.889190516Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
