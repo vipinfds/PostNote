@@ -116,13 +116,29 @@ export interface Campaign {
   postsCount?: number;
 }
 
+export type WorkspaceRole = 'Owner' | 'Admin' | 'Manager' | 'Editor' | 'Viewer';
+
 export interface TeamMember {
   id: string;
   name?: string;
   email: string;
-  role?: string;
+  role?: WorkspaceRole | string;
   status: 'active' | 'invited';
   avatar?: string;
   initials?: string;
   isYou?: boolean;
+  addedAt?: string;
 }
+
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  ownerEmail: string;
+  ownerName: string;
+  myRole: WorkspaceRole;
+  isPersonal: boolean;
+  membersCount: number;
+  clientsCount: number;
+  postsCount: number;
+}
+

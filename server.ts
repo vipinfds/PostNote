@@ -32,6 +32,37 @@ interface TunnelConfig {
   mode?: 'permanent' | 'quick';
 }
 
+interface TenantTeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: 'Owner' | 'Admin' | 'Manager' | 'Editor' | 'Viewer';
+  status: 'active' | 'invited';
+  avatar?: string;
+  addedAt: string;
+}
+
+interface TenantWorkspace {
+  id: string;
+  name: string;
+  ownerEmail: string;
+  ownerName: string;
+  posts: Post[];
+  clients: Client[];
+  campaigns: any[];
+  ideas: any[];
+  teamMembers: TenantTeamMember[];
+  lastUpdated: string;
+}
+
+interface RegisteredUser {
+  name: string;
+  email: string;
+  passwordHash: string;
+  personalWorkspaceId: string;
+  createdAt: string;
+}
+
 // Workspace data interface
 interface WorkspaceStore {
   posts: Post[];
@@ -39,7 +70,19 @@ interface WorkspaceStore {
   campaigns: any[];
   ideas: any[];
   tunnelConfig?: TunnelConfig;
+  workspaces?: Record<string, TenantWorkspace>;
+  users?: Record<string, RegisteredUser>;
   lastUpdated: string;
+}
+
+function hashPassword(pw: string): string {
+  return crypto.createHash('sha256').update(`postnote_salt_${pw}`).digest('hex');
+}
+
+function makeWorkspaceIdForEmail(email: string): string {
+  const clean = email.trim().toLowerCase();
+  if (clean === 'vipin@firstdraftstudio.in') return 'ws_vipin';
+  return 'ws_' + clean.replace(/[^a-z0-9]/g, '_').slice(0, 60);
 }
 
 // In-memory workspace state initialized from disk or defaults
@@ -55,6 +98,8 @@ let workspaceStore: WorkspaceStore = {
     customDomain: 'mcp.firstdraftstudio.in',
     mode: 'permanent',
   },
+  workspaces: {},
+  users: {},
   lastUpdated: new Date().toISOString(),
 };
 
@@ -74,6 +119,8 @@ try {
           customDomain: process.env.CLOUDFLARE_CUSTOM_DOMAIN || 'mcp.firstdraftstudio.in',
           mode: process.env.CLOUDFLARE_TUNNEL_TOKEN ? 'permanent' : 'quick',
         },
+        workspaces: parsed.workspaces || {},
+        users: parsed.users || {},
         lastUpdated: parsed.lastUpdated || new Date().toISOString(),
       };
       console.log(`[Store] Loaded ${workspaceStore.posts.length} posts and ${workspaceStore.clients.length} clients from store`);
@@ -85,9 +132,144 @@ try {
   console.warn('[Store] Could not load persisted data file, using defaults:', e);
 }
 
+// Ensure default owner account (vipin@firstdraftstudio.in) and workspace (ws_vipin) exist
+function ensureDefaultOwnerWorkspace() {
+  if (!workspaceStore.users) workspaceStore.users = {};
+  if (!workspaceStore.workspaces) workspaceStore.workspaces = {};
+
+  const ownerEmail = 'vipin@firstdraftstudio.in';
+  if (!workspaceStore.users[ownerEmail]) {
+    workspaceStore.users[ownerEmail] = {
+      name: 'Vipin',
+      email: ownerEmail,
+      passwordHash: hashPassword('postnote2026'),
+      personalWorkspaceId: 'ws_vipin',
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  if (!workspaceStore.workspaces['ws_vipin']) {
+    workspaceStore.workspaces['ws_vipin'] = {
+      id: 'ws_vipin',
+      name: 'FirstDraft Studio',
+      ownerEmail,
+      ownerName: 'Vipin',
+      posts: workspaceStore.posts,
+      clients: workspaceStore.clients,
+      campaigns: workspaceStore.campaigns,
+      ideas: workspaceStore.ideas,
+      teamMembers: [
+        {
+          id: 'member-owner-vipin',
+          name: 'Vipin',
+          email: ownerEmail,
+          role: 'Owner',
+          status: 'active',
+          avatar: 'VI',
+          addedAt: new Date().toISOString(),
+        },
+      ],
+      lastUpdated: new Date().toISOString(),
+    };
+  } else {
+    // Keep top-level store and ws_vipin in sync for MCP tools
+    workspaceStore.workspaces['ws_vipin'].posts = workspaceStore.posts;
+    workspaceStore.workspaces['ws_vipin'].clients = workspaceStore.clients;
+    workspaceStore.workspaces['ws_vipin'].campaigns = workspaceStore.campaigns;
+    workspaceStore.workspaces['ws_vipin'].ideas = workspaceStore.ideas;
+  }
+}
+ensureDefaultOwnerWorkspace();
+
+function getOrCreatePrivateWorkspaceForUser(email: string, name?: string): TenantWorkspace {
+  ensureDefaultOwnerWorkspace();
+  const cleanEmail = email.trim().toLowerCase();
+  const wsId = makeWorkspaceIdForEmail(cleanEmail);
+  const displayName = (name || cleanEmail.split('@')[0] || 'User').trim();
+  const initials = displayName.slice(0, 2).toUpperCase();
+
+  if (!workspaceStore.workspaces![wsId]) {
+    const isVipin = cleanEmail === 'vipin@firstdraftstudio.in';
+    workspaceStore.workspaces![wsId] = {
+      id: wsId,
+      name: isVipin ? 'FirstDraft Studio' : `${displayName}'s Studio`,
+      ownerEmail: cleanEmail,
+      ownerName: displayName,
+      // CRITICAL: New users get a completely private, empty workspace (not Vipin's data!)
+      posts: isVipin ? [...workspaceStore.posts] : [],
+      clients: isVipin ? [...workspaceStore.clients] : [],
+      campaigns: isVipin ? [...workspaceStore.campaigns] : [],
+      ideas: isVipin ? [...workspaceStore.ideas] : [],
+      teamMembers: [
+        {
+          id: `member-owner-${Date.now()}`,
+          name: displayName,
+          email: cleanEmail,
+          role: 'Owner',
+          status: 'active',
+          avatar: initials,
+          addedAt: new Date().toISOString(),
+        },
+      ],
+      lastUpdated: new Date().toISOString(),
+    };
+    // Also activate any pending team invitations for this email across other workspaces
+    for (const ws of Object.values(workspaceStore.workspaces!)) {
+      for (const m of ws.teamMembers) {
+        if (m.email.toLowerCase() === cleanEmail && m.status === 'invited') {
+          m.status = 'active';
+          m.name = displayName;
+          m.avatar = initials;
+        }
+      }
+    }
+    persistStore();
+  }
+  return workspaceStore.workspaces![wsId];
+}
+
+function getWorkspacesForUser(email: string, name?: string) {
+  const cleanEmail = email.trim().toLowerCase();
+  getOrCreatePrivateWorkspaceForUser(cleanEmail, name);
+
+  const summaries: any[] = [];
+  for (const ws of Object.values(workspaceStore.workspaces || {})) {
+    const isOwner = ws.ownerEmail.toLowerCase() === cleanEmail;
+    const memberRecord = ws.teamMembers.find((m) => m.email.toLowerCase() === cleanEmail);
+
+    if (isOwner || memberRecord) {
+      summaries.push({
+        id: ws.id,
+        name: ws.name,
+        ownerEmail: ws.ownerEmail,
+        ownerName: ws.ownerName,
+        myRole: isOwner ? 'Owner' : memberRecord!.role,
+        isPersonal: isOwner,
+        membersCount: ws.teamMembers.length,
+        clientsCount: ws.clients.length,
+        postsCount: ws.posts.length,
+      });
+    }
+  }
+  return summaries;
+}
+
+function getUserRoleInWorkspace(ws: TenantWorkspace, email: string): 'Owner' | 'Admin' | 'Manager' | 'Editor' | 'Viewer' | null {
+  const cleanEmail = email.trim().toLowerCase();
+  if (ws.ownerEmail.toLowerCase() === cleanEmail) return 'Owner';
+  const member = ws.teamMembers.find((m) => m.email.toLowerCase() === cleanEmail);
+  return member ? member.role : null;
+}
+
 function persistStore() {
   try {
     workspaceStore.lastUpdated = new Date().toISOString();
+    if (workspaceStore.workspaces && workspaceStore.workspaces['ws_vipin']) {
+      workspaceStore.posts = workspaceStore.workspaces['ws_vipin'].posts;
+      workspaceStore.clients = workspaceStore.workspaces['ws_vipin'].clients;
+      workspaceStore.campaigns = workspaceStore.workspaces['ws_vipin'].campaigns;
+      workspaceStore.ideas = workspaceStore.workspaces['ws_vipin'].ideas;
+    }
     fs.writeFileSync(DATA_FILE, JSON.stringify(workspaceStore, null, 2), 'utf-8');
   } catch (err) {
     console.error('[Store] Failed to write store to disk:', err);
@@ -1253,46 +1435,342 @@ async function startServer() {
     res.json({ message: 'Tunnel restart initiated' });
   });
 
-  // Client-server workspace state sync endpoints
+  // -------------------------------------------------------------
+  // Multi-Tenant Authentication, Private Workspaces & Team RBAC
+  // -------------------------------------------------------------
+  app.post('/api/auth/signup', (req, res) => {
+    try {
+      const { name, email, password, provider } = req.body || {};
+      if (!email || typeof email !== 'string' || !email.includes('@')) {
+        return res.status(400).json({ error: 'Please enter a valid email address.' });
+      }
+      const cleanEmail = email.trim().toLowerCase();
+      const displayName = (name || cleanEmail.split('@')[0] || 'Studio Owner').trim();
+
+      if (!workspaceStore.users) workspaceStore.users = {};
+
+      if (provider !== 'google') {
+        if (workspaceStore.users[cleanEmail]) {
+          return res.status(409).json({
+            error: 'An account with this email already exists. Please sign in instead.',
+          });
+        }
+        if (!password || String(password).length < 6) {
+          return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+        }
+      }
+
+      const personalWs = getOrCreatePrivateWorkspaceForUser(cleanEmail, displayName);
+      workspaceStore.users[cleanEmail] = {
+        name: displayName,
+        email: cleanEmail,
+        passwordHash: password ? hashPassword(String(password)) : hashPassword(`oauth_${cleanEmail}`),
+        personalWorkspaceId: personalWs.id,
+        createdAt: new Date().toISOString(),
+      };
+      persistStore();
+
+      const workspaces = getWorkspacesForUser(cleanEmail, displayName);
+      return res.json({
+        user: {
+          name: displayName,
+          email: cleanEmail,
+          role: 'Owner',
+          personalWorkspaceId: personalWs.id,
+        },
+        workspaces,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Sign up failed' });
+    }
+  });
+
+  app.post('/api/auth/signin', (req, res) => {
+    try {
+      const { email, password, name, provider } = req.body || {};
+      if (!email || typeof email !== 'string' || !email.includes('@')) {
+        return res.status(400).json({ error: 'Please enter a valid email address.' });
+      }
+      const cleanEmail = email.trim().toLowerCase();
+      ensureDefaultOwnerWorkspace();
+
+      if (provider === 'google') {
+        const displayName = (name || cleanEmail.split('@')[0] || 'User').trim();
+        const personalWs = getOrCreatePrivateWorkspaceForUser(cleanEmail, displayName);
+        if (!workspaceStore.users![cleanEmail]) {
+          workspaceStore.users![cleanEmail] = {
+            name: displayName,
+            email: cleanEmail,
+            passwordHash: hashPassword(`google_${cleanEmail}`),
+            personalWorkspaceId: personalWs.id,
+            createdAt: new Date().toISOString(),
+          };
+          persistStore();
+        }
+        const userRecord = workspaceStore.users![cleanEmail];
+        const workspaces = getWorkspacesForUser(cleanEmail, userRecord.name);
+        return res.json({
+          user: {
+            name: userRecord.name,
+            email: cleanEmail,
+            role: 'Owner',
+            personalWorkspaceId: personalWs.id,
+          },
+          workspaces,
+        });
+      }
+
+      const existingUser = workspaceStore.users?.[cleanEmail];
+      if (!existingUser) {
+        return res.status(404).json({
+          error: 'No account found with this email. Please create an account using Sign Up.',
+        });
+      }
+
+      if (!password || existingUser.passwordHash !== hashPassword(String(password))) {
+        return res.status(401).json({
+          error: 'Invalid email or password. Please check your credentials.',
+        });
+      }
+
+      const personalWs = getOrCreatePrivateWorkspaceForUser(cleanEmail, existingUser.name);
+      // Activate any pending team invitations for this user
+      for (const ws of Object.values(workspaceStore.workspaces || {})) {
+        for (const m of ws.teamMembers) {
+          if (m.email.toLowerCase() === cleanEmail && m.status === 'invited') {
+            m.status = 'active';
+            m.name = existingUser.name;
+            m.avatar = existingUser.name.slice(0, 2).toUpperCase();
+          }
+        }
+      }
+      persistStore();
+
+      const workspaces = getWorkspacesForUser(cleanEmail, existingUser.name);
+      return res.json({
+        user: {
+          name: existingUser.name,
+          email: cleanEmail,
+          role: 'Owner',
+          personalWorkspaceId: personalWs.id,
+        },
+        workspaces,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Sign in failed' });
+    }
+  });
+
+  app.get('/api/workspaces', (req, res) => {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'email query parameter is required' });
+    }
+    const workspaces = getWorkspacesForUser(email);
+    return res.json({ workspaces });
+  });
+
+  app.post('/api/team/invite', (req, res) => {
+    try {
+      const { workspaceId, actorEmail, inviteEmail, inviteName, role } = req.body || {};
+      if (!workspaceId || !actorEmail || !inviteEmail) {
+        return res.status(400).json({ error: 'workspaceId, actorEmail, and inviteEmail are required' });
+      }
+      const ws = workspaceStore.workspaces?.[workspaceId];
+      if (!ws) {
+        return res.status(404).json({ error: 'Workspace not found' });
+      }
+
+      const actorRole = getUserRoleInWorkspace(ws, actorEmail);
+      if (actorRole !== 'Owner' && actorRole !== 'Admin') {
+        return res.status(403).json({ error: 'Only Workspace Owners and Admins can invite team members.' });
+      }
+
+      const cleanInviteEmail = String(inviteEmail).trim().toLowerCase();
+      const validRoles = ['Admin', 'Manager', 'Editor', 'Viewer'];
+      const assignedRole = validRoles.includes(role) ? role : 'Editor';
+
+      const existingMember = ws.teamMembers.find((m) => m.email.toLowerCase() === cleanInviteEmail);
+      if (existingMember) {
+        if (existingMember.role !== 'Owner') {
+          existingMember.role = assignedRole;
+        }
+        persistStore();
+        return res.json({ teamMembers: ws.teamMembers, updated: true });
+      }
+
+      const isAlreadyRegistered = Boolean(workspaceStore.users?.[cleanInviteEmail]);
+      const displayName =
+        (inviteName || workspaceStore.users?.[cleanInviteEmail]?.name || cleanInviteEmail.split('@')[0]).trim();
+
+      const newMember: TenantTeamMember = {
+        id: `member_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        name: displayName,
+        email: cleanInviteEmail,
+        role: assignedRole as any,
+        status: isAlreadyRegistered ? 'active' : 'invited',
+        avatar: displayName.slice(0, 2).toUpperCase(),
+        addedAt: new Date().toISOString(),
+      };
+
+      ws.teamMembers.push(newMember);
+      ws.lastUpdated = new Date().toISOString();
+      persistStore();
+
+      return res.json({ teamMembers: ws.teamMembers, member: newMember });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Failed to invite team member' });
+    }
+  });
+
+  app.patch('/api/team/role', (req, res) => {
+    try {
+      const { workspaceId, actorEmail, memberId, role } = req.body || {};
+      const ws = workspaceStore.workspaces?.[workspaceId];
+      if (!ws) return res.status(404).json({ error: 'Workspace not found' });
+
+      const actorRole = getUserRoleInWorkspace(ws, actorEmail || '');
+      if (actorRole !== 'Owner' && actorRole !== 'Admin') {
+        return res.status(403).json({ error: 'Only Owners and Admins can change team roles.' });
+      }
+
+      const target = ws.teamMembers.find((m) => m.id === memberId);
+      if (!target) return res.status(404).json({ error: 'Member not found' });
+      if (target.role === 'Owner') {
+        return res.status(400).json({ error: 'Cannot change the role of the Workspace Owner.' });
+      }
+
+      const validRoles = ['Admin', 'Manager', 'Editor', 'Viewer'];
+      if (!validRoles.includes(role)) {
+        return res.status(400).json({ error: 'Invalid role' });
+      }
+
+      target.role = role;
+      ws.lastUpdated = new Date().toISOString();
+      persistStore();
+      return res.json({ teamMembers: ws.teamMembers });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Failed to update role' });
+    }
+  });
+
+  app.delete('/api/team/member', (req, res) => {
+    try {
+      const { workspaceId, actorEmail, memberId } = req.body || {};
+      const ws = workspaceStore.workspaces?.[workspaceId];
+      if (!ws) return res.status(404).json({ error: 'Workspace not found' });
+
+      const actorRole = getUserRoleInWorkspace(ws, actorEmail || '');
+      if (actorRole !== 'Owner' && actorRole !== 'Admin') {
+        return res.status(403).json({ error: 'Only Owners and Admins can remove team members.' });
+      }
+
+      const target = ws.teamMembers.find((m) => m.id === memberId);
+      if (!target) return res.status(404).json({ error: 'Member not found' });
+      if (target.role === 'Owner') {
+        return res.status(400).json({ error: 'Cannot remove the Workspace Owner.' });
+      }
+
+      ws.teamMembers = ws.teamMembers.filter((m) => m.id !== memberId);
+      ws.lastUpdated = new Date().toISOString();
+      persistStore();
+      return res.json({ teamMembers: ws.teamMembers });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Failed to remove member' });
+    }
+  });
+
+  // Client-server workspace state sync endpoints (Strictly scoped per user & workspace!)
   app.get('/api/sync', (req, res) => {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    const requestedWsId = String(req.query.workspaceId || '').trim();
+
+    if (!email || !email.includes('@')) {
+      return res.status(401).json({ error: 'Authentication required for workspace sync' });
+    }
+
+    const personalWs = getOrCreatePrivateWorkspaceForUser(email);
+    const targetWsId = requestedWsId || personalWs.id;
+    const ws = workspaceStore.workspaces?.[targetWsId];
+
+    if (!ws) {
+      return res.status(404).json({ error: 'Workspace not found' });
+    }
+
+    const myRole = getUserRoleInWorkspace(ws, email);
+    if (!myRole) {
+      return res.status(403).json({ error: 'You do not have access to this private workspace.' });
+    }
+
+    const workspaces = getWorkspacesForUser(email);
     res.json({
-      posts: workspaceStore.posts,
-      clients: workspaceStore.clients,
-      campaigns: workspaceStore.campaigns,
-      ideas: workspaceStore.ideas,
-      lastUpdated: workspaceStore.lastUpdated,
+      workspaceId: ws.id,
+      workspaceName: ws.name,
+      ownerEmail: ws.ownerEmail,
+      myRole,
+      posts: ws.posts,
+      clients: ws.clients,
+      campaigns: ws.campaigns,
+      ideas: ws.ideas,
+      teamMembers: ws.teamMembers,
+      workspaces,
+      lastUpdated: ws.lastUpdated,
     });
   });
 
   app.post('/api/sync', (req, res) => {
     try {
-      const { posts, clients, campaigns, ideas } = req.body;
-      let changed = false;
+      const { email, workspaceId, posts, clients, campaigns, ideas } = req.body || {};
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      if (!cleanEmail || !cleanEmail.includes('@')) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
 
-      if (Array.isArray(posts) && posts.length > 0) {
-        workspaceStore.posts = posts;
+      const personalWs = getOrCreatePrivateWorkspaceForUser(cleanEmail);
+      const targetWsId = workspaceId || personalWs.id;
+      const ws = workspaceStore.workspaces?.[targetWsId];
+      if (!ws) {
+        return res.status(404).json({ error: 'Workspace not found' });
+      }
+
+      const myRole = getUserRoleInWorkspace(ws, cleanEmail);
+      if (!myRole) {
+        return res.status(403).json({ error: 'Forbidden: Not a member of this workspace' });
+      }
+      if (myRole === 'Viewer') {
+        return res.status(403).json({ error: 'Viewers have read-only access and cannot modify workspace data.' });
+      }
+
+      let changed = false;
+      if (Array.isArray(posts)) {
+        ws.posts = posts;
         changed = true;
       }
-      if (Array.isArray(clients) && clients.length > 0) {
-        workspaceStore.clients = clients;
+      if (Array.isArray(clients)) {
+        ws.clients = clients;
         changed = true;
       }
       if (Array.isArray(campaigns)) {
-        workspaceStore.campaigns = campaigns;
+        ws.campaigns = campaigns;
+        changed = true;
       }
       if (Array.isArray(ideas)) {
-        workspaceStore.ideas = ideas;
+        ws.ideas = ideas;
+        changed = true;
       }
 
       if (changed) {
+        ws.lastUpdated = new Date().toISOString();
         persistStore();
       }
 
       return res.json({
         success: true,
-        lastUpdated: workspaceStore.lastUpdated,
-        postsCount: workspaceStore.posts.length,
-        clientsCount: workspaceStore.clients.length,
+        workspaceId: ws.id,
+        myRole,
+        lastUpdated: ws.lastUpdated,
+        postsCount: ws.posts.length,
+        clientsCount: ws.clients.length,
       });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Sync failed' });

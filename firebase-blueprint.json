@@ -1,0 +1,276 @@
+{
+  "entities": {
+    "Workspace": {
+      "title": "Workspace",
+      "description": "A private studio workspace owned by a user and optionally shared with invited team members.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name of the studio workspace",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the workspace owner",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified email of the workspace owner",
+          "minLength": 3,
+          "maxLength": 150
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the workspace was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the workspace was last updated"
+        }
+      },
+      "required": ["name", "ownerId", "ownerEmail", "createdAt", "updatedAt"]
+    },
+    "WorkspaceMember": {
+      "title": "WorkspaceMember",
+      "description": "Role-based access control record for a member in a workspace.",
+      "type": "object",
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "description": "Parent workspace ID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "UID of the member",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Email address of the team member",
+          "minLength": 3,
+          "maxLength": 150
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the team member",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "role": {
+          "type": "string",
+          "description": "Assigned RBAC role in the workspace",
+          "enum": ["Owner", "Admin", "Manager", "Editor", "Viewer"]
+        },
+        "status": {
+          "type": "string",
+          "description": "Invitation status of the team member",
+          "enum": ["active", "invited"]
+        },
+        "addedByUid": {
+          "type": "string",
+          "description": "UID of the Owner or Admin who added this member",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when member record was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when member record was updated"
+        }
+      },
+      "required": ["workspaceId", "userId", "email", "name", "role", "status", "addedByUid", "createdAt", "updatedAt"]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "A brand or client managed inside a workspace.",
+      "type": "object",
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "description": "Workspace ID this client belongs to",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Workspace owner UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "authorId": {
+          "type": "string",
+          "description": "UID of the user who created the client",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Client name",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "handle": {
+          "type": "string",
+          "description": "Social handle",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "color": {
+          "type": "string",
+          "description": "Hex color code for the client",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "notes": {
+          "type": "string",
+          "description": "Internal studio notes for this client",
+          "minLength": 0,
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": ["workspaceId", "ownerId", "authorId", "name", "handle", "color", "notes", "createdAt", "updatedAt"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "A scheduled or planned social media post within a workspace.",
+      "type": "object",
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "description": "Workspace ID this post belongs to",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Workspace owner UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "authorId": {
+          "type": "string",
+          "description": "UID of the team member who created the post",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "clientId": {
+          "type": "string",
+          "description": "Associated client ID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "clientName": {
+          "type": "string",
+          "description": "Associated client name",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "date": {
+          "type": "string",
+          "description": "Scheduled date in YYYY-MM-DD format",
+          "minLength": 10,
+          "maxLength": 10
+        },
+        "status": {
+          "type": "string",
+          "description": "Workflow status of the post",
+          "enum": ["Planned", "In review", "Approved", "Scheduled", "Published"]
+        },
+        "category": {
+          "type": "string",
+          "description": "Content pillar category",
+          "enum": ["POST", "TIPS", "BEHIND THE SCENES", "QUOTE", "EDUCATE", "ENGAGE", "RELAX"]
+        },
+        "platform": {
+          "type": "string",
+          "description": "Target social media platform",
+          "enum": ["Instagram", "Facebook", "LinkedIn", "Twitter", "TikTok", "Other"]
+        },
+        "title": {
+          "type": "string",
+          "description": "Post title",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "caption": {
+          "type": "string",
+          "description": "Post caption copy",
+          "minLength": 0,
+          "maxLength": 5000
+        },
+        "mediaUrl": {
+          "type": "string",
+          "description": "Primary media URL attached to the post",
+          "minLength": 0,
+          "maxLength": 2000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp"
+        }
+      },
+      "required": ["workspaceId", "ownerId", "authorId", "clientId", "clientName", "date", "status", "category", "platform", "title", "caption", "mediaUrl", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/workspaces/{workspaceId}": {
+      "schema": { "$ref": "#/entities/Workspace" },
+      "description": "Private studio workspaces owned by users."
+    },
+    "/workspaces/{workspaceId}/members/{memberId}": {
+      "schema": { "$ref": "#/entities/WorkspaceMember" },
+      "description": "Subcollection of team members and their assigned roles for a workspace."
+    },
+    "/workspaces/{workspaceId}/clients/{clientId}": {
+      "schema": { "$ref": "#/entities/Client" },
+      "description": "Subcollection of clients belonging to a specific workspace."
+    },
+    "/workspaces/{workspaceId}/posts/{postId}": {
+      "schema": { "$ref": "#/entities/Post" },
+      "description": "Subcollection of posts belonging to a specific workspace."
+    }
+  }
+}

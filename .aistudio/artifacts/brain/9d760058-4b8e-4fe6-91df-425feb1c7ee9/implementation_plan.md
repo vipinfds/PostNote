@@ -1,112 +1,99 @@
-# PostNote Sign-In Service & Claude OAuth 2.0 Integration
+# Private Workspace Auth Isolation & Mobile Inline Today’s Schedule
 
-A native OAuth 2.0 and sign-in service for PostNote implementing RFC 8414 authorization server discovery, RFC 7591 dynamic client registration, PKCE authentication, and 1-click instant approval for Claude.ai custom connectors.
+This plan strengthens multi-tenant workspace isolation across Firebase Authentication and Firestore, introduces a post-sign-in Workspace Selector when a user belongs to both a personal studio and invited team workspaces, and replaces the mobile date popup sheet with a unified inline **Today’s Schedule** card positioned directly below the Calendar and above the **Upcoming Agenda**.
+
+---
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The errors reported by Claude:
-> - *"Couldn't determine how this server signs in"*
-> - *"Couldn't register with PostNote's sign-in service. You can try again, or add an OAuth Client ID in the connector settings"*
-> 
-> Occur because Claude.ai's browser connector requires an **OAuth 2.0 handshake** (RFC 8414 / RFC 7591). When you enter an MCP URL into Claude.ai, Claude performs discovery at `/.well-known/oauth-authorization-server` and calls the registration endpoint (`/oauth/register`) to register itself as a client before requesting user authorization.
-> 
-> We are implementing the complete OAuth 2.0 Sign-In Service with **1-click instant approval** as selected.
+> The following product and UX decisions were confirmed during clarification and govern this implementation:
 
-- **Confirmed Decision 1 (Auth Method)**: 1-Click Instant Approval. When Claude redirects to PostNote to sign in, a clean branded screen displays the requested permissions with an instant "Approve & Connect Claude" button.
-- **Confirmed Decision 2 (OAuth Discovery & Dynamic Registration)**: Expose RFC 8414 (`/.well-known/oauth-authorization-server`), RFC 9728 (`/.well-known/oauth-protected-resource`), and RFC 7591 (`/oauth/register`) so Claude automatically detects and registers without manual hurdles.
-- **Confirmed Decision 3 (Static Client ID Fallback)**: Provide a pre-configured Client ID (`claude_postnote_client`) and endpoint links directly on the PostNote **AI Assistants** screen in case manual entry is ever chosen.
+- **Confirmed Decision 1 (Mobile Today’s Schedule Card Only)**: On mobile viewports (`< 1024px`), the **Today’s Schedule** card is rendered inline directly below the Calendar grid and above the **Upcoming Agenda** section. Tapping any date cell on the calendar updates this inline schedule card in place instead of opening a popup bottom sheet modal.
+- **Confirmed Decision 2 (Post-Sign-In Workspace Selector)**: When an authenticated user has access to multiple workspaces (their own private studio plus one or more invited team workspaces), a dedicated **Workspace Selector** screen is displayed right after sign-in so they can explicitly choose which workspace to open. Users with only a single personal workspace enter it immediately.
+- **Strict Tenant Isolation & Role Enforcement**: Every new user signing up (via Email/Password or Google Sign-In) is provisioned an isolated, empty personal workspace. Cross-tenant access is blocked unless the user's verified email has been explicitly added to a workspace's team roster with an assigned role (`Admin`, `Manager`, `Editor`, or `Viewer`).
 
 ---
 
-### 1. Overview & Core Concept
+## 1. Overview & Core Concept
 
-When connecting Claude via the browser connector in Claude.ai, Claude initiates an interactive OAuth 2.0 flow:
-1. **Discovery**: Claude queries PostNote's metadata at `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource`.
-2. **Registration**: Claude contacts `/oauth/register` to register the Claude web redirect callback (`https://claude.ai/api/mcp/auth_callback`).
-3. **1-Click User Sign-In**: Claude opens the authorization URL (`/oauth/authorize`), where the user clicks "Approve & Connect" to grant full Read and Write access.
-4. **Token Exchange**: Claude securely exchanges the authorization code with PKCE at `/oauth/token` for an access token.
-5. **Full MCP Session**: Claude connects to `/mcp` with the Bearer token and begins querying and creating social media posts directly.
-
----
-
-### 2. User Experience & Visual Design
-
-#### A. 1-Click Authorization Screen (`/oauth/authorize`)
-- A dedicated, lightweight authentication view styled in PostNote's warm editorial identity (stone background, terracotta `#C44D34` accents, crisp borders):
-  - **App Header**: PostNote logo + "Connect Claude AI".
-  - **Permissions Checklist**:
-    - ✓ View and search social media posts, calendar schedule, and queue
-    - ✓ Draft and schedule new posts for clients (Codery, Kudoli, etc.)
-    - ✓ Update copy, approval status, and publication dates
-  - **Action Button**: High-contrast, prominent **"Approve & Connect Claude"** button that immediately issues the authorization code and redirects back to `https://claude.ai/api/mcp/auth_callback`.
-  - **Auto-Approval Parameter**: Supports instant redirect for automated flows.
-
-#### B. Updated AI Assistants Settings View (`AiAssistantsView.tsx`)
-- Adds a **"Claude Sign-In & OAuth Credentials"** section displaying:
-  - **OAuth Status**: 🟢 Sign-In Service Ready
-  - **OAuth Client ID**: `claude_postnote_client` (with 1-click copy)
-  - **Authorization URL**: `https://<origin>/oauth/authorize`
-  - **Token URL**: `https://<origin>/oauth/token`
-  - Explanatory note resolving the `"Couldn't determine how this server signs in"` prompt.
+- **What It Does**:
+  1. **Firebase Auth & Multi-Tenant Isolation**: Connects Email/Password registration, Email/Password login, Google Sign-In (`signInWithPopup`), and `onAuthStateChanged` session synchronization to isolated per-workspace data stores and Firestore documents (`/workspaces/{workspaceId}`).
+  2. **Post-Login Workspace Selector**: Presents a clean studio picker whenever a signed-in user belongs to both a private workspace and shared team workspaces, displaying their assigned role (`Owner`, `Admin`, `Manager`, `Editor`, `Viewer`) and client/post counts on each card.
+  3. **Mobile Inline Today’s Schedule**: Makes the **Today’s Schedule** card visible on both mobile and desktop—appearing right after the Calendar grid and above the **AGENDA • UPCOMING POSTS** section on mobile—while syncing with both the selected calendar date and the active Client filter dropdown.
+- **Target Audience / Persona**: Social media agency owners, managers, content editors, and external collaborators managing multiple client calendars across desktop and mobile devices.
+- **Key Value**: Guarantees zero data leakage between user accounts while giving mobile users immediate, one-scroll access to the monthly calendar, the selected day's schedule, and upcoming agenda items.
 
 ---
 
-### 3. Key Product Decisions & Trade-Offs
+## 2. User Experience & Visual Design
 
-#### Decision 1: Built-in Express OAuth Service vs External Identity Provider
-- *Chosen Approach*: Implement a lightweight, zero-dependency RFC-compliant OAuth 2.0 provider inside `server.ts` utilizing Node's built-in `crypto` module.
-- *Why*: Eliminates complex third-party account linking and avoids cloud configuration barriers. The user gets a 1-click self-contained sign-in flow hosted directly on their app instance.
-- *Alternatives Considered*: Firebase Auth or Google OAuth (would require users to register Google Cloud console OAuth clients and manage domain verification).
-
-#### Decision 2: PKCE (Proof Key for Code Exchange) Support
-- *Chosen Approach*: Support PKCE with SHA-256 (`S256`) and plain methods.
-- *Why*: Claude.ai strictly mandates PKCE (`code_challenge` and `code_verifier`) for OAuth security when connecting browser-based connectors.
+- **Key User Flows**:
+  1. **Sign Up / Sign In Flow**:
+     - User switches between **Sign In** and **Sign Up** tabs or clicks **Continue with Google**.
+     - On **Sign Up**, a new Firebase Auth user is created, a private workspace is initialized with zero clients/posts, and the user lands directly in their clean studio.
+     - On **Sign In**, the user's private workspace and any invited team workspaces are fetched.
+  2. **Post-Sign-In Workspace Selection Flow**:
+     - If the user has access to more than one workspace (e.g., their own Private Studio + an invited role in `FirstDraft Studio`), a **Select a Workspace** view appears immediately after authentication.
+     - Selecting a workspace loads only that workspace's clients, posts, campaigns, and role permissions (`Owner`, `Admin`, `Manager`, `Editor`, `Viewer`).
+     - Users can also switch workspaces at any time from the collapsible **Workspace Dropdown** inside the hamburger menu / sidebar.
+  3. **Mobile Calendar -> Today’s Schedule -> Upcoming Agenda Flow**:
+     - On mobile, the user views the **Calendar** at the top (filtered by the **Client** dropdown).
+     - Immediately below the Calendar & Categories Legend sits the **Today’s Schedule** card (defaulting to Today `2026-09-20` on load, or updating to whichever date cell the user taps on the calendar).
+     - Directly below **Today’s Schedule** sits the **AGENDA • UPCOMING POSTS** section showing only upcoming posts (`date >= 2026-09-20`).
+- **Visual Identity & Theme**:
+  - *Aesthetic Direction*: Warm editorial studio aesthetic with crisp structural borders and high-contrast legibility.
+  - *Color Palette & Mood*: Warm alabaster canvas (`#FAF7F2`) in light mode and deep slate (`#151C24` / `#1D242C`) in dark mode, paired with terracotta brand accent (`#C44D34`) and semantic category dots.
+  - *Typography & Hierarchy*: `Fraunces` editorial serif for studio headers, paired with crisp sans-serif UI controls and `tabular-nums` for dates and post counts.
+  - *Touch & Spatial Ergonomics*: All mobile interactive calendar cells, schedule cards, and action buttons maintain comfortable touch hitboxes with zero popup modal interruption when browsing dates.
 
 ---
 
-### 4. Technical Architecture & Data Strategy
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: Unified Inline Today’s Schedule Card Across Mobile & Desktop**
+  - *Chosen Approach*: Remove `hidden lg:block` from the Today’s Schedule column in `HomeView` so it renders inline below the Calendar grid on mobile (`col-span-1`) and beside the Calendar on desktop (`lg:col-span-5`), and remove the redundant mobile bottom-sheet modal.
+  - *Why*: Eliminates popup friction when tapping through calendar days on mobile and fulfills the exact vertical order: **Calendar -> Today’s Schedule -> Upcoming Agenda**.
+- **Decision 2: Explicit Post-Sign-In Workspace Selector for Multi-Workspace Users**
+  - *Chosen Approach*: Trigger a dedicated workspace picker state (`isSelectingWorkspace`) after sign-in when `workspaces.length > 1`, while auto-selecting `2026-09-20` (Today) on the Home calendar so "Today’s Schedule" is immediately populated.
+  - *Why*: Prevents confusion for invited team members about whether they are viewing their own personal sandbox or the agency's shared workspace.
+
+---
+
+## 4. Technical Architecture & Data Strategy *(Technical Reference)*
+
+### Architecture & Component Diagram
 
 ```
-┌────────────────────────────────────────────────────────┐
-│                   Claude AI Browser                    │
-└───────┬───────────────────┬───────────────────┬────────┘
-        │ 1. Discovery      │ 2. Register       │ 3. Sign In
-        │    Metadata       │    RFC 7591       │    (1-Click)
-        ▼                   ▼                   ▼
-┌────────────────────────────────────────────────────────┐
-│            PostNote OAuth 2.0 Sign-In Engine           │
-│                                                        │
-│  • /.well-known/oauth-authorization-server             │
-│  • /.well-known/oauth-protected-resource               │
-│  • POST /oauth/register (Dynamic Client Registration)  │
-│  • GET  /oauth/authorize (1-Click Approval Screen)     │
-│  • POST /oauth/token (PKCE Token Generation)           │
-└───────────────────────────┬────────────────────────────┘
-                            │ 4. Bearer Token
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│              PostNote MCP Server (/mcp)                │
-│       8 Read/Write Tools (list, create, update)        │
-└────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     Firebase Auth + Tenant Workspace API                 │
+│  • Email/Password & Google Sign-In   • Firestore /workspaces/{wsId}      │
+│  • Strict Email/UID Membership Check • Role Enforcement (Owner..Viewer)  │
+└───────────────────────────────────┬──────────────────────────────────────┘
+                                    │
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        Application Root State (App)                      │
+│  • currentUser, activeWorkspaceId, workspaces[], myRole                  │
+│  • Post-Login Workspace Selector Gate (when workspaces.length > 1)       │
+└───────────────┬──────────────────────────────────────────┬───────────────┘
+                │                                          │
+                ▼                                          ▼
+┌───────────────────────────────────┐      ┌───────────────────────────────┐
+│   Navigation & Workspace Switch   │      │       HomeView Layout         │
+│  • Hamburger Drawer Dropdown      │      │  1. Client Filter Dropdown    │
+│  • Desktop Sidebar Dropdown       │      │  2. Monthly Calendar Grid     │
+│  • Team & Role Management View    │      │  3. Inline Today's Schedule   │
+│                                   │      │  4. Upcoming Agenda Section   │
+└───────────────────────────────────┘      └───────────────────────────────┘
 ```
 
-#### API Endpoints to Implement in `server.ts`:
-1. `GET /.well-known/oauth-authorization-server`:
-   - Returns RFC 8414 metadata: issuer, authorization_endpoint, token_endpoint, registration_endpoint, code_challenge_methods_supported (`["S256", "plain"]`), response_types (`["code"]`).
-2. `GET /.well-known/oauth-protected-resource`:
-   - Returns RFC 9728 metadata pointing to the authorization server and `/mcp` resource.
-3. `POST /oauth/register`:
-   - Accepts client registration from Claude, validates redirect URIs (`https://claude.ai/api/mcp/auth_callback`, `https://claude.com/api/mcp/auth_callback`), returns 201 with `client_id` and registered properties.
-4. `GET /oauth/authorize`:
-   - Validates client and PKCE parameters, renders the 1-click approval UI, redirects on approval with `code` and `state`.
-5. `POST /oauth/token`:
-   - Validates authorization code, verifies PKCE code verifier (`code_challenge === sha256(code_verifier)`), returns Bearer access token.
-6. `POST /mcp` & `GET /mcp`:
-   - Accepts Bearer token authentication or open local calls.
-
-#### Verification Plan
-1. **Discovery Handshake**: Verify `curl -s http://localhost:3000/.well-known/oauth-authorization-server` returns valid JSON metadata with correct origin.
-2. **Registration Verification**: Test `POST /oauth/register` with Claude callback payload and verify 201 Created.
-3. **PKCE Flow Verification**: Test `/oauth/authorize` generation and `/oauth/token` exchange.
-4. **UI Validation**: Verify the "AI Assistants" screen displays the OAuth Client ID and status indicator.
+### Interactive Component & State Mapping
+1. **Authentication & Session Listener**:
+   - Synchronizes Firebase Auth state (`onAuthStateChanged`) with workspace membership verification so uninvited accounts never read or overwrite another user's workspace cache.
+   - Enforces read-only posture in the UI and backend whenever `myRole === 'Viewer'`.
+2. **Post-Sign-In Workspace Selector**:
+   - Displays each accessible workspace with its badge (`Private · Owner` or `Shared Team · <Role>`), owner email, and item counts, setting `activeWorkspaceId` and triggering an isolated workspace sync on selection.
+3. **HomeView Schedule & Agenda Synchronization**:
+   - Initializes `selectedDayDate` to `'2026-09-20'` (Today) so **Today’s Schedule** immediately displays today's queued posts for the selected client.
+   - Tapping any calendar day updates `selectedDayDate`, dynamically refreshing the inline **Today’s Schedule** card (title, post count, client badge, media previews/download actions, and `+ Schedule` button) on both mobile and desktop without opening a popup modal.

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   TabType,
   MoreSubScreen,
@@ -10,17 +10,23 @@ import {
   TeamMember,
   ThemeMode,
   SubscriptionState,
+  WorkspaceRole,
+  WorkspaceSummary,
 } from './types';
 import {
-  INITIAL_POSTS,
-  INITIAL_CLIENTS,
-  INITIAL_CAMPAIGNS,
-  INITIAL_IDEAS,
   INITIAL_MEDIA,
-  INITIAL_TEAM,
 } from './data/initialData';
 import { INITIAL_SUBSCRIPTION_STATE } from './data/pricingData';
-import { Menu, Plus } from 'lucide-react';
+import { Menu, Plus, Building2, Shield } from 'lucide-react';
+import {
+  auth,
+  signOutFirebase,
+  syncClientToFirestore,
+  syncPostToFirestore,
+  deletePostFromFirestore,
+  syncMemberToFirestore,
+  deleteMemberFromFirestore,
+} from './firebase';
 
 // Component imports
 import { MobileNavDrawer } from './components/MobileNavDrawer';
@@ -50,19 +56,41 @@ import { SignInView } from './components/SignInView';
 
 export default function App() {
   // Authentication State
-  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(() => {
+  const [currentUser, setCurrentUser] = useState<{
+    name: string;
+    email: string;
+    role: string;
+    uid?: string;
+    personalWorkspaceId?: string;
+  } | null>(() => {
     try {
-      const saved = localStorage.getItem('postnote_auth_user') || sessionStorage.getItem('postnote_auth_user');
+      const saved =
+        localStorage.getItem('postnote_auth_user') ||
+        sessionStorage.getItem('postnote_auth_user');
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
     }
   });
 
-  const handleSignOut = () => {
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>('');
+  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
+  const [myRole, setMyRole] = useState<WorkspaceRole>('Owner');
+  const hasLoadedWorkspaceRef = useRef(false);
+
+  const handleSignOut = async () => {
+    await signOutFirebase();
     localStorage.removeItem('postnote_auth_user');
     sessionStorage.removeItem('postnote_auth_user');
+    hasLoadedWorkspaceRef.current = false;
     setCurrentUser(null);
+    setPosts([]);
+    setClients([]);
+    setCampaigns([]);
+    setIdeas([]);
+    setTeamMembers([]);
+    setWorkspaces([]);
+    setActiveWorkspaceId('');
     showToast('Signed out of session');
   };
 
@@ -105,42 +133,11 @@ export default function App() {
     }
   });
 
-  // Database persistent state
-  const [posts, setPosts] = useState<Post[]>(() => {
-    try {
-      const cached = localStorage.getItem('postnote_posts_v2');
-      return cached ? JSON.parse(cached) : INITIAL_POSTS;
-    } catch {
-      return INITIAL_POSTS;
-    }
-  });
-
-  const [clients, setClients] = useState<Client[]>(() => {
-    try {
-      const cached = localStorage.getItem('postnote_clients_v2');
-      return cached ? JSON.parse(cached) : INITIAL_CLIENTS;
-    } catch {
-      return INITIAL_CLIENTS;
-    }
-  });
-
-  const [campaigns, setCampaigns] = useState<Campaign[]>(() => {
-    try {
-      const cached = localStorage.getItem('postnote_campaigns_v2');
-      return cached ? JSON.parse(cached) : INITIAL_CAMPAIGNS;
-    } catch {
-      return INITIAL_CAMPAIGNS;
-    }
-  });
-
-  const [ideas, setIdeas] = useState<Idea[]>(() => {
-    try {
-      const cached = localStorage.getItem('postnote_ideas_v2');
-      return cached ? JSON.parse(cached) : INITIAL_IDEAS;
-    } catch {
-      return INITIAL_IDEAS;
-    }
-  });
+  // Strictly isolated workspace state (never pre-populated with another user's data!)
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [ideas, setIdeas] = useState<Idea[]>([]);
 
   const [mediaFiles, setMediaFiles] = useState<MediaItem[]>(() => {
     try {
@@ -151,14 +148,7 @@ export default function App() {
     }
   });
 
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() => {
-    try {
-      const cached = localStorage.getItem('postnote_team_v2');
-      return cached ? JSON.parse(cached) : INITIAL_TEAM;
-    } catch {
-      return INITIAL_TEAM;
-    }
-  });
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
   const [subscription, setSubscription] = useState<SubscriptionState>(() => {
     try {
@@ -169,81 +159,96 @@ export default function App() {
     }
   });
 
-  // Bidirectional sync with backend server for Claude MCP read/write operations
-  const fetchServerSync = async () => {
+  // Bidirectional multi-tenant sync with backend server (strictly isolated by user email & workspaceId)
+  const fetchServerSync = async (overrideWsId?: string) => {
+    if (!currentUser?.email) return;
     try {
-      const res = await fetch('/api/sync');
+      const targetWs = overrideWsId ?? activeWorkspaceId;
+      const params = new URLSearchParams({ email: currentUser.email });
+      if (targetWs) params.set('workspaceId', targetWs);
+
+      const res = await fetch(`/api/sync?${params.toString()}`);
       if (!res.ok) return;
       const data = await res.json();
-      if (Array.isArray(data.posts) && data.posts.length > 0) {
-        setPosts((current) => {
-          // If server has different posts count or newer items, sync
-          if (JSON.stringify(current) !== JSON.stringify(data.posts)) {
-            return data.posts;
-          }
-          return current;
-        });
+
+      if (data.workspaceId) {
+        setActiveWorkspaceId(data.workspaceId);
       }
-      if (Array.isArray(data.clients) && data.clients.length > 0) {
-        setClients((current) => {
-          if (JSON.stringify(current) !== JSON.stringify(data.clients)) {
-            return data.clients;
-          }
-          return current;
-        });
+      if (data.myRole) {
+        setMyRole(data.myRole);
       }
+      if (Array.isArray(data.workspaces)) {
+        setWorkspaces(data.workspaces);
+      }
+      if (Array.isArray(data.posts)) {
+        setPosts((current) =>
+          JSON.stringify(current) !== JSON.stringify(data.posts) ? data.posts : current
+        );
+      }
+      if (Array.isArray(data.clients)) {
+        setClients((current) =>
+          JSON.stringify(current) !== JSON.stringify(data.clients) ? data.clients : current
+        );
+      }
+      if (Array.isArray(data.campaigns)) {
+        setCampaigns((current) =>
+          JSON.stringify(current) !== JSON.stringify(data.campaigns) ? data.campaigns : current
+        );
+      }
+      if (Array.isArray(data.ideas)) {
+        setIdeas((current) =>
+          JSON.stringify(current) !== JSON.stringify(data.ideas) ? data.ideas : current
+        );
+      }
+      if (Array.isArray(data.teamMembers)) {
+        setTeamMembers((current) =>
+          JSON.stringify(current) !== JSON.stringify(data.teamMembers) ? data.teamMembers : current
+        );
+      }
+      hasLoadedWorkspaceRef.current = true;
     } catch {
       // offline or local dev fallback
     }
   };
 
   useEffect(() => {
-    fetchServerSync();
-    const interval = setInterval(fetchServerSync, 8000);
-    const handleFocus = () => fetchServerSync();
+    if (!currentUser?.email) return;
+    hasLoadedWorkspaceRef.current = false;
+    fetchServerSync(activeWorkspaceId || undefined);
+    const interval = setInterval(() => fetchServerSync(activeWorkspaceId || undefined), 8000);
+    const handleFocus = () => fetchServerSync(activeWorkspaceId || undefined);
     window.addEventListener('focus', handleFocus);
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
     };
-  }, []);
+  }, [currentUser?.email, activeWorkspaceId]);
 
-  // Sync changes from UI back to backend for Claude MCP tools to read
+  // Sync changes from UI back to isolated tenant workspace
   useEffect(() => {
+    if (!currentUser?.email || !activeWorkspaceId || !hasLoadedWorkspaceRef.current) return;
+    if (myRole === 'Viewer') return;
+
     const timer = setTimeout(() => {
       fetch('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ posts, clients, campaigns, ideas }),
+        body: JSON.stringify({
+          email: currentUser.email,
+          workspaceId: activeWorkspaceId,
+          posts,
+          clients,
+          campaigns,
+          ideas,
+        }),
       }).catch(() => {});
-    }, 600);
+    }, 500);
     return () => clearTimeout(timer);
-  }, [posts, clients, campaigns, ideas]);
-
-  // Local storage caching effects
-  useEffect(() => {
-    localStorage.setItem('postnote_posts_v2', JSON.stringify(posts));
-  }, [posts]);
-
-  useEffect(() => {
-    localStorage.setItem('postnote_clients_v2', JSON.stringify(clients));
-  }, [clients]);
-
-  useEffect(() => {
-    localStorage.setItem('postnote_campaigns_v2', JSON.stringify(campaigns));
-  }, [campaigns]);
-
-  useEffect(() => {
-    localStorage.setItem('postnote_ideas_v2', JSON.stringify(ideas));
-  }, [ideas]);
+  }, [posts, clients, campaigns, ideas, currentUser?.email, activeWorkspaceId, myRole]);
 
   useEffect(() => {
     localStorage.setItem('postnote_media_v2', JSON.stringify(mediaFiles));
   }, [mediaFiles]);
-
-  useEffect(() => {
-    localStorage.setItem('postnote_team_v2', JSON.stringify(teamMembers));
-  }, [teamMembers]);
 
   const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
@@ -507,24 +512,33 @@ export default function App() {
   };
 
   const handleSavePost = (postData: Omit<Post, 'id' | 'createdAt'> & { id?: string }) => {
+    if (myRole === 'Viewer') {
+      showToast('Viewers have read-only access and cannot create or edit posts');
+      return;
+    }
     if (postData.id) {
-      // Update
+      const updatedPost: Post = { ...postData, id: postData.id };
       setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postData.id
-            ? { ...p, ...postData, id: postData.id! }
-            : p
-        )
+        prev.map((p) => (p.id === postData.id ? { ...p, ...updatedPost } : p))
       );
+      if (auth.currentUser && activeWorkspaceId) {
+        syncPostToFirestore(activeWorkspaceId, auth.currentUser.uid, updatedPost, false).catch(
+          () => {}
+        );
+      }
       showToast('Post updated');
     } else {
-      // Create new
       const newPost: Post = {
         ...postData,
         id: `post-${Date.now()}`,
         createdAt: new Date().toISOString(),
       };
       setPosts((prev) => [newPost, ...prev]);
+      if (auth.currentUser && activeWorkspaceId) {
+        syncPostToFirestore(activeWorkspaceId, auth.currentUser.uid, newPost, true).catch(
+          () => {}
+        );
+      }
       showToast('Post created');
     }
     setIsPostFormOpen(false);
@@ -532,7 +546,14 @@ export default function App() {
   };
 
   const handleDeletePost = (postId: string) => {
+    if (myRole !== 'Owner' && myRole !== 'Admin') {
+      showToast('Only Workspace Owners and Admins can delete posts');
+      return;
+    }
     setPosts((prev) => prev.filter((p) => p.id !== postId));
+    if (auth.currentUser && activeWorkspaceId) {
+      deletePostFromFirestore(activeWorkspaceId, postId).catch(() => {});
+    }
     showToast('Post deleted');
     setIsPostFormOpen(false);
     setEditingPost(null);
@@ -546,18 +567,25 @@ export default function App() {
     color: string;
     notes?: string;
   }) => {
+    if (myRole === 'Viewer') {
+      showToast('Viewers have read-only access and cannot modify clients');
+      return;
+    }
     if (clientData.id) {
+      const updatedClient: Client = { ...clientData, id: clientData.id };
       setClients((prev) =>
-        prev.map((c) =>
-          c.id === clientData.id
-            ? { ...c, ...clientData, id: clientData.id! }
-            : c
-        )
+        prev.map((c) => (c.id === clientData.id ? { ...c, ...updatedClient } : c))
       );
+      if (auth.currentUser && activeWorkspaceId) {
+        syncClientToFirestore(activeWorkspaceId, auth.currentUser.uid, updatedClient, false).catch(
+          () => {}
+        );
+      }
       showToast('Client updated');
       if (selectedClientDetail?.id === clientData.id) {
         setSelectedClientDetail((prev) => (prev ? { ...prev, ...clientData } : null));
       }
+      return updatedClient;
     } else {
       const newClient: Client = {
         ...clientData,
@@ -565,12 +593,22 @@ export default function App() {
         createdAt: new Date().toISOString(),
       };
       setClients((prev) => [...prev, newClient]);
+      if (auth.currentUser && activeWorkspaceId) {
+        syncClientToFirestore(activeWorkspaceId, auth.currentUser.uid, newClient, true).catch(
+          () => {}
+        );
+      }
       showToast('Client added');
+      return newClient;
     }
   };
 
   const handleDeleteClient = (clientId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (myRole !== 'Owner' && myRole !== 'Admin') {
+      showToast('Only Workspace Owners and Admins can delete clients');
+      return;
+    }
     setClients((prev) => prev.filter((c) => c.id !== clientId));
     showToast('Client deleted');
     if (selectedClientDetail?.id === clientId) {
@@ -580,10 +618,13 @@ export default function App() {
 
   // Ideas handlers
   const handleAddToCalendar = (idea: Idea) => {
+    if (myRole === 'Viewer') {
+      showToast('Viewers have read-only access');
+      return;
+    }
     setEditingPost(null);
     setPreselectedClientId(idea.clientId);
     setPreselectedDate('2026-09-20');
-    // Prepopulate post form
     setEditingPost({
       id: '',
       title: idea.title,
@@ -601,6 +642,10 @@ export default function App() {
   };
 
   const handleSaveIdea = (ideaData: Omit<Idea, 'id' | 'createdAt'> & { id?: string }) => {
+    if (myRole === 'Viewer') {
+      showToast('Viewers have read-only access');
+      return;
+    }
     if (ideaData.id) {
       setIdeas((prev) =>
         prev.map((i) => (i.id === ideaData.id ? { ...i, ...ideaData, id: ideaData.id! } : i))
@@ -618,12 +663,20 @@ export default function App() {
   };
 
   const handleDeleteIdea = (id: string) => {
+    if (myRole === 'Viewer') {
+      showToast('Viewers have read-only access');
+      return;
+    }
     setIdeas((prev) => prev.filter((i) => i.id !== id));
     showToast('Idea deleted');
   };
 
   // Approvals handlers
   const handleApprovePost = (postId: string) => {
+    if (myRole === 'Viewer' || myRole === 'Editor') {
+      showToast('Only Owners, Admins, and Managers can approve posts');
+      return;
+    }
     setPosts((prev) =>
       prev.map((p) => (p.id === postId ? { ...p, status: 'Approved' } : p))
     );
@@ -631,6 +684,10 @@ export default function App() {
   };
 
   const handleRequestChanges = (postId: string) => {
+    if (myRole === 'Viewer') {
+      showToast('Viewers have read-only access');
+      return;
+    }
     setPosts((prev) =>
       prev.map((p) => (p.id === postId ? { ...p, status: 'Planned' } : p))
     );
@@ -648,13 +705,12 @@ export default function App() {
     showToast('File uploaded');
   };
 
-  const handleDeleteMedia = (id: string) => {
-    setMediaFiles((prev) => prev.filter((m) => m.id !== id));
-    showToast('File deleted');
-  };
-
   // Campaign handlers
   const handleSaveCampaign = (campData: Omit<Campaign, 'id'>) => {
+    if (myRole === 'Viewer') {
+      showToast('Viewers have read-only access');
+      return;
+    }
     const newCamp: Campaign = {
       ...campData,
       id: `camp-${Date.now()}`,
@@ -663,22 +719,116 @@ export default function App() {
     showToast('Campaign created');
   };
 
-  // Team handlers
-  const handleInviteMember = (email: string) => {
-    const newMember: TeamMember = {
-      id: `team-${Date.now()}`,
-      name: email.split('@')[0],
-      email,
-      role: 'Member',
-      status: 'invited',
-    };
-    setTeamMembers((prev) => [...prev, newMember]);
-    showToast('Invitation sent');
+  // Team & RBAC handlers
+  const handleInviteMember = async (
+    inviteEmail: string,
+    role: WorkspaceRole = 'Editor',
+    inviteName?: string
+  ) => {
+    if (myRole !== 'Owner' && myRole !== 'Admin') {
+      showToast('Only Workspace Owners and Admins can invite team members');
+      return;
+    }
+    try {
+      const res = await fetch('/api/team/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: activeWorkspaceId,
+          actorEmail: currentUser?.email,
+          inviteEmail,
+          inviteName,
+          role,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to invite team member');
+        return;
+      }
+      if (Array.isArray(data.teamMembers)) {
+        setTeamMembers(data.teamMembers);
+      }
+      if (auth.currentUser && activeWorkspaceId && data.member) {
+        syncMemberToFirestore(activeWorkspaceId, data.member, role, true).catch(() => {});
+      }
+      showToast(`Added ${inviteEmail} as ${role}`);
+    } catch {
+      showToast('Failed to invite team member');
+    }
   };
 
-  const handleRemoveMember = (id: string) => {
-    setTeamMembers((prev) => prev.filter((m) => m.id !== id));
-    showToast('Member removed');
+  const handleUpdateMemberRole = async (memberId: string, role: WorkspaceRole) => {
+    if (myRole !== 'Owner' && myRole !== 'Admin') {
+      showToast('Only Workspace Owners and Admins can update roles');
+      return;
+    }
+    try {
+      const res = await fetch('/api/team/role', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: activeWorkspaceId,
+          actorEmail: currentUser?.email,
+          memberId,
+          role,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.teamMembers)) {
+        setTeamMembers(data.teamMembers);
+        const updatedMember = data.teamMembers.find((m: TeamMember) => m.id === memberId);
+        if (auth.currentUser && activeWorkspaceId && updatedMember) {
+          syncMemberToFirestore(activeWorkspaceId, updatedMember, role, false).catch(() => {});
+        }
+        showToast(`Updated role to ${role}`);
+      } else {
+        showToast(data.error || 'Could not update role');
+      }
+    } catch {
+      showToast('Could not update role');
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string) => {
+    if (myRole !== 'Owner' && myRole !== 'Admin') {
+      showToast('Only Workspace Owners and Admins can remove members');
+      return;
+    }
+    try {
+      const res = await fetch('/api/team/member', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: activeWorkspaceId,
+          actorEmail: currentUser?.email,
+          memberId,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.teamMembers)) {
+        setTeamMembers(data.teamMembers);
+        if (auth.currentUser && activeWorkspaceId) {
+          deleteMemberFromFirestore(activeWorkspaceId, memberId).catch(() => {});
+        }
+        showToast('Member access revoked');
+      } else {
+        showToast(data.error || 'Could not remove member');
+      }
+    } catch {
+      showToast('Could not remove member');
+    }
+  };
+
+  const handleSwitchWorkspace = (targetWsId: string) => {
+    if (targetWsId === activeWorkspaceId) return;
+    hasLoadedWorkspaceRef.current = false;
+    setActiveWorkspaceId(targetWsId);
+    fetchServerSync(targetWsId);
+    const targetSummary = workspaces.find((w) => w.id === targetWsId);
+    if (targetSummary) {
+      showToast(`Switched to ${targetSummary.name} (${targetSummary.myRole})`);
+    }
   };
 
   const isDark =
@@ -754,6 +904,7 @@ export default function App() {
             setEditingPost(null);
           }}
           onSave={handleSavePost}
+          onCreateClient={(clientData) => handleSaveClient(clientData)}
           onDelete={handleDeletePost}
           onUploadToLibrary={handleUploadMedia}
           isDark={isDark}
@@ -766,6 +917,7 @@ export default function App() {
       return (
         <HomeView
           posts={posts}
+          clients={clients}
           subscription={subscription}
           onNavigateToBilling={handleNavigateToBilling}
           onOpenNewPost={handleOpenNewPost}
@@ -942,8 +1094,14 @@ export default function App() {
         return (
           <TeamView
             members={teamMembers}
+            currentUserEmail={currentUser?.email}
+            myRole={myRole}
+            workspaces={workspaces}
+            activeWorkspaceId={activeWorkspaceId}
+            onSwitchWorkspace={handleSwitchWorkspace}
             onBack={() => setActiveMoreSubScreen('settings')}
             onInviteMember={handleInviteMember}
+            onUpdateMemberRole={handleUpdateMemberRole}
             onRemoveMember={handleRemoveMember}
             isDark={isDark}
           />
@@ -956,7 +1114,7 @@ export default function App() {
             onBack={handleSubScreenBack}
             onShowToast={showToast}
             isDark={isDark}
-            onRefreshSync={fetchServerSync}
+            onRefreshSync={() => fetchServerSync()}
           />
         );
       }
@@ -981,9 +1139,18 @@ export default function App() {
   if (!currentUser && !isLockedPortalSession) {
     return (
       <SignInView
-        onSignInSuccess={(user) => {
+        onSignInSuccess={(user, initialWorkspaces) => {
+          hasLoadedWorkspaceRef.current = false;
           setCurrentUser(user);
-          showToast(`Welcome back, ${user.name}!`);
+          if (initialWorkspaces && initialWorkspaces.length > 0) {
+            setWorkspaces(initialWorkspaces);
+            const defaultWs =
+              initialWorkspaces.find((w) => w.isPersonal) || initialWorkspaces[0];
+            setActiveWorkspaceId(defaultWs.id);
+          } else if (user.personalWorkspaceId) {
+            setActiveWorkspaceId(user.personalWorkspaceId);
+          }
+          showToast(`Welcome, ${user.name}!`);
         }}
         isDark={isDark}
       />
@@ -1012,6 +1179,12 @@ export default function App() {
             clientsCount={clients.length}
             waitingApprovalsCount={waitingApprovalsCount}
             subscription={subscription}
+            currentUser={currentUser}
+            workspaces={workspaces}
+            activeWorkspaceId={activeWorkspaceId}
+            myRole={myRole}
+            teamMembersCount={teamMembers.length}
+            onSwitchWorkspace={handleSwitchWorkspace}
             isDark={isDark}
             theme={theme}
             onToggleTheme={handleToggleTheme}
@@ -1077,6 +1250,11 @@ export default function App() {
           waitingApprovalsCount={waitingApprovalsCount}
           subscription={subscription}
           currentUser={currentUser}
+          workspaces={workspaces}
+          activeWorkspaceId={activeWorkspaceId}
+          myRole={myRole}
+          teamMembersCount={teamMembers.length}
+          onSwitchWorkspace={handleSwitchWorkspace}
           onSignOut={handleSignOut}
           isDark={isDark}
           theme={theme}

@@ -1,11 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Calendar,
   Users,
   List,
   Lightbulb,
   CheckCircle2,
-  Image as ImageIcon,
   BarChart3,
   Settings as SettingsIcon,
   Bot,
@@ -15,10 +14,20 @@ import {
   Moon,
   Sun,
   X,
-  Sparkles,
   LogOut,
+  Building2,
+  Shield,
+  ChevronDown,
+  ChevronUp,
+  Check,
 } from 'lucide-react';
-import { MainTab, MoreSubScreen, SubscriptionState } from '../types';
+import {
+  MainTab,
+  MoreSubScreen,
+  SubscriptionState,
+  WorkspaceRole,
+  WorkspaceSummary,
+} from '../types';
 
 interface MobileNavDrawerProps {
   isOpen: boolean;
@@ -32,6 +41,11 @@ interface MobileNavDrawerProps {
   waitingApprovalsCount: number;
   subscription?: SubscriptionState;
   currentUser?: { name: string; email: string; role: string } | null;
+  workspaces?: WorkspaceSummary[];
+  activeWorkspaceId?: string;
+  myRole?: WorkspaceRole;
+  teamMembersCount?: number;
+  onSwitchWorkspace?: (workspaceId: string) => void;
   onSignOut?: () => void;
   isDark?: boolean;
   theme?: 'light' | 'dark';
@@ -50,12 +64,25 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
   waitingApprovalsCount,
   subscription,
   currentUser,
+  workspaces = [],
+  activeWorkspaceId = '',
+  myRole = 'Owner',
+  teamMembersCount = 1,
+  onSwitchWorkspace,
   onSignOut,
   isDark,
   theme,
   onToggleTheme,
 }) => {
+  const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState(false);
+
   if (!isOpen) return null;
+
+  const activeWorkspace =
+    workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0];
+  const workspaceDisplayName =
+    activeWorkspace?.name ||
+    (currentUser ? `${currentUser.name}'s Private Studio` : 'FirstDraft Studio');
 
   const studioItems = [
     {
@@ -183,6 +210,113 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Workspace & Role Dropdown inside Hamburger Menu */}
+        {currentUser && (
+          <div className="px-3 pt-3 pb-2 border-b border-stone-200/60 dark:border-stone-800/60">
+            <button
+              type="button"
+              onClick={() => setIsWorkspaceDropdownOpen((prev) => !prev)}
+              className={`w-full p-2.5 rounded-xl border text-left transition-all flex items-center justify-between cursor-pointer ${
+                isDark
+                  ? 'bg-[#1C2531] border-[#2A3646] hover:border-[#C44D34]'
+                  : 'bg-white border-[#E2DDD3] hover:border-[#C44D34]'
+              }`}
+            >
+              <div className="min-w-0 flex-1 pr-2">
+                <div className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-[#C44D34] shrink-0" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                    Workspace
+                  </span>
+                </div>
+                <p className="font-bold text-xs truncate mt-0.5 text-stone-900 dark:text-white">
+                  {workspaceDisplayName}
+                </p>
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider bg-[#C44D34]/15 text-[#C44D34]">
+                    <Shield className="w-2.5 h-2.5" />
+                    Role: {myRole}
+                  </span>
+                  <span className="text-[10px] text-stone-400 truncate max-w-[130px]">
+                    {currentUser.email}
+                  </span>
+                </div>
+              </div>
+              {isWorkspaceDropdownOpen ? (
+                <ChevronUp className="w-4 h-4 text-stone-400 shrink-0" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-stone-400 shrink-0" />
+              )}
+            </button>
+
+            {isWorkspaceDropdownOpen && (
+              <div
+                className={`mt-2 p-2.5 rounded-xl border space-y-2 text-xs animate-in fade-in duration-150 ${
+                  isDark
+                    ? 'bg-[#18202B] border-[#2A3646]'
+                    : 'bg-[#F3EFE6] border-[#E2DDD3]'
+                }`}
+              >
+                {workspaces.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 px-1">
+                      Switch Workspace
+                    </p>
+                    {workspaces.map((ws) => {
+                      const isSelected = ws.id === activeWorkspaceId;
+                      return (
+                        <button
+                          key={ws.id}
+                          type="button"
+                          onClick={() => {
+                            if (onSwitchWorkspace) onSwitchWorkspace(ws.id);
+                            setIsWorkspaceDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-xs font-semibold transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#C44D34] text-white'
+                              : isDark
+                              ? 'text-stone-300 hover:bg-[#222C38]'
+                              : 'text-stone-800 hover:bg-white'
+                          }`}
+                        >
+                          <div className="min-w-0 pr-2">
+                            <p className="truncate font-bold">{ws.name}</p>
+                            <p
+                              className={`text-[10px] ${
+                                isSelected ? 'text-white/80' : 'text-stone-400'
+                              }`}
+                            >
+                              {ws.isPersonal ? 'Private · Owner' : `Team · ${ws.myRole}`}
+                            </p>
+                          </div>
+                          {isSelected && <Check className="w-3.5 h-3.5 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="pt-1.5 border-t border-stone-200/70 dark:border-stone-700/70 flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsWorkspaceDropdownOpen(false);
+                      handleSubScreenClick('team');
+                    }}
+                    className="w-full py-1.5 px-2.5 rounded-lg bg-[#C44D34]/15 text-[#C44D34] hover:bg-[#C44D34]/25 font-bold text-[11px] text-center transition-colors cursor-pointer"
+                  >
+                    Manage Team & Roles ({teamMembersCount})
+                  </button>
+                  <p className="text-[10px] text-stone-500 dark:text-stone-400 text-center truncate px-1">
+                    Signed in as {currentUser.email}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Quick Post Button */}
         <div className="p-3 border-b border-stone-200/60 dark:border-stone-800/60">
@@ -401,8 +535,8 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs font-semibold truncate leading-tight">{currentUser.name}</p>
-                  <p className="text-[10px] text-stone-500 dark:text-stone-400 truncate leading-tight capitalize">
-                    {currentUser.role}
+                  <p className="text-[10px] text-stone-500 dark:text-stone-400 truncate leading-tight">
+                    {currentUser.email}
                   </p>
                 </div>
               </div>

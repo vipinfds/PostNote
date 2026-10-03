@@ -31,10 +31,27 @@ interface PostFormViewProps {
   preselectedDate?: string;
   onBack: () => void;
   onSave: (postData: Omit<Post, 'id' | 'createdAt'> & { id?: string }) => void;
+  onCreateClient?: (clientData: {
+    name: string;
+    handle: string;
+    color: string;
+    notes?: string;
+  }) => Client | void;
   onDelete?: (postId: string) => void;
   onUploadToLibrary?: (item: Omit<MediaItem, 'id' | 'createdAt'>) => void;
   isDark?: boolean;
 }
+
+const QUICK_CLIENT_COLORS = [
+  '#C44D34',
+  '#2E6F40',
+  '#2563EB',
+  '#7C3AED',
+  '#D97706',
+  '#0D9488',
+  '#E11D48',
+  '#4F46E5',
+];
 
 export const PostFormView: React.FC<PostFormViewProps> = ({
   initialPost,
@@ -45,6 +62,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
   preselectedDate,
   onBack,
   onSave,
+  onCreateClient,
   onDelete,
   onUploadToLibrary,
   isDark,
@@ -56,6 +74,28 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
   const [clientId, setClientId] = useState<string>(
     initialPost?.clientId || preselectedClientId || (clients[0]?.id || '')
   );
+  const [isAddingNewClient, setIsAddingNewClient] = useState<boolean>(clients.length === 0);
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientHandle, setNewClientHandle] = useState('');
+  const [newClientColor, setNewClientColor] = useState('#C44D34');
+
+  const handleCreateInlineClient = () => {
+    if (!newClientName.trim() || !onCreateClient) return;
+    const rawHandle = newClientHandle.trim() || newClientName.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const formattedHandle = rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`;
+    const created = onCreateClient({
+      name: newClientName.trim(),
+      handle: formattedHandle,
+      color: newClientColor,
+      notes: '',
+    });
+    if (created && created.id) {
+      setClientId(created.id);
+    }
+    setNewClientName('');
+    setNewClientHandle('');
+    setIsAddingNewClient(false);
+  };
   const [campaignId, setCampaignId] = useState<string>(
     initialPost?.campaignId || ''
   );
@@ -349,27 +389,151 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-        {/* CLIENT */}
+        {/* CLIENT (with direct + Add New Client option in dropdown) */}
         <div>
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-1.5">
-            CLIENT
-          </label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+              CLIENT
+            </label>
+            <button
+              type="button"
+              onClick={() => setIsAddingNewClient((prev) => !prev)}
+              className="text-[11px] font-bold text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="w-3 h-3 stroke-[2.5]" />
+              <span>{isAddingNewClient ? 'Cancel New Client' : 'Add New Client'}</span>
+            </button>
+          </div>
+
           <select
             id="post-form-client-select"
-            value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#C44D34] transition-all ${
+            value={isAddingNewClient ? '__ADD_NEW_CLIENT__' : clientId}
+            onChange={(e) => {
+              if (e.target.value === '__ADD_NEW_CLIENT__') {
+                setIsAddingNewClient(true);
+              } else {
+                setIsAddingNewClient(false);
+                setClientId(e.target.value);
+              }
+            }}
+            className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#C44D34] transition-all cursor-pointer ${
               isDark
                 ? 'bg-[#1D242C] border-[#2A3440] text-stone-200'
                 : 'bg-white border-[#E8E4DC] text-stone-800 shadow-xs'
             }`}
           >
+            {clients.length === 0 && (
+              <option value="" disabled>
+                No clients yet — select &quot;+ Add New Client...&quot;
+              </option>
+            )}
             {clients.map((c) => (
-              <option key={c.id} value={c.id} className="bg-white dark:bg-[#1D242C] text-stone-800 dark:text-stone-200">
-                {c.name}
+              <option
+                key={c.id}
+                value={c.id}
+                className="bg-white dark:bg-[#1D242C] text-stone-800 dark:text-stone-200"
+              >
+                {c.name} ({c.handle})
               </option>
             ))}
+            <option
+              value="__ADD_NEW_CLIENT__"
+              className="bg-white dark:bg-[#1D242C] font-bold text-[#C44D34]"
+            >
+              + Add New Client...
+            </option>
           </select>
+
+          {/* Inline Quick Add Client Drawer */}
+          {isAddingNewClient && (
+            <div
+              className={`mt-2.5 p-3.5 rounded-2xl border space-y-3 animate-fade-in ${
+                isDark ? 'bg-[#171E26] border-[#2C3846]' : 'bg-[#FAF7F2] border-[#E5DEC9]'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#C44D34]">
+                  Create New Client Directly
+                </span>
+                {clients.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingNewClient(false)}
+                    className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1">
+                    Client / Brand Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={newClientName}
+                    onChange={(e) => setNewClientName(e.target.value)}
+                    placeholder="e.g. Acme Studio"
+                    maxLength={100}
+                    className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#C44D34] ${
+                      isDark
+                        ? 'bg-[#222B35] border-[#32404E] text-white'
+                        : 'bg-white border-stone-200 text-stone-900'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1">
+                    Social Handle
+                  </label>
+                  <input
+                    type="text"
+                    value={newClientHandle}
+                    onChange={(e) => setNewClientHandle(e.target.value)}
+                    placeholder="@acmestudio"
+                    maxLength={100}
+                    className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#C44D34] ${
+                      isDark
+                        ? 'bg-[#222B35] border-[#32404E] text-white'
+                        : 'bg-white border-stone-200 text-stone-900'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mr-1">
+                    Color:
+                  </span>
+                  {QUICK_CLIENT_COLORS.map((col) => (
+                    <button
+                      key={col}
+                      type="button"
+                      onClick={() => setNewClientColor(col)}
+                      className={`w-5 h-5 rounded-full transition-transform cursor-pointer ${
+                        newClientColor === col ? 'scale-125 ring-2 ring-offset-1 ring-stone-400' : ''
+                      }`}
+                      style={{ backgroundColor: col }}
+                      aria-label={`Select color ${col}`}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCreateInlineClient}
+                  disabled={!newClientName.trim()}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#C44D34] hover:bg-[#A83E28] disabled:opacity-40 text-white text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer transition-all"
+                >
+                  <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>Save & Select Client</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* CAMPAIGN */}
