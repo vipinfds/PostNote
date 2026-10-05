@@ -5,14 +5,9 @@ import {
   List,
   Lightbulb,
   CheckCircle2,
-  Image as ImageIcon,
   BarChart3,
   Settings as SettingsIcon,
-  Bot,
   ChevronRight,
-  UserCheck,
-  CreditCard,
-  Sparkles,
 } from 'lucide-react';
 import { MainTab, MoreSubScreen, SubscriptionState } from '../types';
 
@@ -30,15 +25,8 @@ export const MoreMenuView: React.FC<MoreMenuViewProps> = ({
   onNavigateTab,
   waitingApprovalsCount,
   clientsCount = 0,
-  subscription,
   isDark,
 }) => {
-  const billingBadge = subscription?.isTrial
-    ? `${subscription.trialDaysLeft}d Trial`
-    : subscription?.planId === 'free'
-    ? 'Upgrade'
-    : 'Pro Active';
-
   const sections: Array<{
     category: string;
     items: Array<{
@@ -80,7 +68,7 @@ export const MoreMenuView: React.FC<MoreMenuViewProps> = ({
       ],
     },
     {
-      category: 'Workflow & Content',
+      category: 'Workflow & Insights',
       items: [
         {
           type: 'subscreen',
@@ -98,11 +86,6 @@ export const MoreMenuView: React.FC<MoreMenuViewProps> = ({
           description: 'Capture, categorize and convert ideas into posts',
           icon: Lightbulb,
         },
-      ],
-    },
-    {
-      category: 'Intelligence',
-      items: [
         {
           type: 'subscreen',
           id: 'analytics',
@@ -110,42 +93,17 @@ export const MoreMenuView: React.FC<MoreMenuViewProps> = ({
           description: 'Performance stats across platforms and clients',
           icon: BarChart3,
         },
-        {
-          type: 'subscreen',
-          id: 'ai-assistants',
-          title: 'AI Assistants & MCP',
-          description: 'MCP protocol endpoints, Claude & ChatGPT integration',
-          icon: Bot,
-          badge: 'Live',
-          badgeColor: 'bg-[#C44D34] text-white',
-          highlight: true,
-        },
       ],
     },
     {
-      category: 'Management',
+      category: 'Administration',
       items: [
-        {
-          type: 'subscreen',
-          id: 'team',
-          title: 'Team Members',
-          description: 'Collaborate with agency creators and managers',
-          icon: UserCheck,
-        },
-        {
-          type: 'subscreen',
-          id: 'billing',
-          title: 'Plans & Billing',
-          description: 'Pro subscription, tier quotas and founding offer',
-          icon: CreditCard,
-          badge: billingBadge,
-          highlight: Boolean(subscription?.isTrial),
-        },
         {
           type: 'subscreen',
           id: 'settings',
           title: 'Settings',
-          description: 'Workspace preferences, theme and account setup',
+          description:
+            'Team Members, Plans & Billing, AI Assistants & MCP, theme and account setup',
           icon: SettingsIcon,
         },
       ],
@@ -176,7 +134,7 @@ export const MoreMenuView: React.FC<MoreMenuViewProps> = ({
         </span>
         <h2 className="text-xl font-bold tracking-tight">Studio Hub & Menu</h2>
         <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-          Access all studio workspaces, workflow engines, intelligence, and account tools.
+          Access studio workspaces, workflow engines, analytics, and settings.
         </p>
       </div>
 

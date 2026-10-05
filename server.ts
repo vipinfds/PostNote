@@ -1272,7 +1272,7 @@ function processJsonRpc(body: any) {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Global permissive CORS headers for Claude browser connections and external tools
   app.use((req, res, next) => {
@@ -1637,7 +1637,31 @@ async function startServer() {
       ws.lastUpdated = new Date().toISOString();
       persistStore();
 
-      return res.json({ teamMembers: ws.teamMembers, member: newMember });
+      const origin = req.headers.origin || `http://${req.headers.host || 'localhost:3000'}`;
+      const inviteParams = new URLSearchParams();
+      inviteParams.set('invite', '1');
+      inviteParams.set('email', cleanInviteEmail);
+      inviteParams.set('role', assignedRole);
+      inviteParams.set('workspace', ws.id);
+      inviteParams.set('workspaceName', ws.name || 'PostNote Studio');
+      if (inviteName) inviteParams.set('name', String(inviteName).trim());
+      const inviteSignUpUrl = `${origin}/?${inviteParams.toString()}`;
+
+      console.log(
+        `[Invite Email Dispatched] To: ${cleanInviteEmail} | Role: ${assignedRole} | Sign-Up URL: ${inviteSignUpUrl}`
+      );
+
+      return res.json({
+        teamMembers: ws.teamMembers,
+        member: newMember,
+        invitationEmail: {
+          sent: true,
+          to: cleanInviteEmail,
+          role: assignedRole,
+          workspaceName: ws.name || 'PostNote Studio',
+          inviteUrl: inviteSignUpUrl,
+        },
+      });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Failed to invite team member' });
     }
@@ -2834,7 +2858,14 @@ ${text}
   });
 
   // Vite middleware in dev or static files in production
-  if (process.env.NODE_ENV !== 'production') {
+  const distPath = path.join(process.cwd(), 'dist');
+  const isProdRuntime =
+    process.env.NODE_ENV === 'production' ||
+    Boolean(process.env.K_SERVICE) ||
+    (fs.existsSync(path.join(distPath, 'index.html')) &&
+      process.argv[1]?.includes('server.cjs'));
+
+  if (!isProdRuntime) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -2857,7 +2888,6 @@ ${text}
       }
     });
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
@@ -2867,8 +2897,18 @@ ${text}
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
     console.log(`[Multi-AI Hub] MCP (Claude/Cursor), OpenAPI (ChatGPT), and Gemini Copilot ready`);
-    initializeActiveTunnel();
+    if (process.env.ENABLE_AUTO_TUNNEL === 'true') {
+      initializeActiveTunnel();
+    }
   });
 }
+
+process.on('uncaughtException', (err) => {
+  console.warn('[Server Warning] Caught exception:', err?.message || err);
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  console.warn('[Server Warning] Caught rejection:', reason?.message || reason);
+});
 
 startServer();

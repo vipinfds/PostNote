@@ -7,14 +7,11 @@ import {
   Lightbulb,
   CheckCircle2,
   Settings as SettingsIcon,
-  CreditCard,
   Plus,
   Sparkles,
   ChevronRight,
   Sun,
   Moon,
-  Bot,
-  UserCheck,
   Building2,
   Shield,
   ChevronDown,
@@ -66,7 +63,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   teamMembersCount = 1,
   onSwitchWorkspace,
   isDark,
-  theme,
   onToggleTheme,
 }) => {
   const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState(false);
@@ -109,43 +105,19 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       label: 'Ideas Bank',
       icon: Lightbulb,
     },
-  ];
-
-  const intelligenceNavItems = [
     {
       id: 'analytics' as MoreSubScreen,
       label: 'Analytics',
       icon: BarChart3,
     },
-    {
-      id: 'ai-assistants' as MoreSubScreen,
-      label: 'AI Assistants & MCP',
-      icon: Bot,
-      highlight: true,
-      badge: 'Live',
-      badgeColor: 'bg-[#C44D34] text-white',
-    },
   ];
 
-  const managementNavItems = [
-    {
-      id: 'team' as MoreSubScreen,
-      label: 'Team Members',
-      icon: UserCheck,
-    },
-    {
-      id: 'billing' as MoreSubScreen,
-      label: 'Plans & Billing',
-      icon: CreditCard,
-      highlight: subscription?.isTrial,
-      badge: subscription?.isTrial ? `${subscription.trialDaysLeft}d trial` : undefined,
-    },
-    {
-      id: 'settings' as MoreSubScreen,
-      label: 'Settings',
-      icon: SettingsIcon,
-    },
-  ];
+  const isSettingsGroupActive =
+    activeTab === 'more' &&
+    (activeMoreSubScreen === 'settings' ||
+      activeMoreSubScreen === 'team' ||
+      activeMoreSubScreen === 'billing' ||
+      activeMoreSubScreen === 'ai-assistants');
 
   return (
     <aside
@@ -263,11 +235,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                   type="button"
                   onClick={() => {
                     setIsWorkspaceDropdownOpen(false);
-                    onSelectSubScreen('team');
+                    onSelectSubScreen('settings');
                   }}
                   className="w-full py-1.5 px-2.5 rounded-lg bg-[#C44D34]/15 text-[#C44D34] hover:bg-[#C44D34]/25 font-bold text-[11px] text-center transition-colors cursor-pointer"
                 >
-                  Manage Team & Roles ({teamMembersCount})
+                  Settings & Team ({teamMembersCount})
                 </button>
                 {currentUser?.email && (
                   <p className="text-[10px] text-stone-500 dark:text-stone-400 text-center truncate px-1">
@@ -282,7 +254,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         {/* Primary Action Button: + New Post */}
         <button
           onClick={onOpenNewPost}
-          className="w-full py-2.5 px-3 rounded-xl bg-[#C44D34] hover:bg-[#B33E26] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.98]"
+          className="w-full py-2.5 px-3 rounded-xl bg-[#C44D34] hover:bg-[#B33E26] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.98] cursor-pointer"
         >
           <Plus className="w-4 h-4 stroke-[2.5]" />
           <span>New Post</span>
@@ -302,7 +274,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               <button
                 key={item.id}
                 onClick={() => onSelectTab(item.id)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive
                     ? 'bg-[#C44D34] text-white shadow-xs'
                     : isDark
@@ -333,10 +305,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           })}
         </div>
 
-        {/* Section 2: Content & Workflow (from More menu) */}
+        {/* Section 2: Workflow & Insights */}
         <div className="space-y-0.5 pt-1">
           <p className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-1">
-            Workflow & Content
+            Workflow & Insights
           </p>
 
           {workflowNavItems.map((tool) => {
@@ -347,7 +319,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               <button
                 key={tool.id}
                 onClick={() => onSelectSubScreen(tool.id)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive
                     ? 'bg-[#C44D34] text-white shadow-xs'
                     : isDark
@@ -378,92 +350,27 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           })}
         </div>
 
-        {/* Section 3: Intelligence & AI (from More menu) */}
-        <div className="space-y-0.5 pt-1">
-          <p className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-1">
-            Intelligence
-          </p>
-
-          {intelligenceNavItems.map((tool) => {
-            const Icon = tool.icon;
-            const isActive = activeTab === 'more' && activeMoreSubScreen === tool.id;
-
-            return (
-              <button
-                key={tool.id}
-                onClick={() => onSelectSubScreen(tool.id)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-                  isActive
-                    ? 'bg-[#C44D34] text-white shadow-xs'
-                    : isDark
-                    ? 'text-stone-300 hover:bg-[#1E2734] hover:text-white'
-                    : 'text-stone-700 hover:bg-stone-200/60 hover:text-stone-900'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Icon className="w-4 h-4 stroke-[2]" />
-                  <span>{tool.label}</span>
-                </div>
-
-                {tool.badge && (
-                  <span
-                    className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-                      tool.badgeColor
-                        ? tool.badgeColor
-                        : isActive
-                        ? 'bg-white/20 text-white'
-                        : 'bg-[#C44D34]/15 text-[#C44D34]'
-                    }`}
-                  >
-                    {tool.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Section 4: Management & Settings (from More menu) */}
+        {/* Section 3: Settings (Houses AI Assistants & MCP, Team Members, Plans & Billing) */}
         <div className="space-y-0.5 pt-1 pb-2">
           <p className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-1">
-            Management
+            Administration
           </p>
 
-          {managementNavItems.map((tool) => {
-            const Icon = tool.icon;
-            const isActive = activeTab === 'more' && activeMoreSubScreen === tool.id;
-
-            return (
-              <button
-                key={tool.id}
-                onClick={() => onSelectSubScreen(tool.id)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-                  isActive
-                    ? 'bg-[#C44D34] text-white shadow-xs'
-                    : isDark
-                    ? 'text-stone-300 hover:bg-[#1E2734] hover:text-white'
-                    : 'text-stone-700 hover:bg-stone-200/60 hover:text-stone-900'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Icon className="w-4 h-4 stroke-[2]" />
-                  <span>{tool.label}</span>
-                </div>
-
-                {tool.badge && (
-                  <span
-                    className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-                      isActive
-                        ? 'bg-white/20 text-white'
-                        : 'bg-[#C44D34]/15 text-[#C44D34]'
-                    }`}
-                  >
-                    {tool.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+          <button
+            onClick={() => onSelectSubScreen('settings')}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              isSettingsGroupActive
+                ? 'bg-[#C44D34] text-white shadow-xs'
+                : isDark
+                ? 'text-stone-300 hover:bg-[#1E2734] hover:text-white'
+                : 'text-stone-700 hover:bg-stone-200/60 hover:text-stone-900'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <SettingsIcon className="w-4 h-4 stroke-[2]" />
+              <span>Settings</span>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -471,8 +378,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       <div className="pt-3 border-t border-stone-200 dark:border-stone-800 space-y-2 mt-2 shrink-0">
         {subscription && (
           <button
-            onClick={() => onSelectSubScreen('billing')}
-            className={`w-full p-2 rounded-xl border text-left flex items-center justify-between transition-colors ${
+            onClick={() => onSelectSubScreen('settings')}
+            className={`w-full p-2 rounded-xl border text-left flex items-center justify-between transition-colors cursor-pointer ${
               isDark
                 ? 'bg-[#1A232E] border-[#2A3748] hover:border-[#C44D34]'
                 : 'bg-white border-[#E4DFD6] hover:border-[#C44D34]'
@@ -481,7 +388,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-1 text-[11px] font-bold text-[#C44D34]">
                 <Sparkles className="w-3 h-3" />
-                <span>{subscription.isTrial ? 'Agency Trial' : `${subscription.planId.toUpperCase()} Plan`}</span>
+                <span>
+                  {subscription.isTrial
+                    ? 'Agency Trial'
+                    : `${subscription.planId.toUpperCase()} Plan`}
+                </span>
               </div>
               <p className="text-[10px] text-stone-400 mt-0.5 truncate">
                 {subscription.isTrial
@@ -499,7 +410,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             <button
               onClick={onToggleTheme}
               title={`Switch to ${isDark ? 'light' : 'dark'} mode`}
-              className={`p-1.5 rounded-lg border transition-colors ${
+              className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
                 isDark
                   ? 'border-[#2A3748] bg-[#1C2531] text-amber-400 hover:text-amber-300 hover:bg-[#253242]'
                   : 'border-[#E4DFD6] bg-stone-100 text-stone-600 hover:text-stone-900 hover:bg-stone-200'

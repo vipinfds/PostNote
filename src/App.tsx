@@ -55,7 +55,6 @@ import { PostFormView } from './components/PostFormView';
 import { ClientModal } from './components/ClientModal';
 import { Toast } from './components/Toast';
 import { ScreenLoader } from './components/ScreenLoader';
-import { PWAInstallButton, OfflineIndicator } from './components/PWAInstallButton';
 
 // Screen imports
 import { IdeasBankView } from './components/IdeasBankView';
@@ -97,7 +96,21 @@ export default function App() {
   const [syncMode, setSyncMode] = useState<'cloud' | 'static'>(() =>
     isFirebaseConfigured ? 'cloud' : 'static'
   );
+  const [isNetworkOnline, setIsNetworkOnline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
   const hasLoadedWorkspaceRef = useRef(false);
+
+  useEffect(() => {
+    const handleOnline = () => setIsNetworkOnline(true);
+    const handleOffline = () => setIsNetworkOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Synchronize Firebase Auth state with isolated tenant session & auto-restore on reload
   useEffect(() => {
@@ -1308,7 +1321,7 @@ export default function App() {
         if (auth.currentUser && activeWorkspaceId && data.member) {
           syncMemberToFirestore(activeWorkspaceId, data.member, role, true).catch(() => {});
         }
-        showToast(`Added ${inviteEmail} as ${role}`);
+        showToast(`Sign-up invitation email sent to ${inviteEmail} (${role})`);
         return;
       }
     } catch {
@@ -1324,7 +1337,7 @@ export default function App() {
         role,
       });
       setTeamMembers(fallback.teamMembers);
-      showToast(`Added ${inviteEmail} as ${role}`);
+      showToast(`Sign-up invitation email sent to ${inviteEmail} (${role})`);
     }
   };
 
@@ -1896,7 +1909,6 @@ export default function App() {
     >
       {/* Toast alert bubble */}
       <Toast message={toastMessage} isDark={isDark} />
-      <OfflineIndicator />
 
       {/* Desktop Navigation Sidebar (Shown on Desktop screens lg: >= 1024px) */}
       {!portalClient && (
@@ -1955,12 +1967,12 @@ export default function App() {
             <div className="flex items-center gap-2">
               <div
                 title={
-                  syncMode === 'cloud'
-                    ? 'Connected / Cloud Mode: Workspace changes sync to Firestore & Cloud'
-                    : 'Offline / Static Mode: Running on static host with browser local storage'
+                  isNetworkOnline
+                    ? 'Connected to network'
+                    : 'Offline — working from local cache'
                 }
                 className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] font-semibold tracking-wide select-none ${
-                  syncMode === 'cloud'
+                  isNetworkOnline
                     ? isDark
                       ? 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400'
                       : 'bg-emerald-50 border-emerald-200/80 text-emerald-700'
@@ -1971,10 +1983,10 @@ export default function App() {
               >
                 <span
                   className={`w-1.5 h-1.5 rounded-full ${
-                    syncMode === 'cloud' ? 'bg-emerald-500' : 'bg-amber-500'
+                    isNetworkOnline ? 'bg-emerald-500' : 'bg-amber-500'
                   }`}
                 />
-                <span>{syncMode === 'cloud' ? 'Connected / Cloud' : 'Offline / Static'}</span>
+                <span>{isNetworkOnline ? 'Connected' : 'Offline'}</span>
               </div>
 
               {/* Mobile Notification Bell */}
@@ -1996,8 +2008,6 @@ export default function App() {
                   </span>
                 )}
               </button>
-
-              <PWAInstallButton variant="header" isDark={isDark} />
 
               <button
                 onClick={() => handleOpenNewPost()}
@@ -2031,8 +2041,6 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2.5">
-              <PWAInstallButton variant="header" isDark={isDark} />
-
               {/* Desktop Notification Bell Button */}
               <button
                 id="header-notification-bell-btn"
@@ -2057,12 +2065,12 @@ export default function App() {
               <div
                 id="sync-mode-indicator"
                 title={
-                  syncMode === 'cloud'
-                    ? 'Connected / Cloud Mode: Workspace changes sync to Firestore & Cloud'
-                    : 'Offline / Static Mode: Running on static host with local browser storage'
+                  isNetworkOnline
+                    ? `Connected (${syncMode === 'cloud' ? 'Cloud Sync' : 'Local Sync'})`
+                    : 'Offline — Network disconnected'
                 }
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-semibold tracking-wide transition-colors select-none ${
-                  syncMode === 'cloud'
+                  isNetworkOnline
                     ? isDark
                       ? 'bg-emerald-950/35 border-emerald-800/50 text-emerald-400'
                       : 'bg-emerald-50/90 border-emerald-200/80 text-emerald-700'
@@ -2071,17 +2079,12 @@ export default function App() {
                     : 'bg-amber-50/90 border-amber-200/80 text-amber-700'
                 }`}
               >
-                {syncMode === 'cloud' ? (
-                  <Cloud className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                ) : (
-                  <CloudOff className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                )}
-                <span>
-                  {syncMode === 'cloud' ? 'Connected / Cloud' : 'Offline / Static'}
-                </span>
-                <span className="text-[10px] opacity-75 font-normal hidden xl:inline">
-                  {syncMode === 'cloud' ? '(Firestore Sync)' : '(Local Storage)'}
-                </span>
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    isNetworkOnline ? 'bg-emerald-500' : 'bg-amber-500'
+                  }`}
+                />
+                <span>{isNetworkOnline ? 'Connected' : 'Offline'}</span>
               </div>
             </div>
           </div>

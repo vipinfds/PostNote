@@ -1,7 +1,17 @@
 import React from 'react';
-import { ArrowLeft, Sun, Moon, Monitor, Users, Trash2, LogOut, Sparkles, ChevronRight } from 'lucide-react';
+import {
+  ArrowLeft,
+  Sun,
+  Moon,
+  Monitor,
+  Users,
+  Trash2,
+  LogOut,
+  ChevronRight,
+  Bot,
+  CreditCard,
+} from 'lucide-react';
 import { ThemeMode, SubscriptionState, WorkspaceRole } from '../types';
-import { PWAInstallButton } from './PWAInstallButton';
 
 interface SettingsViewProps {
   theme: ThemeMode;
@@ -9,6 +19,7 @@ interface SettingsViewProps {
   onBack: () => void;
   onNavigateToTeam: () => void;
   onNavigateToBilling: () => void;
+  onNavigateToAiAssistants?: () => void;
   subscription?: SubscriptionState;
   currentUser?: {
     name: string;
@@ -16,6 +27,7 @@ interface SettingsViewProps {
     role?: string;
   } | null;
   myRole?: WorkspaceRole;
+  teamMembersCount?: number;
   onSignOut: () => void;
   onDeleteAccount: () => void;
   isDark?: boolean;
@@ -27,9 +39,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onBack,
   onNavigateToTeam,
   onNavigateToBilling,
+  onNavigateToAiAssistants,
   subscription,
   currentUser,
   myRole = 'Owner',
+  teamMembersCount,
   onSignOut,
   onDeleteAccount,
   isDark,
@@ -47,12 +61,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const displayName = currentUser?.name || 'Studio User';
   const displayEmail = currentUser?.email || 'Not signed in';
-  const initials = displayName
-    .split(' ')
-    .map((p) => p[0])
-    .join('')
-    .substring(0, 2)
-    .toUpperCase() || 'ST';
+  const initials =
+    displayName
+      .split(' ')
+      .map((p) => p[0])
+      .join('')
+      .substring(0, 2)
+      .toUpperCase() || 'ST';
 
   return (
     <div
@@ -70,12 +85,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           >
             <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
           </button>
-          <h2 className="text-base font-bold tracking-tight">Settings</h2>
+          <div>
+            <h2 className="text-base font-bold tracking-tight">Settings</h2>
+            <p className="text-[11px] text-stone-400">
+              Account, Team Members, Plans &amp; Billing, and AI Assistants &amp; MCP
+            </p>
+          </div>
         </div>
       </div>
 
       <div className="space-y-4 mt-4">
-        {/* User profile card (Dynamic authenticated user & mobile-friendly layout) */}
+        {/* User profile card */}
         <div
           className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs transition-colors ${
             isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
@@ -113,50 +133,122 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </button>
         </div>
 
-        {/* Subscription & Plan Card */}
+        {/* Studio Administration & Integrations Hub (Team Members, Plans & Billing, AI Assistants & MCP) */}
         <div
-          className={`p-4 rounded-2xl border shadow-xs transition-colors ${
+          className={`p-4 rounded-2xl border shadow-xs space-y-3 transition-colors ${
             isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
           }`}
         >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-[#C44D34]" />
-              <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-                Workspace Subscription
-              </h3>
-            </div>
-            {subscription?.isTrial ? (
-              <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold uppercase">
-                {subscription.trialDaysLeft}d Trial
-              </span>
-            ) : (
-              <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-extrabold uppercase">
-                Active Pro
-              </span>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+            Workspace Administration &amp; Integrations
+          </h3>
+
+          <div className="grid grid-cols-1 gap-2.5">
+            {/* 1. Team Members */}
+            <button
+              id="settings-nav-team"
+              type="button"
+              onClick={onNavigateToTeam}
+              className={`w-full p-3.5 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer group ${
+                isDark
+                  ? 'bg-[#161D25] border-[#263240] hover:border-[#C44D34]'
+                  : 'bg-[#FAF8F5] border-[#E8E2D8] hover:border-[#C44D34]'
+              }`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-[#C44D34]/15 text-[#C44D34] flex items-center justify-center shrink-0">
+                  <Users className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-stone-900 dark:text-white group-hover:text-[#C44D34] transition-colors">
+                      Team Members
+                    </span>
+                    {typeof teamMembersCount === 'number' && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300 text-[10px] font-bold tabular-nums">
+                        {teamMembersCount}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-stone-500 dark:text-stone-400 truncate mt-0.5">
+                    Add teammates, assign workspace roles &amp; send sign-up invitations
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-[#C44D34] shrink-0" />
+            </button>
+
+            {/* 2. Plans & Billing */}
+            <button
+              id="settings-nav-billing"
+              type="button"
+              onClick={onNavigateToBilling}
+              className={`w-full p-3.5 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer group ${
+                isDark
+                  ? 'bg-[#161D25] border-[#263240] hover:border-[#C44D34]'
+                  : 'bg-[#FAF8F5] border-[#E8E2D8] hover:border-[#C44D34]'
+              }`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <CreditCard className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-stone-900 dark:text-white group-hover:text-[#C44D34] transition-colors">
+                      Plans &amp; Billing
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-[#C44D34]/15 text-[#C44D34] text-[10px] font-extrabold uppercase">
+                      {planName}
+                    </span>
+                    {subscription?.isTrial && (
+                      <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold uppercase">
+                        {subscription.trialDaysLeft}d Trial
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-stone-500 dark:text-stone-400 truncate mt-0.5">
+                    Manage studio subscription, client quotas, and billing preferences
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-[#C44D34] shrink-0" />
+            </button>
+
+            {/* 3. AI Assistants & MCP */}
+            {onNavigateToAiAssistants && (
+              <button
+                id="settings-nav-ai-assistants"
+                type="button"
+                onClick={onNavigateToAiAssistants}
+                className={`w-full p-3.5 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer group ${
+                  isDark
+                    ? 'bg-[#161D25] border-[#263240] hover:border-[#C44D34]'
+                    : 'bg-[#FAF8F5] border-[#E8E2D8] hover:border-[#C44D34]'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-[#C44D34]/15 text-[#C44D34] flex items-center justify-center shrink-0">
+                    <Bot className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-stone-900 dark:text-white group-hover:text-[#C44D34] transition-colors">
+                        AI Assistants &amp; MCP
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded-full bg-[#C44D34] text-white text-[9px] font-extrabold uppercase">
+                        Live
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-stone-500 dark:text-stone-400 truncate mt-0.5">
+                      Connect Claude Desktop, Cursor, ChatGPT Actions &amp; MCP endpoints
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-[#C44D34] shrink-0" />
+              </button>
             )}
           </div>
-
-          <div className="flex items-baseline justify-between mt-1">
-            <div>
-              <h4 className="text-base font-bold text-stone-900 dark:text-white font-serif">
-                {planName}
-              </h4>
-              <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-                {subscription?.isTrial
-                  ? 'Founding agency trial with full limits & review links'
-                  : `Billed ${subscription?.interval} in ${subscription?.currency}`}
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={onNavigateToBilling}
-            className="w-full mt-3.5 py-2.5 rounded-xl bg-[#C44D34] hover:bg-[#B03E26] text-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-          >
-            <span>Manage Plans & Pricing</span>
-            <ChevronRight className="w-4 h-4" />
-          </button>
         </div>
 
         {/* Appearance card */}
@@ -212,34 +304,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <span>System</span>
             </button>
           </div>
-        </div>
-
-        {/* Android App & Mobile Installation Card */}
-        <PWAInstallButton variant="card" isDark={isDark} />
-
-        {/* Your team card */}
-        <div
-          className={`p-4 rounded-2xl border shadow-xs transition-colors ${
-            isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <Users className="w-4 h-4 text-[#C44D34]" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-              Your team
-            </h3>
-          </div>
-
-          <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed mb-4">
-            Invite your team — everyone you invite shares this private workspace. Other workspaces can&apos;t see your clients or posts.
-          </p>
-
-          <button
-            onClick={onNavigateToTeam}
-            className="w-full py-2.5 rounded-xl bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white text-xs font-bold uppercase tracking-wider transition-colors shadow-xs cursor-pointer"
-          >
-            Manage team
-          </button>
         </div>
 
         {/* Delete account card */}

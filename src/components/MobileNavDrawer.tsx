@@ -7,9 +7,6 @@ import {
   CheckCircle2,
   BarChart3,
   Settings as SettingsIcon,
-  Bot,
-  UserCheck,
-  CreditCard,
   Plus,
   Moon,
   Sun,
@@ -62,7 +59,6 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
   onOpenNewPost,
   clientsCount,
   waitingApprovalsCount,
-  subscription,
   currentUser,
   workspaces = [],
   activeWorkspaceId = '',
@@ -116,43 +112,19 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
       label: 'Ideas Bank',
       icon: Lightbulb,
     },
-  ];
-
-  const intelligenceItems = [
     {
       id: 'analytics' as MoreSubScreen,
       label: 'Analytics',
       icon: BarChart3,
     },
-    {
-      id: 'ai-assistants' as MoreSubScreen,
-      label: 'AI Assistants & MCP',
-      icon: Bot,
-      highlight: true,
-      badge: 'Live',
-      badgeColor: 'bg-[#C44D34] text-white',
-    },
   ];
 
-  const managementItems = [
-    {
-      id: 'team' as MoreSubScreen,
-      label: 'Team Members',
-      icon: UserCheck,
-    },
-    {
-      id: 'billing' as MoreSubScreen,
-      label: 'Plans & Billing',
-      icon: CreditCard,
-      highlight: subscription?.isTrial,
-      badge: subscription?.isTrial ? `${subscription.trialDaysLeft}d trial` : undefined,
-    },
-    {
-      id: 'settings' as MoreSubScreen,
-      label: 'Settings',
-      icon: SettingsIcon,
-    },
-  ];
+  const isSettingsGroupActive =
+    activeTab === 'more' &&
+    (activeMoreSubScreen === 'settings' ||
+      activeMoreSubScreen === 'team' ||
+      activeMoreSubScreen === 'billing' ||
+      activeMoreSubScreen === 'ai-assistants');
 
   const handleTabClick = (tabId: MainTab) => {
     onSelectTab(tabId);
@@ -303,11 +275,11 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
                     type="button"
                     onClick={() => {
                       setIsWorkspaceDropdownOpen(false);
-                      handleSubScreenClick('team');
+                      handleSubScreenClick('settings');
                     }}
                     className="w-full py-1.5 px-2.5 rounded-lg bg-[#C44D34]/15 text-[#C44D34] hover:bg-[#C44D34]/25 font-bold text-[11px] text-center transition-colors cursor-pointer"
                   >
-                    Manage Team & Roles ({teamMembersCount})
+                    Settings & Team ({teamMembersCount})
                   </button>
                   <p className="text-[10px] text-stone-500 dark:text-stone-400 text-center truncate px-1">
                     Signed in as {currentUser.email}
@@ -373,10 +345,10 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
             })}
           </div>
 
-          {/* Section 2: Workflow & Content */}
+          {/* Section 2: Workflow & Insights */}
           <div className="space-y-0.5">
             <p className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-1">
-              Workflow & Content
+              Workflow & Insights
             </p>
             {workflowItems.map((item) => {
               const Icon = item.icon;
@@ -417,90 +389,26 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
             })}
           </div>
 
-          {/* Section 3: Intelligence */}
+          {/* Section 3: Administration (Settings only) */}
           <div className="space-y-0.5">
             <p className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-1">
-              Intelligence
+              Administration
             </p>
-            {intelligenceItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === 'more' && activeMoreSubScreen === item.id;
-
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => handleSubScreenClick(item.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-                    isActive
-                      ? 'bg-[#C44D34] text-white shadow-xs'
-                      : isDark
-                      ? 'text-stone-300 hover:bg-[#1E2734] hover:text-white'
-                      : 'text-stone-700 hover:bg-stone-200/60 hover:text-stone-900'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Icon className="w-4 h-4 stroke-[2]" />
-                    <span>{item.label}</span>
-                  </div>
-
-                  {item.badge && (
-                    <span
-                      className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
-                        item.badgeColor
-                          ? item.badgeColor
-                          : isActive
-                          ? 'bg-white/20 text-white'
-                          : 'bg-[#C44D34]/15 text-[#C44D34]'
-                      }`}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Section 4: Management */}
-          <div className="space-y-0.5">
-            <p className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-1">
-              Management
-            </p>
-            {managementItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === 'more' && activeMoreSubScreen === item.id;
-
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => handleSubScreenClick(item.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-                    isActive
-                      ? 'bg-[#C44D34] text-white shadow-xs'
-                      : isDark
-                      ? 'text-stone-300 hover:bg-[#1E2734] hover:text-white'
-                      : 'text-stone-700 hover:bg-stone-200/60 hover:text-stone-900'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Icon className="w-4 h-4 stroke-[2]" />
-                    <span>{item.label}</span>
-                  </div>
-
-                  {item.badge && (
-                    <span
-                      className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
-                        isActive
-                          ? 'bg-white/20 text-white'
-                          : 'bg-[#C44D34]/15 text-[#C44D34]'
-                      }`}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+            <button
+              onClick={() => handleSubScreenClick('settings')}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                isSettingsGroupActive
+                  ? 'bg-[#C44D34] text-white shadow-xs'
+                  : isDark
+                  ? 'text-stone-300 hover:bg-[#1E2734] hover:text-white'
+                  : 'text-stone-700 hover:bg-stone-200/60 hover:text-stone-900'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <SettingsIcon className="w-4 h-4 stroke-[2]" />
+                <span>Settings</span>
+              </div>
+            </button>
           </div>
         </div>
 

@@ -58,7 +58,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
   const maxClientCount = Math.max(...clientData.map((d) => d.count), 1);
 
-  // Platform distribution (using brand logos instead of color coding)
+  // Platform distribution (using brand logos)
   const platformCounts: Record<string, number> = {};
   posts.forEach((p) => {
     platformCounts[p.platform] = (platformCounts[p.platform] || 0) + 1;
@@ -77,9 +77,9 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   // 4-Stage breakdown
   const statusData = POST_STAGES.map((st) => {
     const count = posts.filter((p) => normalizePostStatus(p.status) === st).length;
-    return { status: st, count, hex: STATUS_STYLES[st].hex };
+    const percent = totalPosts > 0 ? Math.round((count / totalPosts) * 100) : 0;
+    return { status: st, count, percent, hex: STATUS_STYLES[st].hex };
   });
-  const maxStatusCount = Math.max(...statusData.map((s) => s.count), 1);
 
   // Compute drill-down posts
   const drillDownPosts = React.useMemo(() => {
@@ -162,7 +162,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           onClick={() => setActiveDrillDown({ type: 'all', label: 'All Posts' })}
           className={`p-4 rounded-2xl border text-center transition-all cursor-pointer ${
             isMetricSelected({ type: 'all', label: 'All Posts' })
-              ? 'border-[#C44D34] ring-2 ring-[#C44D34]/20 bg-[#C44D34]/[0.05]'
+              ? 'border-[#C44D34] ring-1 ring-[#C44D34]/30 bg-[#C44D34]/[0.05]'
               : isDark
               ? 'bg-[#1D242C] border-[#2A3440] hover:border-stone-600'
               : 'bg-white border-[#E8E4DC] hover:border-stone-300'
@@ -195,7 +195,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               status: 'Planned',
               label: 'Stage: Planned',
             })
-              ? 'border-[#C44D34] ring-2 ring-[#C44D34]/20 bg-[#C44D34]/[0.05]'
+              ? 'border-[#C44D34] ring-1 ring-[#C44D34]/30 bg-[#C44D34]/[0.05]'
               : isDark
               ? 'bg-[#1D242C] border-[#2A3440] hover:border-stone-600'
               : 'bg-white border-[#E8E4DC] hover:border-stone-300'
@@ -228,7 +228,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               status: 'In review',
               label: 'Stage: In review',
             })
-              ? 'border-[#C44D34] ring-2 ring-[#C44D34]/20 bg-[#C44D34]/[0.05]'
+              ? 'border-[#C44D34] ring-1 ring-[#C44D34]/30 bg-[#C44D34]/[0.05]'
               : isDark
               ? 'bg-[#1D242C] border-[#2A3440] hover:border-stone-600'
               : 'bg-white border-[#E8E4DC] hover:border-stone-300'
@@ -261,7 +261,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               status: 'Approved',
               label: 'Stage: Approved',
             })
-              ? 'border-[#C44D34] ring-2 ring-[#C44D34]/20 bg-[#C44D34]/[0.05]'
+              ? 'border-[#C44D34] ring-1 ring-[#C44D34]/30 bg-[#C44D34]/[0.05]'
               : isDark
               ? 'bg-[#1D242C] border-[#2A3440] hover:border-stone-600'
               : 'bg-white border-[#E8E4DC] hover:border-stone-300'
@@ -294,7 +294,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               status: 'Scheduled',
               label: 'Stage: Scheduled',
             })
-              ? 'border-[#C44D34] ring-2 ring-[#C44D34]/20 bg-[#C44D34]/[0.05]'
+              ? 'border-[#C44D34] ring-1 ring-[#C44D34]/30 bg-[#C44D34]/[0.05]'
               : isDark
               ? 'bg-[#1D242C] border-[#2A3440] hover:border-stone-600'
               : 'bg-white border-[#E8E4DC] hover:border-stone-300'
@@ -362,15 +362,21 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                   }`}
                 >
                   <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="font-semibold text-stone-700 dark:text-stone-200 group-hover:text-[#C44D34] transition-colors">
-                      {item.name}
-                    </span>
-                    <span className="text-[11px] font-bold text-stone-500 tabular-nums">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: item.color }}
+                      />
+                      <span className="font-semibold text-stone-700 dark:text-stone-200 group-hover:text-[#C44D34] transition-colors truncate">
+                        {item.name}
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-bold text-stone-500 tabular-nums shrink-0">
                       {item.count} post{item.count === 1 ? '' : 's'}
                     </span>
                   </div>
 
-                  <div className="w-full h-2.5 rounded-full bg-stone-100 dark:bg-stone-800 overflow-hidden relative">
+                  <div className="w-full h-2 rounded-full bg-stone-100 dark:bg-stone-800 overflow-hidden relative">
                     <div
                       className="h-full rounded-full transition-all duration-500 bg-[#C44D34] group-hover:bg-[#a83c26]"
                       style={{ width: `${pct}%` }}
@@ -389,7 +395,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           )}
         </div>
 
-        {/* Chart 2: PLATFORM DISTRIBUTION (Clean SVG Brand Logos instead of color coding, Clickable) */}
+        {/* Chart 2: PLATFORM DISTRIBUTION (Clean SVG Brand Logos, Clickable) */}
         <div
           className={`p-4 rounded-2xl border ${
             isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
@@ -453,65 +459,101 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           </div>
         </div>
 
-        {/* Chart 3: 4-STAGE BREAKDOWN (Clickable) */}
+        {/* Chart 3: 4-STAGE WORKFLOW BREAKDOWN (Clean Stacked Pipeline Bar + Interactive Stage Rows) */}
         <div
-          className={`p-4 rounded-2xl border ${
+          id="analytics-workflow-breakdown-card"
+          className={`p-4 rounded-2xl border flex flex-col justify-between ${
             isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
           }`}
         >
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-              4-STAGE WORKFLOW BREAKDOWN
-            </h3>
-            <span className="text-[10px] text-stone-400">Click stage to view</span>
-          </div>
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                4-STAGE WORKFLOW BREAKDOWN
+              </h3>
+              <span className="text-[10px] text-stone-400">Click stage to view</span>
+            </div>
 
-          <div className="flex items-end justify-between gap-3 h-40 pt-4 pb-2 border-b border-stone-200 dark:border-stone-800">
-            {statusData.map((item) => {
-              const barHeight = Math.max(
-                Math.round((item.count / maxStatusCount) * 100),
-                12
-              );
-              const isHovered = hoveredStatus?.status === item.status;
-              const selected = isMetricSelected({
-                type: 'status',
-                status: item.status,
-                label: `Stage: ${item.status}`,
-              });
+            {/* Unified Multi-Segment Pipeline Progress Bar */}
+            <div className="mb-4">
+              <div className="w-full h-3 rounded-full bg-stone-100 dark:bg-stone-800 overflow-hidden flex gap-0.5 p-0.5">
+                {statusData.map((item) =>
+                  item.count > 0 ? (
+                    <div
+                      key={item.status}
+                      title={`${item.status}: ${item.count} (${item.percent}%)`}
+                      className="h-full first:rounded-l-full last:rounded-r-full transition-all duration-500"
+                      style={{
+                        width: `${Math.max(item.percent, 6)}%`,
+                        backgroundColor: item.hex,
+                      }}
+                    />
+                  ) : null
+                )}
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-stone-400 mt-1.5 tabular-nums">
+                <span>Pipeline Distribution</span>
+                <span>{totalPosts} Total Deliverables</span>
+              </div>
+            </div>
 
-              return (
-                <button
-                  key={item.status}
-                  type="button"
-                  onClick={() =>
-                    setActiveDrillDown({
-                      type: 'status',
-                      status: item.status,
-                      label: `Stage: ${item.status}`,
-                    })
-                  }
-                  className={`flex-1 flex flex-col items-center justify-end h-full group cursor-pointer p-1 rounded-xl transition-all ${
-                    selected ? 'bg-[#C44D34]/10 ring-1 ring-[#C44D34]' : ''
-                  }`}
-                  onMouseEnter={() => setHoveredStatus({ status: item.status, count: item.count })}
-                  onMouseLeave={() => setHoveredStatus(null)}
-                >
-                  <span className="text-[11px] font-bold text-stone-600 dark:text-stone-300 mb-1 tabular-nums">
-                    {item.count}
-                  </span>
-                  <div
-                    className="w-full rounded-t-lg transition-all duration-300"
-                    style={{
-                      height: `${barHeight}%`,
-                      backgroundColor: isHovered || selected ? '#C44D34' : item.hex,
-                    }}
-                  />
-                  <div className="mt-2">
-                    <StatusStageBadge status={item.status} size="xs" />
-                  </div>
-                </button>
-              );
-            })}
+            {/* Clean Interactive Stage Rows */}
+            <div className="space-y-2.5">
+              {statusData.map((item) => {
+                const selected = isMetricSelected({
+                  type: 'status',
+                  status: item.status,
+                  label: `Stage: ${item.status}`,
+                });
+
+                return (
+                  <button
+                    key={item.status}
+                    type="button"
+                    onClick={() =>
+                      setActiveDrillDown({
+                        type: 'status',
+                        status: item.status,
+                        label: `Stage: ${item.status}`,
+                      })
+                    }
+                    onMouseEnter={() =>
+                      setHoveredStatus({ status: item.status, count: item.count })
+                    }
+                    onMouseLeave={() => setHoveredStatus(null)}
+                    className={`w-full text-left p-2.5 rounded-xl border transition-all cursor-pointer group ${
+                      selected
+                        ? 'border-[#C44D34] bg-[#C44D34]/10'
+                        : isDark
+                        ? 'bg-[#161D25] border-[#25303E] hover:border-[#C44D34]/50'
+                        : 'bg-[#FAF8F5] border-[#ECE8E0] hover:border-[#C44D34]/50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <StatusStageBadge status={item.status} size="xs" />
+                      <div className="flex items-center gap-1.5 text-xs tabular-nums">
+                        <span className="font-extrabold text-stone-900 dark:text-white">
+                          {item.count}
+                        </span>
+                        <span className="text-[11px] font-semibold text-stone-400">
+                          ({item.percent}%)
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="w-full h-2 rounded-full bg-stone-200/70 dark:bg-stone-800 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${item.percent}%`,
+                          backgroundColor: item.hex,
+                        }}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {hoveredStatus && (

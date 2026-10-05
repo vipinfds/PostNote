@@ -8,8 +8,21 @@ import {
   Building2,
   Check,
   Lock,
+  Send,
+  Copy,
+  ExternalLink,
+  Sparkles,
 } from 'lucide-react';
 import { TeamMember, WorkspaceRole, WorkspaceSummary } from '../types';
+
+export interface SentInvitationDetails {
+  email: string;
+  name?: string;
+  role: WorkspaceRole;
+  workspaceName: string;
+  inviteUrl: string;
+  sentAt: string;
+}
 
 interface TeamViewProps {
   members: TeamMember[];
@@ -22,6 +35,7 @@ interface TeamViewProps {
   onInviteMember: (email: string, role?: WorkspaceRole, name?: string) => void;
   onUpdateMemberRole?: (memberId: string, role: WorkspaceRole) => void;
   onRemoveMember: (id: string) => void;
+  lastSentInvitation?: SentInvitationDetails | null;
   isDark?: boolean;
 }
 
@@ -68,21 +82,83 @@ export const TeamView: React.FC<TeamViewProps> = ({
   onInviteMember,
   onUpdateMemberRole,
   onRemoveMember,
+  lastSentInvitation,
   isDark,
 }) => {
   const [email, setEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
   const [selectedRole, setSelectedRole] = useState<WorkspaceRole>('Editor');
+  const [localInviteBanner, setLocalInviteBanner] =
+    useState<SentInvitationDetails | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const canManageTeam = myRole === 'Owner' || myRole === 'Admin';
+  const activeWsName =
+    workspaces.find((w) => w.id === activeWorkspaceId)?.name || 'PostNote Studio';
+
+  const activeInvitation = lastSentInvitation || localInviteBanner;
+
+  const buildInviteSignUpUrl = (
+    targetEmail: string,
+    role: WorkspaceRole,
+    targetName?: string
+  ) => {
+    const origin =
+      typeof window !== 'undefined' ? window.location.origin : 'https://postnote.studio';
+    const params = new URLSearchParams();
+    params.set('invite', '1');
+    params.set('email', targetEmail);
+    params.set('role', role);
+    if (activeWorkspaceId) params.set('workspace', activeWorkspaceId);
+    params.set('workspaceName', activeWsName);
+    if (targetName) params.set('name', targetName);
+    return `${origin}/?${params.toString()}`;
+  };
 
   const handleInvite = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canManageTeam) return;
-    if (!email.trim() || !email.includes('@')) return;
-    onInviteMember(email.trim().toLowerCase(), selectedRole, inviteName.trim() || undefined);
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) return;
+    const cleanName = inviteName.trim() || undefined;
+    const inviteUrl = buildInviteSignUpUrl(cleanEmail, selectedRole, cleanName);
+
+    onInviteMember(cleanEmail, selectedRole, cleanName);
+    setLocalInviteBanner({
+      email: cleanEmail,
+      name: cleanName,
+      role: selectedRole,
+      workspaceName: activeWsName,
+      inviteUrl,
+      sentAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    });
     setEmail('');
     setInviteName('');
+  };
+
+  const handleCopyInviteLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2200);
+    } catch {
+      // ignore clipboard fallback
+    }
+  };
+
+  const buildMailtoHref = (inv: SentInvitationDetails) => {
+    const subject = encodeURIComponent(
+      `You're invited to join ${inv.workspaceName} on PostNote Studio (${inv.role})`
+    );
+    const body = encodeURIComponent(
+      `Hi ${inv.name || inv.email.split('@')[0]},\n\n` +
+        `You have been invited to collaborate on "${inv.workspaceName}" in PostNote Studio with the ${inv.role} role.\n\n` +
+        `Click the link below to sign up and access the shared workspace:\n` +
+        `${inv.inviteUrl}\n\n` +
+        `Once you sign up with ${inv.email}, your ${inv.role} permissions will be activated automatically.\n\n` +
+        `— ${currentUserEmail || 'PostNote Studio Team'}`
+    );
+    return `mailto:${inv.email}?subject=${subject}&body=${body}`;
   };
 
   const getRoleBadge = (role?: string) => {
@@ -112,7 +188,8 @@ export const TeamView: React.FC<TeamViewProps> = ({
           <div>
             <h2 className="text-base font-bold tracking-tight">Team & Access Control</h2>
             <span className="text-[10px] font-extrabold uppercase tracking-widest text-stone-400">
-              {members.length} {members.length === 1 ? 'MEMBER' : 'MEMBERS'} · YOUR ROLE: {myRole.toUpperCase()}
+              {members.length} {members.length === 1 ? 'MEMBER' : 'MEMBERS'} · YOUR ROLE:{' '}
+              {myRole.toUpperCase()}
             </span>
           </div>
         </div>
@@ -132,9 +209,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
                 Your Accessible Workspaces ({workspaces.length})
               </h3>
             </div>
-            <span className="text-[10px] text-stone-400">
-              Isolated per account
-            </span>
+            <span className="text-[10px] text-stone-400">Isolated per account</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -155,9 +230,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
                 >
                   <div className="min-w-0 pr-2">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold truncate">
-                        {ws.name}
-                      </span>
+                      <span className="text-xs font-bold truncate">{ws.name}</span>
                       <span
                         className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${getRoleBadge(
                           ws.myRole
@@ -167,7 +240,10 @@ export const TeamView: React.FC<TeamViewProps> = ({
                       </span>
                     </div>
                     <p className="text-[10px] text-stone-400 truncate mt-0.5">
-                      {ws.isPersonal ? 'Personal Private Studio' : `Shared by ${ws.ownerEmail}`} · {ws.postsCount} posts
+                      {ws.isPersonal
+                        ? 'Personal Private Studio'
+                        : `Shared by ${ws.ownerEmail}`}{' '}
+                      · {ws.postsCount} posts
                     </p>
                   </div>
                   {isActive && (
@@ -203,7 +279,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
         </div>
 
         <p className="text-[11px] text-stone-500 dark:text-stone-400 mb-3">
-          All accounts are private by default. Adding a user&apos;s email here grants them access to this studio workspace with the role you assign.
+          Adding a teammate&apos;s email here dispatches a workspace sign-up invitation email with a personalized registration link and pre-assigns their role.
         </p>
 
         {canManageTeam ? (
@@ -252,9 +328,10 @@ export const TeamView: React.FC<TeamViewProps> = ({
                 </select>
                 <button
                   type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-[#C44D34] hover:bg-[#A83E28] text-white text-xs font-bold uppercase tracking-wider shadow-xs shrink-0 cursor-pointer transition-colors"
+                  className="px-4 py-2.5 rounded-xl bg-[#C44D34] hover:bg-[#A83E28] text-white text-xs font-bold uppercase tracking-wider shadow-xs shrink-0 cursor-pointer transition-colors flex items-center gap-1.5"
                 >
-                  Add
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Send Invite</span>
                 </button>
               </div>
             </div>
@@ -290,6 +367,71 @@ export const TeamView: React.FC<TeamViewProps> = ({
             You are viewing this workspace with the <strong>{myRole}</strong> role. Only Workspace Owners and Admins can invite members or modify roles.
           </div>
         )}
+
+        {/* Sign-Up Email Dispatched Confirmation Card */}
+        {activeInvitation && (
+          <div
+            id="team-invite-email-confirmation"
+            className={`mt-4 p-4 rounded-2xl border animate-fade-in ${
+              isDark
+                ? 'bg-emerald-950/25 border-emerald-800/50 text-stone-100'
+                : 'bg-emerald-50/70 border-emerald-200 text-stone-800'
+            }`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                      Sign-Up Invitation Email Dispatched to {activeInvitation.email}
+                    </span>
+                    <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                      Role: {activeInvitation.role}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
+                    When <strong>{activeInvitation.email}</strong> opens their sign-up link, their email and workspace access are pre-configured automatically.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleCopyInviteLink(activeInvitation.inviteUrl)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                    isDark
+                      ? 'bg-[#1D242C] border-stone-700 text-stone-200 hover:border-[#C44D34]'
+                      : 'bg-white border-stone-300 text-stone-700 hover:border-[#C44D34]'
+                  }`}
+                >
+                  {copiedLink ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Copied Sign-Up Link</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-[#C44D34]" />
+                      <span>Copy Sign-Up Link</span>
+                    </>
+                  )}
+                </button>
+
+                <a
+                  href={buildMailtoHref(activeInvitation)}
+                  className="px-3 py-1.5 rounded-xl bg-[#C44D34] hover:bg-[#a93e27] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open in Email Client</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Members list */}
@@ -309,6 +451,11 @@ export const TeamView: React.FC<TeamViewProps> = ({
             currentUserEmail &&
             member.email.toLowerCase() === currentUserEmail.toLowerCase();
           const isOwnerMember = member.role === 'Owner';
+          const memberInviteUrl = buildInviteSignUpUrl(
+            member.email,
+            (member.role as WorkspaceRole) || 'Editor',
+            member.name
+          );
 
           return (
             <div
@@ -348,9 +495,19 @@ export const TeamView: React.FC<TeamViewProps> = ({
                   </div>
                   <p className="text-[11px] text-stone-400 truncate">{member.email}</p>
                   {member.status === 'invited' ? (
-                    <span className="text-[10px] text-amber-500 font-semibold">
-                      Invited · Will gain {member.role || 'Editor'} access upon sign-in
-                    </span>
+                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                      <span className="text-[10px] text-amber-500 font-semibold">
+                        Sign-Up Invite Sent · Will gain {member.role || 'Editor'} access upon sign-up
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyInviteLink(memberInviteUrl)}
+                        className="text-[10px] font-bold text-[#C44D34] hover:underline inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <Sparkles className="w-2.5 h-2.5" />
+                        <span>Copy Sign-Up Link</span>
+                      </button>
+                    </div>
                   ) : (
                     <span className="text-[10px] text-emerald-500 font-semibold">
                       Active Workspace Access

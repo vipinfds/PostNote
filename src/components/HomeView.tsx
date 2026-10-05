@@ -394,8 +394,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     className={`min-h-[48px] sm:min-h-[58px] p-1 flex flex-col items-center justify-start rounded-xl transition-all relative group cursor-pointer ${
                       isSelected
                         ? isDark
-                          ? 'bg-stone-800/90 ring-2 ring-[#C44D34]'
-                          : 'bg-stone-100 ring-2 ring-[#C44D34]'
+                          ? 'bg-stone-800/70 ring-1 ring-[#C44D34]/85'
+                          : 'bg-stone-100/80 ring-1 ring-[#C44D34]/80'
                         : 'hover:bg-stone-100/70 dark:hover:bg-stone-800/50'
                     }`}
                   >

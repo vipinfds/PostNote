@@ -19,6 +19,7 @@ import {
   X,
   RotateCcw,
   UserCheck,
+  CheckCheck,
 } from 'lucide-react';
 import { Client, Post, Campaign, SubscriptionState, PostStatus, MediaItem } from '../types';
 import {
@@ -90,6 +91,10 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   );
   const [filterPlatform, setFilterPlatform] = useState<string>('all');
   const [filterStage, setFilterStage] = useState<'all' | PostStatus>('all');
+
+  // Grouped Review Batch Expansion state (when multiple posts are sent for review at once)
+  const [isReviewBatchExpanded, setIsReviewBatchExpanded] = useState<boolean>(false);
+  const [isApprovedBatchExpanded, setIsApprovedBatchExpanded] = useState<boolean>(true);
 
   // Selected post for Client Post Detail & Feedback Modal
   const [selectedPortalPostId, setSelectedPortalPostId] = useState<string | null>(null);
@@ -178,6 +183,10 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   const totalPosts = clientPosts.length;
   const platformCounts: Record<string, number> = {};
   clientPosts.forEach((p) => {
+    platformCounts[p.platform] = (platformCounts[p.platform] || 1);
+  });
+  Object.keys(platformCounts).forEach((k) => delete platformCounts[k]);
+  clientPosts.forEach((p) => {
     platformCounts[p.platform] = (platformCounts[p.platform] || 0) + 1;
   });
 
@@ -261,164 +270,361 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   const handleModalSubmitClientFeedback = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPortalPost || !modalFeedbackText.trim()) return;
+    const cleanComment = modalFeedbackText.trim();
     const author = clientReviewerName.trim() || `${client.name} (Client)`;
     if (onAddClientFeedback) {
-      onAddClientFeedback(selectedPortalPost.id, modalFeedbackText.trim(), author);
+      onAddClientFeedback(selectedPortalPost.id, cleanComment, author);
     } else {
-      onRequestChanges(selectedPortalPost.id, modalFeedbackText.trim(), author);
+      onRequestChanges(selectedPortalPost.id, cleanComment, author);
     }
     setModalFeedbackText('');
   };
 
+  // Filtered calendar/schedule posts
   const filteredCalendarPosts = clientPosts
     .filter((p) => filterPlatform === 'all' || p.platform === filterPlatform)
-    .filter((p) => filterStage === 'all' || normalizePostStatus(p.status) === filterStage)
+    .filter(
+      (p) => filterStage === 'all' || normalizePostStatus(p.status) === filterStage
+    )
     .sort((a, b) => b.date.localeCompare(a.date));
+
+  const renderClientPostReviewCard = (post: Post, isApprovedMode = false) => {
+    const catColor = CATEGORY_COLORS[post.category] || CATEGORY_COLORS.POST;
+    const isCommenting = feedbackPostId === post.id;
+    const mediaItems = getMediaItemsForPost(post);
+    const clientFeedbackEntries = (post.activityLog || []).filter(
+      (a) =>
+        a.type === 'client_feedback' ||
+        a.type === 'changes_requested' ||
+        a.type === 'comment'
+    );
+
+    return (
+      <div
+        key={post.id}
+        onClick={() => setSelectedPortalPostId(post.id)}
+        className={`p-4 rounded-2xl border transition-all cursor-pointer hover:border-[#C44D34] ${
+          isDark ? 'bg-[#161C23] border-[#26313F]' : 'bg-[#FAF8F5] border-[#ECE8E0]'
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: catColor.dot }}
+            />
+            <span
+              className="font-bold text-[10px] uppercase tracking-wider"
+              style={{ color: catColor.text }}
+            >
+              {post.category}
+            </span>
+            <span className="text-stone-400">•</span>
+            <PlatformLogo platform={post.platform} size="xs" />
+            {post.campaign && post.campaign !== 'No campaign' && (
+              <>
+                <span className="text-stone-400">•</span>
+                <span className="text-[11px] font-semibold text-[#C44D34]">
+                  {post.campaign}
+                </span>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <StatusStageBadge status={post.status} size="xs" />
+            <span className="text-[11px] font-bold text-[#C44D34] tabular-nums">
+              Scheduled: {post.date}
+            </span>
+          </div>
+        </div>
+
+        <h3 className="text-sm font-bold mt-2">{post.title}</h3>
+        <p className="text-xs text-stone-600 dark:text-stone-300 mt-1 whitespace-pre-line leading-relaxed">
+          {post.caption}
+        </p>
+
+        {mediaItems.length > 0 && (
+          <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+            <MediaCarousel
+              mediaItems={mediaItems}
+              fallbackTitle={post.title}
+              heightClass="aspect-video max-h-[240px]"
+              isDark={isDark}
+            />
+          </div>
+        )}
+
+        {/* Recent Client Feedback Preview */}
+        {clientFeedbackEntries.length > 0 && (
+          <div className="mt-3 pt-2.5 border-t border-stone-200/60 dark:border-stone-800 space-y-1.5">
+            {clientFeedbackEntries.slice(-2).map((entry) => (
+              <div
+                key={entry.id}
+                className={`p-2 rounded-xl border text-[11px] flex items-start justify-between gap-2 ${
+                  entry.type === 'client_feedback'
+                    ? isDark
+                      ? 'bg-[#C44D34]/10 border-[#C44D34]/30 text-stone-200'
+                      : 'bg-[#C44D34]/[0.06] border-[#C44D34]/25 text-stone-800'
+                    : isDark
+                    ? 'bg-[#1D242C] border-stone-800 text-stone-300'
+                    : 'bg-white border-stone-200 text-stone-700'
+                }`}
+              >
+                <div>
+                  <span className="font-bold text-[#C44D34] uppercase tracking-wider text-[9px] mr-1.5">
+                    {entry.type === 'client_feedback'
+                      ? 'CLIENT FEEDBACK'
+                      : entry.actorRole || 'STUDIO'}
+                  </span>
+                  <span className="font-semibold mr-1">{entry.actorName}:</span>
+                  <span>{entry.comment || entry.details}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Action Bar (Works for both In Review and Approved so Client can edit their choice anytime) */}
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="mt-3.5 pt-3 border-t border-stone-200/70 dark:border-stone-800 flex flex-wrap items-center gap-2"
+        >
+          {!isApprovedMode ? (
+            <button
+              type="button"
+              onClick={() => onApprovePost(post.id)}
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Approve Post</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setFeedbackPostId(isCommenting ? null : post.id);
+                setFeedbackNote('');
+              }}
+              className={`px-3.5 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                isDark
+                  ? 'border-amber-700/80 text-amber-400 hover:bg-amber-950/40'
+                  : 'border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100'
+              }`}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Edit Choice / Request Changes</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setFeedbackPostId(isCommenting ? null : post.id);
+              setFeedbackNote('');
+            }}
+            className={`px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              isDark
+                ? 'border-stone-700 text-stone-300 hover:bg-stone-800'
+                : 'border-stone-300 text-stone-700 hover:bg-white'
+            }`}
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-[#C44D34]" />
+            <span>Add Comment / Feedback</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedPortalPostId(post.id)}
+            className="ml-auto text-xs font-bold text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer"
+          >
+            <span>Open Details</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {isCommenting && (
+          <form
+            onSubmit={handleSendFeedback}
+            onClick={(e) => e.stopPropagation()}
+            className="mt-3 pt-3 border-t border-stone-200 dark:border-stone-800 space-y-2"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#C44D34]">
+                Marked as Client Feedback · Notifies Studio Team
+              </span>
+              <input
+                type="text"
+                value={clientReviewerName}
+                onChange={(e) => setClientReviewerName(e.target.value)}
+                placeholder="Your Name"
+                className={`px-2.5 py-1 rounded-lg border text-[11px] w-44 focus:outline-none focus:border-[#C44D34] ${
+                  isDark
+                    ? 'bg-[#1D242C] border-stone-700 text-white'
+                    : 'bg-white border-stone-300 text-stone-900'
+                }`}
+              />
+            </div>
+            <textarea
+              rows={2}
+              value={feedbackNote}
+              onChange={(e) => setFeedbackNote(e.target.value)}
+              placeholder={
+                isApprovedMode
+                  ? 'Add a follow-up comment or explain what needs to be changed on this approved post...'
+                  : 'Write your feedback or revision note for the studio team...'
+              }
+              className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none focus:border-[#C44D34] ${
+                isDark
+                  ? 'bg-[#1D242C] border-stone-700 text-white'
+                  : 'bg-white border-stone-300 text-stone-900'
+              }`}
+              required
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setFeedbackPostId(null)}
+                className="px-3 py-1.5 rounded-lg text-xs text-stone-500 hover:text-stone-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onRequestChanges(
+                    post.id,
+                    feedbackNote.trim() ||
+                      (isApprovedMode
+                        ? 'Client updated choice from Approved to Request Revisions.'
+                        : 'Requested revisions before approval.'),
+                    clientReviewerName.trim() || `${client.name} (Client)`
+                  );
+                  setFeedbackPostId(null);
+                  setFeedbackNote('');
+                }}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1 cursor-pointer ${
+                  isDark
+                    ? 'border-amber-700 text-amber-400 hover:bg-amber-950/40'
+                    : 'border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100'
+                }`}
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>
+                  {isApprovedMode
+                    ? 'Switch to Needs Revision'
+                    : 'Request Revisions'}
+                </span>
+              </button>
+              <button
+                type="submit"
+                className="px-3.5 py-1.5 rounded-lg bg-[#C44D34] text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <Send className="w-3 h-3" />
+                <span>Post Comment Only</span>
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div
       id="client-portal-view"
-      className={`min-h-screen pb-24 px-4 sm:px-6 lg:px-8 pt-4 animate-fade-in transition-colors ${
-        isDark ? 'bg-[#151C24] text-stone-100' : 'bg-[#FAF7F2] text-[#1E252B]'
+      className={`min-h-screen pb-24 transition-colors ${
+        isDark ? 'bg-[#131920] text-stone-100' : 'bg-[#FAF7F2] text-[#1E252B]'
       }`}
     >
-      <div className="max-w-5xl mx-auto w-full">
-        {/* Preview or Security Bar */}
-        {!isLockedPortal && onExit ? (
+      {/* Top Client Portal Banner */}
+      <div
+        className={`sticky top-0 z-30 border-b backdrop-blur-md px-4 sm:px-6 py-3 flex items-center justify-between gap-3 ${
+          isDark
+            ? 'bg-[#161D25]/95 border-[#25303E]'
+            : 'bg-white/95 border-[#E8E4DC]'
+        }`}
+      >
+        <div className="flex items-center gap-3 min-w-0">
           <div
-            className={`mb-4 px-4 py-2.5 rounded-2xl border flex items-center justify-between text-xs font-semibold ${
-              isDark
-                ? 'bg-[#1D242C] border-[#2A3440] text-amber-300'
-                : 'bg-amber-50 border-amber-200 text-amber-900'
-            }`}
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-xs shrink-0"
+            style={{ backgroundColor: client.color || '#C44D34' }}
           >
-            <div className="flex items-center gap-2 truncate">
-              <Eye className="w-4 h-4 text-amber-600 shrink-0" />
-              <span className="truncate">
-                Agency Studio Preview: <strong>{client.name} All-Time Portal</strong> (Click any post to view & add Client Feedback)
+            {client.initials}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-sm sm:text-base font-bold tracking-tight truncate">
+                {client.name}
+              </h1>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                <ShieldCheck className="w-3 h-3" />
+                <span>Client Review Portal</span>
               </span>
             </div>
-            <button
-              onClick={onExit}
-              className="px-3 py-1.5 rounded-xl bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 text-xs font-bold shrink-0 hover:opacity-90 transition-opacity cursor-pointer"
-            >
-              Exit Preview
-            </button>
+            <p className="text-[11px] text-stone-400 truncate">
+              {client.industry} • {totalPosts} Total Posts •{' '}
+              {allTimeDuration.label}
+            </p>
           </div>
-        ) : (
-          <div
-            className={`mb-4 px-4 py-2 rounded-2xl border flex items-center justify-between text-xs ${
+        </div>
+
+        {!isLockedPortal && onExit && (
+          <button
+            id="exit-client-portal-btn"
+            onClick={onExit}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
               isDark
-                ? 'bg-[#18212B] border-[#283648] text-stone-300'
-                : 'bg-white border-[#E8E2D8] text-stone-600'
+                ? 'bg-[#1D242C] border-[#2A3440] text-stone-200 hover:border-[#C44D34]'
+                : 'bg-[#FAF8F5] border-[#E5DFD3] text-stone-700 hover:border-[#C44D34]'
             }`}
           >
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
-              <span className="font-semibold text-stone-900 dark:text-white">
-                Private Client Portal
-              </span>
-              <span className="text-stone-400">•</span>
-              <span className="truncate text-stone-500">
-                Click any post to inspect details & leave <strong>Client Feedback</strong> for the studio team
-              </span>
-            </div>
-            <span className="hidden sm:inline text-[11px] text-stone-400">
-              Live Sync Enabled
-            </span>
-          </div>
+            <Eye className="w-3.5 h-3.5 text-[#C44D34]" />
+            <span>Back to Studio</span>
+          </button>
         )}
+      </div>
 
-        {/* Client Brand Header (All-Time Info Till Date) */}
-        <div
-          className={`p-5 sm:p-6 rounded-3xl border shadow-xs ${
-            isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-          }`}
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div
-                className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-white font-bold text-xl sm:text-2xl shadow-md shrink-0"
-                style={{ backgroundColor: client.color || '#C44D34' }}
-              >
-                {client.name.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#C44D34]">
-                    ALL-TIME CLIENT PORTAL (TILL DATE)
-                  </span>
-                  <span className="text-stone-300 dark:text-stone-700">•</span>
-                  <span className="text-[11px] font-semibold text-stone-400 tabular-nums">
-                    {allTimeDuration.label}
-                  </span>
-                </div>
-                <h1
-                  className="text-xl sm:text-2xl font-bold tracking-tight mt-0.5 font-serif"
-                  style={{ fontFamily: "'Fraunces', Georgia, serif" }}
-                >
-                  {client.name}
-                </h1>
-                <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-                  {client.handle} • {totalPosts} total deliverables • {clientCampaigns.length} campaign
-                  {clientCampaigns.length === 1 ? '' : 's'}
-                </p>
-              </div>
-            </div>
-
-            {/* 4 Color-Coded Stages Summary with Icons */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 tabular-nums">
-              {(
-                [
-                  { status: 'Planned' as PostStatus, count: plannedPosts.length },
-                  { status: 'In review' as PostStatus, count: pendingApprovals.length },
-                  { status: 'Approved' as PostStatus, count: approvedPosts.length },
-                  { status: 'Scheduled' as PostStatus, count: scheduledPosts.length },
-                ] as const
-              ).map((item) => (
-                <button
-                  key={item.status}
-                  type="button"
-                  onClick={() => {
-                    setFilterStage(item.status);
-                    setActiveTab('upcoming');
-                  }}
-                  className={`px-3 py-2.5 rounded-2xl border text-center transition-all cursor-pointer ${
-                    isDark
-                      ? 'bg-[#161C23] border-[#26303D] hover:border-[#C44D34]'
-                      : 'bg-[#FAF8F5] border-[#ECE8E0] hover:border-[#C44D34]'
-                  }`}
-                >
-                  <div className="text-lg font-extrabold text-stone-900 dark:text-white">
-                    {item.count}
-                  </div>
-                  <div className="mt-1 flex justify-center">
-                    <StatusStageBadge status={item.status} size="xs" />
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {client.notes && (
-            <div
-              className={`mt-4 pt-3.5 border-t text-xs leading-relaxed ${
-                isDark
-                  ? 'border-stone-800 text-stone-300'
-                  : 'border-stone-100 text-stone-600'
+      {/* Main Container */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-5">
+        {/* Top 4-Stage Summary Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-5 tabular-nums">
+          {(
+            [
+              { status: 'Planned' as PostStatus, count: plannedPosts.length },
+              { status: 'In review' as PostStatus, count: pendingApprovals.length },
+              { status: 'Approved' as PostStatus, count: approvedPosts.length },
+              { status: 'Scheduled' as PostStatus, count: scheduledPosts.length },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.status}
+              type="button"
+              onClick={() => {
+                setAnalyticsDrillDown({
+                  type: 'stage',
+                  stage: item.status,
+                  label: `Stage: ${item.status}`,
+                });
+                setActiveTab('analytics');
+              }}
+              className={`p-3.5 rounded-2xl border flex items-center justify-between transition-all cursor-pointer hover:border-[#C44D34] ${
+                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
               }`}
             >
-              <span className="font-bold text-stone-400 uppercase tracking-wider text-[10px] mr-2">
-                Brand Strategy & Scope:
+              <StatusStageBadge status={item.status} size="sm" />
+              <span
+                className="text-xl font-black"
+                style={{ color: STATUS_STYLES[item.status].hex }}
+              >
+                {item.count}
               </span>
-              {client.notes}
-            </div>
-          )}
+            </button>
+          ))}
         </div>
 
         {/* Navigation Tabs */}
         <div
-          className={`grid grid-cols-3 gap-1.5 p-1.5 rounded-2xl border mt-4 ${
+          className={`p-1 rounded-2xl border grid grid-cols-3 gap-1 ${
             isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
           }`}
         >
@@ -432,7 +638,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>Overview & Archive</span>
+            <span>Review & Archive</span>
             {pendingApprovals.length > 0 && (
               <span
                 className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold tabular-nums ${
@@ -476,258 +682,210 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
         {/* TAB 1: OVERVIEW & ARCHIVE (TILL DATE) */}
         {activeTab === 'overview' && (
           <div className="mt-5 space-y-5 animate-fade-in">
-            {/* 1. Pending Client Approvals / Feedback Section */}
+            {/* 1. Grouped Review Batch: Posts Waiting for Your Review */}
             <div
-              className={`p-5 rounded-3xl border shadow-xs ${
+              className={`rounded-3xl border shadow-xs overflow-hidden ${
                 isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
               }`}
             >
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h2 className="text-sm font-bold tracking-tight flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-amber-500" />
-                    <span>Posts Waiting for Your Review ({pendingApprovals.length})</span>
-                  </h2>
-                  <p className="text-xs text-stone-400 mt-0.5">
-                    Click any post to view full details, approve, or add <strong>Client Feedback</strong>.
-                  </p>
-                </div>
-              </div>
-
               {pendingApprovals.length === 0 ? (
-                <div
-                  className={`p-6 rounded-2xl border text-center ${
-                    isDark
-                      ? 'bg-[#161C23] border-[#242E3A]'
-                      : 'bg-[#FAF8F5] border-[#ECE8E0]'
-                  }`}
-                >
-                  <Check className="w-8 h-8 text-emerald-500 mx-auto mb-1.5" />
-                  <p className="text-xs font-bold">All caught up!</p>
-                  <p className="text-[11px] text-stone-400 mt-0.5">
-                    No posts are currently waiting in review for {client.name}. You can still click any scheduled or past post below to add Client Feedback.
-                  </p>
+                <div className="p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h2 className="text-sm font-bold tracking-tight flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-amber-500" />
+                        <span>Posts Waiting for Your Review (0)</span>
+                      </h2>
+                      <p className="text-xs text-stone-400 mt-0.5">
+                        All pending review batches have been reviewed. You can edit your choice or add comments on approved posts below anytime.
+                      </p>
+                    </div>
+                  </div>
+                  <div
+                    className={`p-5 rounded-2xl border text-center ${
+                      isDark
+                        ? 'bg-[#161C23] border-[#242E3A]'
+                        : 'bg-[#FAF8F5] border-[#ECE8E0]'
+                    }`}
+                  >
+                    <Check className="w-7 h-7 text-emerald-500 mx-auto mb-1" />
+                    <p className="text-xs font-bold">All caught up!</p>
+                  </div>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {pendingApprovals.map((post) => {
-                    const catColor =
-                      CATEGORY_COLORS[post.category] || CATEGORY_COLORS.POST;
-                    const isCommenting = feedbackPostId === post.id;
-                    const mediaItems = getMediaItemsForPost(post);
-                    const clientFeedbackEntries = (post.activityLog || []).filter(
-                      (a) =>
-                        a.type === 'client_feedback' ||
-                        a.type === 'changes_requested' ||
-                        a.type === 'comment'
-                    );
-
-                    return (
-                      <div
-                        key={post.id}
-                        onClick={() => setSelectedPortalPostId(post.id)}
-                        className={`p-4 rounded-2xl border transition-all cursor-pointer hover:border-[#C44D34] ${
-                          isDark
-                            ? 'bg-[#161C23] border-[#26313F]'
-                            : 'bg-[#FAF8F5] border-[#ECE8E0]'
-                        }`}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span
-                              className="w-2 h-2 rounded-full"
-                              style={{ backgroundColor: catColor.dot }}
-                            />
-                            <span
-                              className="font-bold text-[10px] uppercase tracking-wider"
-                              style={{ color: catColor.text }}
-                            >
-                              {post.category}
-                            </span>
-                            <span className="text-stone-400">•</span>
-                            <PlatformLogo platform={post.platform} size="xs" />
-                            {post.campaign && post.campaign !== 'No campaign' && (
-                              <>
-                                <span className="text-stone-400">•</span>
-                                <span className="text-[11px] font-semibold text-[#C44D34]">
-                                  {post.campaign}
-                                </span>
-                              </>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <StatusStageBadge status={post.status} size="xs" />
-                            <span className="text-[11px] font-bold text-[#C44D34] tabular-nums">
-                              Scheduled: {post.date}
-                            </span>
-                          </div>
+                <>
+                  {/* Grouped Batch Header: Click to expand all posts sent for review */}
+                  <div
+                    id="portal-review-batch-header"
+                    onClick={() => setIsReviewBatchExpanded((prev) => !prev)}
+                    className={`p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-colors ${
+                      isReviewBatchExpanded
+                        ? isDark
+                          ? 'bg-[#212B36] border-b border-[#2A3440]'
+                          : 'bg-[#FAF7F2] border-b border-[#E8E4DC]'
+                        : isDark
+                        ? 'hover:bg-[#212B36]/60'
+                        : 'hover:bg-stone-50/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                        <Layers className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className="text-sm font-bold tracking-tight">
+                            {client.name} — Review Batch
+                          </h2>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                            {pendingApprovals.length}{' '}
+                            {pendingApprovals.length === 1
+                              ? 'Post Sent for Review'
+                              : 'Posts Grouped for Review'}
+                          </span>
                         </div>
-
-                        <h3 className="text-sm font-bold mt-2">{post.title}</h3>
-                        <p className="text-xs text-stone-600 dark:text-stone-300 mt-1 whitespace-pre-line leading-relaxed">
-                          {post.caption}
-                        </p>
-
-                        {mediaItems.length > 0 && (
-                          <div className="mt-3" onClick={(e) => e.stopPropagation()}>
-                            <MediaCarousel
-                              mediaItems={mediaItems}
-                              fallbackTitle={post.title}
-                              heightClass="aspect-video max-h-[240px]"
-                              isDark={isDark}
-                            />
-                          </div>
-                        )}
-
-                        {/* Recent Client Feedback Preview */}
-                        {clientFeedbackEntries.length > 0 && (
-                          <div className="mt-3 pt-2.5 border-t border-stone-200/60 dark:border-stone-800 space-y-1.5">
-                            {clientFeedbackEntries.slice(-2).map((entry) => (
-                              <div
-                                key={entry.id}
-                                className={`p-2 rounded-xl border text-[11px] flex items-start justify-between gap-2 ${
-                                  entry.type === 'client_feedback'
-                                    ? isDark
-                                      ? 'bg-[#C44D34]/10 border-[#C44D34]/30 text-stone-200'
-                                      : 'bg-[#C44D34]/[0.06] border-[#C44D34]/25 text-stone-800'
-                                    : isDark
-                                    ? 'bg-[#1D242C] border-stone-800 text-stone-300'
-                                    : 'bg-white border-stone-200 text-stone-700'
-                                }`}
-                              >
-                                <div>
-                                  <span className="font-bold text-[#C44D34] uppercase tracking-wider text-[9px] mr-1.5">
-                                    {entry.type === 'client_feedback'
-                                      ? 'CLIENT FEEDBACK'
-                                      : entry.actorRole || 'STUDIO'}
-                                  </span>
-                                  <span className="font-semibold mr-1">
-                                    {entry.actorName}:
-                                  </span>
-                                  <span>{entry.comment || entry.details}</span>
-                                </div>
-                              </div>
+                        <div className="flex items-center gap-2 flex-wrap mt-1 text-[11px] text-stone-400">
+                          <span>
+                            Click to {isReviewBatchExpanded ? 'collapse' : 'expand'} all{' '}
+                            {pendingApprovals.length} posts, add comments, or approve
+                          </span>
+                          <span>•</span>
+                          <div className="flex items-center gap-1.5">
+                            {Array.from(
+                              new Set(pendingApprovals.map((p) => p.platform))
+                            ).map((plat) => (
+                              <PlatformLogo
+                                key={plat}
+                                platform={plat}
+                                size="xs"
+                                showLabel={false}
+                              />
                             ))}
                           </div>
-                        )}
-
-                        {/* Action Bar */}
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          className="mt-3.5 pt-3 border-t border-stone-200/70 dark:border-stone-800 flex flex-wrap items-center gap-2"
-                        >
-                          <button
-                            onClick={() => onApprovePost(post.id)}
-                            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
-                          >
-                            <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                            <span>Approve Post</span>
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              setFeedbackPostId(isCommenting ? null : post.id);
-                              setFeedbackNote('');
-                            }}
-                            className={`px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                              isDark
-                                ? 'border-stone-700 text-stone-300 hover:bg-stone-800'
-                                : 'border-stone-300 text-stone-700 hover:bg-white'
-                            }`}
-                          >
-                            <MessageSquare className="w-3.5 h-3.5 text-[#C44D34]" />
-                            <span>Add Client Feedback</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setSelectedPortalPostId(post.id)}
-                            className="ml-auto text-xs font-bold text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer"
-                          >
-                            <span>View Post & Comments</span>
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          </button>
                         </div>
-
-                        {isCommenting && (
-                          <form
-                            onSubmit={handleSendFeedback}
-                            onClick={(e) => e.stopPropagation()}
-                            className="mt-3 pt-3 border-t border-stone-200 dark:border-stone-800 space-y-2"
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#C44D34]">
-                                Marked as Client Feedback · Notifies Studio Team
-                              </span>
-                              <input
-                                type="text"
-                                value={clientReviewerName}
-                                onChange={(e) => setClientReviewerName(e.target.value)}
-                                placeholder="Your Name"
-                                className={`px-2.5 py-1 rounded-lg border text-[11px] w-44 focus:outline-none focus:border-[#C44D34] ${
-                                  isDark
-                                    ? 'bg-[#1D242C] border-stone-700 text-white'
-                                    : 'bg-white border-stone-300 text-stone-900'
-                                }`}
-                              />
-                            </div>
-                            <textarea
-                              rows={2}
-                              value={feedbackNote}
-                              onChange={(e) => setFeedbackNote(e.target.value)}
-                              placeholder="Write your feedback or revision note for the studio team..."
-                              className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none focus:border-[#C44D34] ${
-                                isDark
-                                  ? 'bg-[#1D242C] border-stone-700 text-white'
-                                  : 'bg-white border-stone-300 text-stone-900'
-                              }`}
-                              required
-                            />
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setFeedbackPostId(null)}
-                                className="px-3 py-1.5 rounded-lg text-xs text-stone-500 hover:text-stone-800 cursor-pointer"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (!feedbackNote.trim()) return;
-                                  onRequestChanges(
-                                    post.id,
-                                    feedbackNote.trim(),
-                                    clientReviewerName.trim() || `${client.name} (Client)`
-                                  );
-                                  setFeedbackPostId(null);
-                                  setFeedbackNote('');
-                                }}
-                                className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1 cursor-pointer ${
-                                  isDark
-                                    ? 'border-amber-700 text-amber-400 hover:bg-amber-950/40'
-                                    : 'border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100'
-                                }`}
-                              >
-                                <RotateCcw className="w-3 h-3" />
-                                <span>Request Revisions</span>
-                              </button>
-                              <button
-                                type="submit"
-                                className="px-3.5 py-1.5 rounded-lg bg-[#C44D34] text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
-                              >
-                                <Send className="w-3 h-3" />
-                                <span>Post Client Feedback</span>
-                              </button>
-                            </div>
-                          </form>
-                        )}
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+
+                    <div
+                      className="flex items-center gap-2 self-end sm:self-center shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {pendingApprovals.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            pendingApprovals.forEach((p) => onApprovePost(p.id));
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                        >
+                          <CheckCheck className="w-3.5 h-3.5" />
+                          <span>Approve All ({pendingApprovals.length})</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setIsReviewBatchExpanded((prev) => !prev)}
+                        className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                          isDark
+                            ? 'bg-[#161D25] border-[#2C3846] text-stone-200 hover:border-[#C44D34]'
+                            : 'bg-white border-stone-200 text-stone-700 hover:border-[#C44D34]'
+                        }`}
+                      >
+                        <span>
+                          {isReviewBatchExpanded
+                            ? 'Hide Posts'
+                            : `Expand All ${pendingApprovals.length} Posts`}
+                        </span>
+                        <ChevronDown
+                          className={`w-4 h-4 transition-transform ${
+                            isReviewBatchExpanded ? 'rotate-180 text-[#C44D34]' : ''
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Expanded Posts inside the Review Batch */}
+                  {isReviewBatchExpanded && (
+                    <div className="p-4 sm:p-5 space-y-3 animate-fade-in">
+                      {pendingApprovals.map((post) =>
+                        renderClientPostReviewCard(post, false)
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
+
+            {/* 1B. Approved Posts Batch (Editable Choice & Add Comments Anytime) */}
+            {approvedPosts.length > 0 && (
+              <div
+                className={`rounded-3xl border shadow-xs overflow-hidden ${
+                  isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+                }`}
+              >
+                <div
+                  id="portal-approved-batch-header"
+                  onClick={() => setIsApprovedBatchExpanded((prev) => !prev)}
+                  className={`p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-colors ${
+                    isApprovedBatchExpanded
+                      ? isDark
+                        ? 'bg-[#212B36] border-b border-[#2A3440]'
+                        : 'bg-[#FAF7F2] border-b border-[#E8E4DC]'
+                      : isDark
+                      ? 'hover:bg-[#212B36]/60'
+                      : 'hover:bg-stone-50/80'
+                  }`}
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                      <Check className="w-5 h-5 stroke-[2.5]" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-sm font-bold tracking-tight">
+                          Approved Posts — Edit Choice or Add Comments ({approvedPosts.length})
+                        </h2>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                          Approved
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-400 mt-0.5">
+                        Changed your mind after approving? Expand to edit your choice, request revisions, or add extra comments.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsApprovedBatchExpanded((prev) => !prev);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer self-end sm:self-center shrink-0 ${
+                      isDark
+                        ? 'bg-[#161D25] border-[#2C3846] text-stone-200'
+                        : 'bg-white border-stone-200 text-stone-700'
+                    }`}
+                  >
+                    <span>{isApprovedBatchExpanded ? 'Collapse' : 'Expand'}</span>
+                    <ChevronDown
+                      className={`w-4 h-4 transition-transform ${
+                        isApprovedBatchExpanded ? 'rotate-180 text-[#C44D34]' : ''
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {isApprovedBatchExpanded && (
+                  <div className="p-4 sm:p-5 space-y-3 animate-fade-in">
+                    {approvedPosts.map((post) =>
+                      renderClientPostReviewCard(post, true)
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 2. Collapsible Section: Campaigns & Ad Links (Till Date) */}
             <div
@@ -974,7 +1132,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     Upcoming Content Pipeline ({upcomingClientPosts.length})
                   </h2>
                   <p className="text-xs text-stone-400 mt-0.5">
-                    Click any post to view media and add Client Feedback
+                    Click any post to view media, edit approval choice, or add Client Feedback
                   </p>
                 </div>
                 <button
@@ -1444,11 +1602,11 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                       <span className="text-[11px] text-stone-400">
                         {feedbackCount > 0
                           ? `${feedbackCount} comment${feedbackCount === 1 ? '' : 's'} / Client Feedback`
-                          : 'Click to view post & add Client Feedback'}
+                          : 'Click to view post, edit choice & add Client Feedback'}
                       </span>
                       <span className="font-bold text-[#C44D34] inline-flex items-center gap-1">
                         <MessageSquare className="w-3.5 h-3.5" />
-                        <span>Add Client Feedback</span>
+                        <span>Review / Comment</span>
                       </span>
                     </div>
                   </div>
@@ -1476,7 +1634,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 }
                 className={`p-4 rounded-2xl border text-center transition-all cursor-pointer ${
                   analyticsDrillDown?.type === 'all'
-                    ? 'border-[#C44D34] ring-2 ring-[#C44D34]/20 bg-[#C44D34]/[0.05]'
+                    ? 'border-[#C44D34] ring-1 ring-[#C44D34]/30 bg-[#C44D34]/[0.05]'
                     : isDark
                     ? 'bg-[#1D242C] border-[#2A3440]'
                     : 'bg-white border-[#E8E4DC]'
@@ -1514,7 +1672,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     }
                     className={`p-4 rounded-2xl border text-center transition-all cursor-pointer ${
                       isSel
-                        ? 'border-[#C44D34] ring-2 ring-[#C44D34]/20 bg-[#C44D34]/[0.05]'
+                        ? 'border-[#C44D34] ring-1 ring-[#C44D34]/30 bg-[#C44D34]/[0.05]'
                         : isDark
                         ? 'bg-[#1D242C] border-[#2A3440]'
                         : 'bg-white border-[#E8E4DC]'
@@ -1793,8 +1951,8 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 </div>
               )}
 
-              {/* Quick Approval Bar if In Review */}
-              {normalizePostStatus(selectedPortalPost.status) === 'In review' && (
+              {/* Quick Approval / Edit Choice Bar (Works for both In Review and Approved/Scheduled) */}
+              {normalizePostStatus(selectedPortalPost.status) === 'In review' ? (
                 <div
                   className={`p-3.5 rounded-2xl border flex flex-wrap items-center justify-between gap-3 ${
                     isDark
@@ -1817,6 +1975,42 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                   >
                     <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                     <span>Approve Post</span>
+                  </button>
+                </div>
+              ) : (
+                <div
+                  className={`p-3.5 rounded-2xl border flex flex-wrap items-center justify-between gap-3 ${
+                    isDark
+                      ? 'bg-[#151C24] border-emerald-700/40'
+                      : 'bg-emerald-50/70 border-emerald-200'
+                  }`}
+                >
+                  <div className="text-xs">
+                    <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                      Current Status: {selectedPortalPost.status}
+                    </span>
+                    <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                      Need to edit your choice or request changes? You can update your decision or add comments anytime.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onRequestChanges(
+                        selectedPortalPost.id,
+                        modalFeedbackText.trim() ||
+                          'Client edited choice and requested changes.',
+                        clientReviewerName.trim() || `${client.name} (Client)`
+                      )
+                    }
+                    className={`px-3.5 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
+                      isDark
+                        ? 'border-amber-700 text-amber-400 hover:bg-amber-950/40'
+                        : 'border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100'
+                    }`}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Edit Choice / Request Changes</span>
                   </button>
                 </div>
               )}
@@ -1877,10 +2071,10 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        if (!modalFeedbackText.trim()) return;
                         onRequestChanges(
                           selectedPortalPost.id,
-                          modalFeedbackText.trim(),
+                          modalFeedbackText.trim() ||
+                            'Client edited choice and requested changes.',
                           clientReviewerName.trim() || `${client.name} (Client)`
                         );
                         setModalFeedbackText('');

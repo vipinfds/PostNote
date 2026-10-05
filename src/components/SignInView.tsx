@@ -82,9 +82,37 @@ function formatReadableAuthError(rawError: unknown): string {
 }
 
 export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark }) => {
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [invitedBannerInfo, setInvitedBannerInfo] = useState<{
+    email: string;
+    role: string;
+    workspaceName: string;
+  } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    const invEmail = params.get('email');
+    if (params.get('invite') === '1' && invEmail) {
+      return {
+        email: invEmail,
+        role: params.get('role') || 'Editor',
+        workspaceName: params.get('workspaceName') || 'Shared Studio Workspace',
+      };
+    }
+    return null;
+  });
+
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>(() =>
+    invitedBannerInfo ? 'signup' : 'signin'
+  );
+  const [name, setName] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    const params = new URLSearchParams(window.location.search);
+    return params.get('name') || '';
+  });
+  const [email, setEmail] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    const params = new URLSearchParams(window.location.search);
+    return params.get('email') || '';
+  });
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -417,6 +445,19 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
               ? 'Access your isolated workspace or shared team studios'
               : 'Every account gets a 100% private workspace & role-based team controls'}
           </p>
+          {invitedBannerInfo && (
+            <div className="mt-3 p-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs text-left flex items-start gap-2.5">
+              <UserPlus className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
+              <div>
+                <div className="font-bold">
+                  Workspace Invitation: {invitedBannerInfo.workspaceName}
+                </div>
+                <p className="text-[11px] opacity-90 mt-0.5">
+                  Complete your sign-up with <strong>{invitedBannerInfo.email}</strong> to activate your assigned <strong>{invitedBannerInfo.role}</strong> role.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Card */}

@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for converting PostNote into an Android app using both installable Progressive Web App (PWA) support via vite-plugin-pwa and native Android APK / Google Play packaging via Capacitor (capacitor.config.ts, npm scripts, and an interactive in-app Android & PWA Install Guide in Settings and the Header).",
-  "updatedAt":  "2026-10-03T23:35:22.889190516Z",
+  "summary":  "Plan to replace simulated Meta impressions/engagement metrics in ClientDetailView and ClientPortalView with accurate Post Pipeline & Duration metrics (Posts Done So Far, Start Date, Days Running, and the 4-stage pipeline), and unify the Client Portal & Share Link so Overview, Approvals, Posts, and Client Analytics are all accessible in a single shareable link.",
+  "updatedAt":  "2026-10-05T10:25:10.018422258Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
