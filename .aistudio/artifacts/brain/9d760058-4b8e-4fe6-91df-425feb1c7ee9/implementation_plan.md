@@ -1,35 +1,16 @@
-# Unified Client Portal & Pipeline-Only Client Analytics
+# Uniform Today Font Color & Balanced Calendar Grid Alignment
 
-This plan removes simulated social media metrics (impressions, engagement rates) across the client workspace and client portal, replaces the top summary cards with real content production and timeline metrics (**Posts Done So Far**, **Start Date**, and **Days Running** + the **4-Stage Pipeline**), and unifies **Approvals, Overview, Posts Schedule, and Client Analytics** into a single shareable Client Portal link.
-
----
-
-## 1. Top Summary Metrics & 4-Stage Pipeline (No Impressions / Engagement Rate)
-- **Remove Impressions & Engagement Rate**:
-  - In `src/components/ClientDetailView.tsx`, remove `estImpressions`, `avgEngagementRate`, and all simulated Meta/social reach cards, tables, and progress bars.
-  - Ensure both `src/components/ClientDetailView.tsx` and `src/components/ClientPortalView.tsx` rely strictly on internal post and schedule data.
-- **New Top Summary Strip**:
-  - Display a clean 3-card top summary strip at the top of the Client Portal (`ClientPortalView.tsx`) and Client Detail view (`ClientDetailView.tsx`):
-    1. **Posts Done So Far**: Count of completed/scheduled posts (`Scheduled` + `Approved`, alongside total posts created).
-    2. **Start Date**: Earliest post/campaign start date for the client (formatted clearly, e.g., `Sep 24, 2026`).
-    3. **Days Running**: Total active days running from the client's start date (`computeCampaignDuration`).
-- **4-Stage Pipeline Breakdown**:
-  - Immediately below the top summary strip, display the 4-stage workflow pipeline cards:
-    - **Planned**
-    - **In review** (Waiting for Approval)
-    - **Approved**
-    - **Scheduled**
-  - Clicking any stage filters the posts list below to inspect those exact posts.
+This revised plan makes the calendar date grid in `src/components/HomeView.tsx` visually balanced, tightly aligned, and uniform in color:
 
 ---
 
-## 2. Unified Single-Link Client Portal (Overview, Approvals, Posts & Analytics)
-- **Dedicated Approvals & All-in-One Navigation in `ClientPortalView.tsx`**:
-  - Update the Client Portal navigation tabs so a single shared link gives the client complete access to:
-    1. **Overview**: Top summary (Posts So Far, Start Date, Days Running), 4-Stage Pipeline, Pending Approvals callout, Campaigns, and Past/Upcoming highlights.
-    2. **Approvals**: Dedicated interactive approval queue where the client can review all `In review` posts (approve individual posts, approve all in batch, or request revisions/leave feedback) and edit their decision on `Approved` posts anytime.
-    3. **Posts & Schedule**: Full filterable list of all client posts across stages and platforms.
-    4. **Client Analytics**: Pipeline stage distribution, platform distribution, and content category breakdown with interactive post drill-down.
-- **Single Unified Share Link (`ClientShareModal.tsx` & `ApprovalsView.tsx`)**:
-  - Update `src/components/ClientShareModal.tsx` to present a **Single Unified Client Portal Link** (`?portal=<clientId>`) that includes Overview, Approvals, Posts, and Client Analytics in one place, with an optional default starting tab selector.
-  - Add a **Copy Client Portal Link** button on each client group inside `src/components/ApprovalsView.tsx` so studio users can immediately copy and send the client's unified portal link when posts are waiting for approval.
+## 1. Uniform Black Font Color for Today's Date
+- Keep Today's date numeral in the exact same black/neutral color (`text-[#181E24]` in light mode, `text-stone-100` in dark mode) as the rest of the current-month dates — removing the red/terracotta text color and any colored text shadow so only the box border identifies Today.
+
+## 2. Tighter, Properly Aligned Date Cells & Box Border
+- **Fixed, Balanced Cell Proportions**:
+  - Replace the tall, loose button container (`min-h-[48px] sm:min-h-[58px] justify-start`) with a compact, centered cell layout (`h-[44px] sm:h-[48px] w-full max-w-[44px] sm:max-w-[48px] mx-auto flex flex-col items-center justify-center rounded-xl`) so every date sits in an identically proportioned square box directly beneath its weekday header (`M T W T F S S`).
+  - Because each cell is a centered, compact square (`44px–48px`), the `ring-1.5 / border-2 border-[#C44D34]` box around Today frames the date number and post dots snugly instead of stretching across a huge empty rectangle.
+- **Locked Numeral Baseline & Reserved Dots Row**:
+  - Give every date number a fixed-height centered row (`h-5 flex items-center justify-center leading-none`) and give the category dots row below it a fixed reserved height (`h-2.5 flex items-center justify-center gap-1 mt-0.5`).
+  - Because both the number slot and the dot slot have fixed heights on every cell (whether a day has 0 posts or 3 posts), all 7 columns of numbers stay on an exact horizontal line across every row, and scaling up the selected date number (`text-[15px] sm:text-[16px] font-black`) never shifts the alignment of neighboring dates or dots.

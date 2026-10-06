@@ -447,11 +447,16 @@ export default function App() {
     setTheme(nextTheme);
   };
 
-  const [previousTab, setPreviousTab] = useState<TabType>('home');
+  const [screenHistory, setScreenHistory] = useState<
+    Array<{ tab: TabType; subScreen: MoreSubScreen | null }>
+  >([]);
 
   const handleSelectSubScreen = (sub: MoreSubScreen) => {
-    if (activeTab !== 'more') {
-      setPreviousTab(activeTab);
+    if (activeTab !== 'more' || activeMoreSubScreen !== sub) {
+      setScreenHistory((prev) => [
+        ...prev.slice(-15),
+        { tab: activeTab, subScreen: activeMoreSubScreen },
+      ]);
     }
     setActiveTab('more');
     setActiveMoreSubScreen(sub);
@@ -461,8 +466,14 @@ export default function App() {
   };
 
   const handleSubScreenBack = () => {
-    const target = previousTab && previousTab !== 'more' ? previousTab : 'home';
-    setActiveTab(target);
+    if (screenHistory.length > 0) {
+      const last = screenHistory[screenHistory.length - 1];
+      setScreenHistory((prev) => prev.slice(0, -1));
+      setActiveTab(last.tab);
+      setActiveMoreSubScreen(last.subScreen);
+      return;
+    }
+    setActiveTab('home');
     setActiveMoreSubScreen(null);
   };
 
@@ -626,6 +637,10 @@ export default function App() {
     if (tab === activeTab && !activeMoreSubScreen && !selectedClientDetail && !isPostFormOpen && !portalClient) {
       return;
     }
+    setScreenHistory((prev) => [
+      ...prev.slice(-15),
+      { tab: activeTab, subScreen: activeMoreSubScreen },
+    ]);
     setIsLoadingScreen(true);
     setActiveTab(tab);
     setActiveMoreSubScreen(null);
@@ -1716,9 +1731,18 @@ export default function App() {
             subscription={subscription}
             currentUser={currentUser}
             myRole={myRole}
-            onNavigateToBilling={() => setActiveMoreSubScreen('billing')}
+            teamMembers={teamMembers}
+            teamMembersCount={teamMembers.length}
+            workspaces={workspaces}
+            activeWorkspaceId={activeWorkspaceId}
+            onSwitchWorkspace={handleSwitchWorkspace}
+            onInviteMember={handleInviteMember}
+            onUpdateMemberRole={handleUpdateMemberRole}
+            onRemoveMember={handleRemoveMember}
+            onNavigateToBilling={() => handleSelectSubScreen('billing')}
+            onNavigateToAiAssistants={() => handleSelectSubScreen('ai-assistants')}
             onBack={handleSubScreenBack}
-            onNavigateToTeam={() => setActiveMoreSubScreen('team')}
+            onNavigateToTeam={() => handleSelectSubScreen('team')}
             onSignOut={handleSignOut}
             onDeleteAccount={() => {
               if (window.confirm('Are you sure you want to delete your account?')) {
@@ -1740,7 +1764,7 @@ export default function App() {
             workspaces={workspaces}
             activeWorkspaceId={activeWorkspaceId}
             onSwitchWorkspace={handleSwitchWorkspace}
-            onBack={() => setActiveMoreSubScreen('settings')}
+            onBack={handleSubScreenBack}
             onInviteMember={handleInviteMember}
             onUpdateMemberRole={handleUpdateMemberRole}
             onRemoveMember={handleRemoveMember}

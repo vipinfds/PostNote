@@ -5,15 +5,12 @@ import {
   BarChart3,
   Plus,
   Share2,
-  Clock,
   Layers,
-  Activity,
   FolderKanban,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
   List,
-  LayoutGrid,
+  Columns2,
 } from 'lucide-react';
 import { Client, Post, PostCategory, PostStatus, Campaign } from '../types';
 import {
@@ -58,9 +55,11 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
   onOpenPortal,
   isDark,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'calendar' | 'analytics'>(
-    initialTab
+  // Default to Monthly Calendar first ('calendar') unless explicitly opened to 'analytics'
+  const [activeTab, setActiveTab] = useState<'calendar' | 'overview' | 'analytics'>(
+    initialTab === 'analytics' ? 'analytics' : 'calendar'
   );
+  const [showSidePostList, setShowSidePostList] = useState<boolean>(true);
   const [filterPlatform, setFilterPlatform] = useState<string>('all');
   const [filterStage, setFilterStage] = useState<'all' | PostStatus>('all');
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>('ALL');
@@ -116,6 +115,15 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
   const [calendarYear, setCalendarYear] = useState<number>(initialCalendarMonth.year);
   const [calendarMonth, setCalendarMonth] = useState<number>(initialCalendarMonth.month);
 
+  const activeCalendarMonthKey = `${calendarYear}-${String(calendarMonth + 1).padStart(
+    2,
+    '0'
+  )}`;
+  const calendarMonthName = new Date(calendarYear, calendarMonth, 1).toLocaleDateString(
+    'en-US',
+    { month: 'long', year: 'numeric' }
+  );
+
   const handlePrevMonth = () => {
     if (calendarMonth === 0) {
       setCalendarYear((y) => y - 1);
@@ -134,14 +142,48 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
     }
   };
 
-  const filteredPosts = clientPosts
-    .filter((p) => (filterPlatform === 'all' ? true : p.platform === filterPlatform))
-    .filter((p) =>
-      filterStage === 'all' ? true : normalizePostStatus(p.status) === filterStage
-    )
-    .filter((p) =>
+  // Posts filtered by stage and platform (used across calendar & list)
+  const stageAndPlatformFilteredPosts = React.useMemo(() => {
+    return clientPosts
+      .filter((p) => (filterPlatform === 'all' ? true : p.platform === filterPlatform))
+      .filter((p) =>
+        filterStage === 'all' ? true : normalizePostStatus(p.status) === filterStage
+      );
+  }, [clientPosts, filterPlatform, filterStage]);
+
+  const filteredPosts = React.useMemo(() => {
+    return stageAndPlatformFilteredPosts.filter((p) =>
       selectedMonthFilter === 'ALL' ? true : p.date.startsWith(selectedMonthFilter)
     );
+  }, [stageAndPlatformFilteredPosts, selectedMonthFilter]);
+
+  // Posts for the currently viewed calendar month (or selectedMonthFilter when in list tab)
+  const activeMonthPostsAll = React.useMemo(() => {
+    const targetPrefix =
+      activeTab === 'overview' && selectedMonthFilter !== 'ALL'
+        ? selectedMonthFilter
+        : activeCalendarMonthKey;
+    return clientPosts.filter((p) => p.date.startsWith(targetPrefix));
+  }, [clientPosts, activeTab, selectedMonthFilter, activeCalendarMonthKey]);
+
+  const activeMonthLabel = React.useMemo(() => {
+    if (activeTab === 'overview' && selectedMonthFilter !== 'ALL') {
+      const [y, m] = selectedMonthFilter.split('-').map(Number);
+      if (y && m) {
+        return new Date(y, m - 1, 1).toLocaleDateString('en-US', {
+          month: 'long',
+          year: 'numeric',
+        });
+      }
+    }
+    return calendarMonthName;
+  }, [activeTab, selectedMonthFilter, calendarMonthName]);
+
+  const activeMonthFilteredPosts = React.useMemo(() => {
+    return stageAndPlatformFilteredPosts.filter((p) =>
+      p.date.startsWith(activeCalendarMonthKey)
+    );
+  }, [stageAndPlatformFilteredPosts, activeCalendarMonthKey]);
 
   // Month-wise grouping of filteredPosts (e.g., "July 2026", "August 2026", "September 2026", "October 2026")
   const monthGroups = React.useMemo(() => {
@@ -149,7 +191,6 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
       string,
       { monthKey: string; monthLabel: string; posts: Post[] }
     >();
-    // Sort chronologically by date ascending inside each month
     const sorted = [...filteredPosts].sort((a, b) => a.date.localeCompare(b.date));
     sorted.forEach((post) => {
       const monthKey = post.date.slice(0, 7); // YYYY-MM
@@ -179,7 +220,7 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
       const label =
         y && m
           ? new Date(y, m - 1, 1).toLocaleDateString('en-US', {
-              month: 'long',
+              month: 'short',
               year: 'numeric',
             })
           : key;
@@ -228,9 +269,19 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
     percent: totalPosts > 0 ? Math.round((count / totalPosts) * 100) : 0,
   }));
 
-  const platforms = ['all', ...Array.from(new Set(clientPosts.map((p) => p.platform)))];
+  const platforms = Array.from(
+    new Set([
+      'all',
+      'Instagram',
+      'LinkedIn',
+      'YouTube',
+      'TikTok',
+      'Twitter',
+      ...clientPosts.map((p) => p.platform),
+    ])
+  );
 
-  // Build Calendar Grid Cells for (calendarYear, calendarMonth)
+  // Build Calendar Grid Cells for (calendarYear, calendarMonth), respecting stage & platform filters
   const calendarCells = React.useMemo(() => {
     const firstDayOfMonth = new Date(calendarYear, calendarMonth, 1).getDay();
     const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
@@ -248,7 +299,7 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
       const mPadded = String(calendarMonth + 1).padStart(2, '0');
       const dPadded = String(day).padStart(2, '0');
       const dateStr = `${calendarYear}-${mPadded}-${dPadded}`;
-      const dayPosts = clientPosts.filter((p) => p.date === dateStr);
+      const dayPosts = stageAndPlatformFilteredPosts.filter((p) => p.date === dateStr);
       cells.push({ dayNumber: day, dateStr, posts: dayPosts });
     }
 
@@ -257,12 +308,7 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
     }
 
     return cells;
-  }, [calendarYear, calendarMonth, clientPosts]);
-
-  const calendarMonthName = new Date(calendarYear, calendarMonth, 1).toLocaleDateString(
-    'en-US',
-    { month: 'long', year: 'numeric' }
-  );
+  }, [calendarYear, calendarMonth, stageAndPlatformFilteredPosts]);
 
   return (
     <div
@@ -325,10 +371,10 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-sm shrink-0"
+              className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-base shadow-sm shrink-0"
               style={{ backgroundColor: client.color }}
             >
-              {client.name.charAt(0).toUpperCase()}
+              {client.name.substring(0, 2).toUpperCase()}
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -354,9 +400,9 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
           )}
         </div>
 
-        {/* TOP SUMMARY STRIP: Posts Done So Far + Separate Campaign Running Dates */}
+        {/* TOP SUMMARY STRIP: Posts So Far (Synced with Selected Month) + Clean Campaign Running Dates */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 mt-5 pt-4 border-t border-stone-100 dark:border-stone-800 tabular-nums">
-          {/* Card 1: Posts Done So Far */}
+          {/* Card 1: Posts So Far for Selected Month */}
           <div
             className={`lg:col-span-4 p-3.5 rounded-2xl border flex items-center justify-between ${
               isDark ? 'bg-[#161B22] border-[#26303C]' : 'bg-[#FAF8F5] border-[#EFECE6]'
@@ -364,13 +410,16 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
           >
             <div>
               <div className="text-[10px] font-extrabold uppercase tracking-wider text-stone-400">
-                Posts Done So Far
+                Posts So Far ({activeMonthLabel})
               </div>
               <div className="text-2xl font-black mt-0.5 flex items-baseline gap-2">
-                <span>{totalPosts}</span>
-                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  ({postsDoneSoFar} approved/scheduled)
+                <span>{activeMonthPostsAll.length}</span>
+                <span className="text-xs font-semibold text-stone-500 dark:text-stone-400">
+                  {activeMonthPostsAll.length === 1 ? 'post in month' : 'posts in month'}
                 </span>
+              </div>
+              <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
+                {totalPosts} total across all months ({postsDoneSoFar} approved/scheduled)
               </div>
             </div>
             <div className="w-9 h-9 rounded-xl bg-[#C44D34]/10 text-[#C44D34] flex items-center justify-center shrink-0">
@@ -378,7 +427,7 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
             </div>
           </div>
 
-          {/* Card 2: Active Campaigns & Their Separate Running Dates */}
+          {/* Card 2: Active Campaigns & Clean Running Dates (No "1 Day" clutter) */}
           <div
             className={`lg:col-span-8 p-3.5 rounded-2xl border ${
               isDark ? 'bg-[#161B22] border-[#26303C]' : 'bg-[#FAF8F5] border-[#EFECE6]'
@@ -389,9 +438,6 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
                 <FolderKanban className="w-3.5 h-3.5 text-[#C44D34]" />
                 <span>Campaign Running Dates ({clientCampaigns.length})</span>
               </div>
-              <span className="text-[10px] text-stone-400">
-                Start date &amp; days running per campaign
-              </span>
             </div>
 
             {clientCampaigns.length === 0 ? (
@@ -417,7 +463,7 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
                         day: 'numeric',
                         year: 'numeric',
                       })
-                    : 'Not started';
+                    : 'Not scheduled';
 
                   return (
                     <div
@@ -433,12 +479,14 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
                           {camp.name}
                         </div>
                         <div className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
-                          Start: <strong className="text-stone-700 dark:text-stone-200">{startFormatted}</strong> • {campPosts.length} posts
+                          Start: <strong className="text-stone-700 dark:text-stone-200">{startFormatted}</strong> • {campPosts.length} {campPosts.length === 1 ? 'post' : 'posts'}
                         </div>
                       </div>
-                      <div className="px-2.5 py-1 rounded-lg bg-[#C44D34]/10 text-[#C44D34] text-xs font-black shrink-0">
-                        {dur.daysSpan} {dur.daysSpan === 1 ? 'Day' : 'Days'}
-                      </div>
+                      {dur.daysSpan > 1 && (
+                        <div className="px-2.5 py-1 rounded-lg bg-[#C44D34]/10 text-[#C44D34] text-xs font-black shrink-0">
+                          {dur.daysSpan} Days
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -462,7 +510,6 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
               type="button"
               onClick={() => {
                 setFilterStage((prev) => (prev === st.status ? 'all' : st.status));
-                setActiveTab('overview');
               }}
               className={`p-3 rounded-2xl border flex items-center justify-between transition-all cursor-pointer ${
                 filterStage === st.status
@@ -484,25 +531,12 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
         </div>
       </div>
 
-      {/* View Switcher Tabs: Month-Wise Posts List, Full-Page Content Calendar, Pipeline Analytics */}
+      {/* View Switcher Tabs: 1st Monthly Calendar (Default), 2nd Month-Wise Posts List, 3rd Pipeline Analytics */}
       <div
         className={`mt-4 p-1 rounded-2xl border grid grid-cols-3 gap-1 ${
           isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
         }`}
       >
-        <button
-          id="tab-client-overview"
-          onClick={() => setActiveTab('overview')}
-          className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-            activeTab === 'overview'
-              ? 'bg-[#C44D34] text-white shadow-xs'
-              : 'text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200'
-          }`}
-        >
-          <List className="w-3.5 h-3.5" />
-          <span>Month-Wise Posts ({totalPosts})</span>
-        </button>
-
         <button
           id="tab-client-calendar"
           onClick={() => setActiveTab('calendar')}
@@ -513,7 +547,20 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
           }`}
         >
           <Calendar className="w-3.5 h-3.5" />
-          <span>Full-Page Calendar</span>
+          <span>Monthly Calendar</span>
+        </button>
+
+        <button
+          id="tab-client-overview"
+          onClick={() => setActiveTab('overview')}
+          className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            activeTab === 'overview'
+              ? 'bg-[#C44D34] text-white shadow-xs'
+              : 'text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200'
+          }`}
+        >
+          <List className="w-3.5 h-3.5" />
+          <span>Month-Wise List ({totalPosts})</span>
         </button>
 
         <button
@@ -530,95 +577,497 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
         </button>
       </div>
 
-      {/* TAB 1: MONTH-WISE POSTS & PIPELINE */}
-      {activeTab === 'overview' && (
+      {/* TAB 1 (DEFAULT): MONTHLY CONTENT CALENDAR + OPTIONAL SIDE MONTH-WISE POST LIST */}
+      {activeTab === 'calendar' && (
         <div className="mt-4 space-y-4">
-          {/* Month Selector Pills (July, August, September, October, etc.) */}
-          {availableMonths.length > 0 && (
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-              <button
-                onClick={() => setSelectedMonthFilter('ALL')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
-                  selectedMonthFilter === 'ALL'
-                    ? 'bg-[#C44D34] text-white'
-                    : isDark
-                    ? 'bg-[#1D242C] text-stone-300 hover:text-white'
-                    : 'bg-white text-stone-700 hover:text-stone-900 border border-[#E8E4DC]'
-                }`}
-              >
-                All Months ({clientPosts.length})
-              </button>
-              {availableMonths.map((m) => (
+          {/* Calendar Control & Filter Bar: Month Switcher + Stage Tabs + Platform Dropdown + Side List Toggle */}
+          <div
+            className={`p-4 rounded-3xl border shadow-xs space-y-3 ${
+              isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+            }`}
+          >
+            {/* Row 1: Month Title, Month Quick Jump & Side List Toggle */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div>
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#C44D34]">
+                    Monthly Content Calendar
+                  </span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <h2 className="text-lg sm:text-xl font-black tracking-tight">
+                      {calendarMonthName}
+                    </h2>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-[#C44D34]/10 text-[#C44D34] tabular-nums">
+                      {activeMonthFilteredPosts.length}{' '}
+                      {activeMonthFilteredPosts.length === 1 ? 'post' : 'posts'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Month Quick Jump Pills */}
+                {availableMonths.map((m) => {
+                  const [y, mo] = m.key.split('-').map(Number);
+                  const isActive = y === calendarYear && mo - 1 === calendarMonth;
+                  return (
+                    <button
+                      key={m.key}
+                      type="button"
+                      onClick={() => {
+                        setCalendarYear(y);
+                        setCalendarMonth(mo - 1);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
+                        isActive
+                          ? 'bg-[#C44D34] text-white'
+                          : isDark
+                          ? 'bg-[#161C23] text-stone-300 hover:text-white border border-[#26313F]'
+                          : 'bg-[#FAF8F5] text-stone-700 hover:text-stone-900 border border-[#E8E4DC]'
+                      }`}
+                    >
+                      {m.label} ({m.count})
+                    </button>
+                  );
+                })}
+
+                {/* Prev / Next Month Buttons */}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={handlePrevMonth}
+                    className={`p-2 rounded-xl border cursor-pointer ${
+                      isDark
+                        ? 'bg-[#161C23] border-[#26313F] text-stone-200 hover:border-[#C44D34]'
+                        : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-700 hover:border-[#C44D34]'
+                    }`}
+                    title="Previous Month"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNextMonth}
+                    className={`p-2 rounded-xl border cursor-pointer ${
+                      isDark
+                        ? 'bg-[#161C23] border-[#26313F] text-stone-200 hover:border-[#C44D34]'
+                        : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-700 hover:border-[#C44D34]'
+                    }`}
+                    title="Next Month"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Toggle Side Month-Wise Post List */}
                 <button
-                  key={m.key}
-                  onClick={() => setSelectedMonthFilter(m.key)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
-                    selectedMonthFilter === m.key
+                  type="button"
+                  onClick={() => setShowSidePostList((prev) => !prev)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    showSidePostList
+                      ? 'bg-[#181E24] text-white border-[#181E24] dark:bg-stone-100 dark:text-stone-900'
+                      : isDark
+                      ? 'bg-[#161C23] border-[#26313F] text-stone-300 hover:border-[#C44D34]'
+                      : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-700 hover:border-[#C44D34]'
+                  }`}
+                  title="Show or hide side-by-side month post list"
+                >
+                  <Columns2 className="w-3.5 h-3.5" />
+                  <span>{showSidePostList ? 'Hide Side List' : 'Show Side List'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Row 2: Stage Filter Tabs (All, Planned, In review, Approved, Scheduled) + Platform Dropdown */}
+            <div className="pt-3 border-t border-stone-200/70 dark:border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              {/* Stage Tabs */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setFilterStage('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
+                    filterStage === 'all'
                       ? 'bg-[#C44D34] text-white'
                       : isDark
-                      ? 'bg-[#1D242C] text-stone-300 hover:text-white'
-                      : 'bg-white text-stone-700 hover:text-stone-900 border border-[#E8E4DC]'
+                      ? 'bg-[#161C23] text-stone-300 hover:text-white border border-[#26313F]'
+                      : 'bg-[#FAF8F5] text-stone-700 hover:text-stone-900 border border-[#E8E4DC]'
                   }`}
                 >
-                  {m.label} ({m.count})
+                  All Stages ({activeMonthPostsAll.length})
                 </button>
-              ))}
-            </div>
-          )}
+                {(['Planned', 'In review', 'Approved', 'Scheduled'] as PostStatus[]).map(
+                  (st) => {
+                    const stCountInMonth = activeMonthPostsAll.filter(
+                      (p) => normalizePostStatus(p.status) === st
+                    ).length;
+                    return (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() =>
+                          setFilterStage((prev) => (prev === st ? 'all' : st))
+                        }
+                        className={`px-2.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 border ${
+                          filterStage === st
+                            ? 'border-[#C44D34] ring-1 ring-[#C44D34] bg-[#C44D34]/10'
+                            : isDark
+                            ? 'bg-[#161C23] border-[#26313F] opacity-85 hover:opacity-100'
+                            : 'bg-[#FAF8F5] border-[#E8E4DC] opacity-90 hover:opacity-100'
+                        }`}
+                      >
+                        <StatusStageBadge status={st} size="xs" />
+                        <span className="text-[11px] font-extrabold tabular-nums">
+                          ({stCountInMonth})
+                        </span>
+                      </button>
+                    );
+                  }
+                )}
+              </div>
 
-          {/* Stage + Platform Filter Pills */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-              <button
-                onClick={() => setFilterStage('all')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
-                  filterStage === 'all'
-                    ? 'bg-[#181E24] text-white dark:bg-stone-100 dark:text-stone-900'
-                    : isDark
-                    ? 'bg-[#1D242C] text-stone-400'
-                    : 'bg-white text-stone-600'
+              {/* Platform Dropdown (Clean & Never Hidden) */}
+              <div className="flex items-center gap-2 shrink-0">
+                <label className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+                  Platform:
+                </label>
+                <select
+                  id="client-calendar-platform-dropdown"
+                  value={filterPlatform}
+                  onChange={(e) => setFilterPlatform(e.target.value)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#C44D34] cursor-pointer ${
+                    isDark
+                      ? 'bg-[#161C23] border-[#26313F] text-stone-100'
+                      : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-800'
+                  }`}
+                >
+                  {platforms.map((plat) => (
+                    <option key={plat} value={plat}>
+                      {plat === 'all' ? 'All Platforms' : plat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Calendar Grid + Side Month-Wise Post List */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+            {/* Calendar Grid (8 cols when side list is open, 12 cols when full-width) */}
+            <div
+              className={`${
+                showSidePostList ? 'xl:col-span-8' : 'xl:col-span-12'
+              } rounded-3xl border shadow-xs overflow-hidden ${
+                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+              }`}
+            >
+              {/* 7-Column Weekday Header */}
+              <div
+                className={`grid grid-cols-7 border-b text-center text-[11px] font-extrabold uppercase tracking-wider ${
+                  isDark
+                    ? 'bg-[#161C23] border-[#26313F] text-stone-400'
+                    : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-500'
                 }`}
               >
-                All Stages ({clientPosts.length})
-              </button>
-              {(['Planned', 'In review', 'Approved', 'Scheduled'] as PostStatus[]).map(
-                (st) => (
-                  <button
-                    key={st}
-                    onClick={() => setFilterStage(st)}
-                    className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${
-                      filterStage === st
-                        ? 'ring-2 ring-[#C44D34] bg-[#C44D34]/10'
-                        : isDark
-                        ? 'bg-[#1D242C] opacity-80 hover:opacity-100'
-                        : 'bg-white opacity-85 hover:opacity-100'
-                    }`}
+                {WEEKDAYS.map((day) => (
+                  <div
+                    key={day}
+                    className="py-2.5 border-r last:border-r-0 border-stone-200/60 dark:border-stone-800"
                   >
-                    <StatusStageBadge status={st} size="xs" />
-                  </button>
-                )
-              )}
+                    {day}
+                  </div>
+                ))}
+              </div>
+
+              {/* 7-Column Calendar Day Cells */}
+              <div className="grid grid-cols-7">
+                {calendarCells.map((cell, idx) => {
+                  const isToday = cell.dateStr === todayStr;
+                  return (
+                    <div
+                      key={idx}
+                      className={`min-h-[135px] sm:min-h-[160px] p-2 border-b border-r last:border-r-0 transition-colors flex flex-col ${
+                        !cell.dayNumber
+                          ? isDark
+                            ? 'bg-[#141A21]/60 border-[#242E3A]'
+                            : 'bg-stone-50/70 border-[#ECE8E0]'
+                          : isDark
+                          ? 'bg-[#1D242C] border-[#26313F]'
+                          : 'bg-white border-[#E8E4DC]'
+                      } ${isToday ? 'ring-1 ring-inset ring-[#C44D34]' : ''}`}
+                    >
+                      {cell.dayNumber && (
+                        <>
+                          {/* Date Number Header */}
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span
+                              className={
+                                isToday
+                                  ? `inline-flex items-center justify-center font-black text-base sm:text-lg leading-none tabular-nums ${
+                                      isDark ? 'text-white' : 'text-[#181E24]'
+                                    }`
+                                  : 'inline-flex items-center justify-center w-6 h-6 text-xs font-extrabold tabular-nums text-stone-700 dark:text-stone-300'
+                              }
+                              style={
+                                isToday
+                                  ? {
+                                      textShadow: isDark
+                                        ? '0 1px 0 #000000, 1px 2px 0 rgba(196,77,52,0.75)'
+                                        : '0 1px 0 #ffffff, 1px 2px 0 rgba(196,77,52,0.35)',
+                                    }
+                                  : undefined
+                              }
+                            >
+                              {cell.dayNumber}
+                            </span>
+                            {cell.posts.length > 0 && (
+                              <span className="text-[10px] font-bold text-[#C44D34] tabular-nums">
+                                {cell.posts.length}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Full Post Names Written Below the Date */}
+                          <div className="space-y-1.5 flex-1">
+                            {cell.posts.map((post) => {
+                              const stStyle = STATUS_STYLES[normalizePostStatus(post.status)];
+                              return (
+                                <div
+                                  key={post.id}
+                                  onClick={() => onEditPost(post)}
+                                  className={`p-2 rounded-xl border text-left cursor-pointer transition-all hover:border-[#C44D34] shadow-2xs ${
+                                    isDark
+                                      ? 'bg-[#151C24] border-[#2B3746]'
+                                      : 'bg-[#FAF8F5] border-[#E5DFD3]'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-1 mb-1">
+                                    <PlatformLogo
+                                      platform={post.platform}
+                                      size="xs"
+                                      showLabel={false}
+                                    />
+                                    <span
+                                      className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded"
+                                      style={{
+                                        color: stStyle.hex,
+                                        backgroundColor: `${stStyle.hex}18`,
+                                      }}
+                                    >
+                                      {post.status}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] font-bold text-stone-900 dark:text-white leading-snug break-words">
+                                    {post.title}
+                                  </div>
+                                  <div className="text-[9px] font-semibold text-[#C44D34] mt-0.5 uppercase tracking-wider">
+                                    {post.category}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
-            {platforms.length > 1 && (
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                {platforms.map((plat) => (
+            {/* Side-by-Side Month Post List (4 Cols on xl) */}
+            {showSidePostList && (
+              <div
+                className={`xl:col-span-4 rounded-3xl border shadow-xs overflow-hidden flex flex-col max-h-[880px] ${
+                  isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+                }`}
+              >
+                <div
+                  className={`px-4 py-3.5 border-b flex items-center justify-between ${
+                    isDark
+                      ? 'bg-[#161C23] border-[#26313E]'
+                      : 'bg-[#FAF8F5] border-[#EAE5DC]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <List className="w-4 h-4 text-[#C44D34]" />
+                    <h3 className="text-xs sm:text-sm font-bold tracking-tight">
+                      {calendarMonthName} Posts ({activeMonthFilteredPosts.length})
+                    </h3>
+                  </div>
                   <button
-                    key={plat}
-                    onClick={() => setFilterPlatform(plat)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                      filterPlatform === plat
+                    type="button"
+                    onClick={() => setActiveTab('overview')}
+                    className="text-[11px] font-bold text-[#C44D34] hover:underline cursor-pointer"
+                  >
+                    Full List →
+                  </button>
+                </div>
+
+                <div className="p-3.5 overflow-y-auto space-y-2.5 flex-1">
+                  {activeMonthFilteredPosts.length === 0 ? (
+                    <div className="text-center py-10 px-3">
+                      <Calendar className="w-7 h-7 mx-auto mb-2 opacity-35 text-stone-400" />
+                      <p className="text-xs font-semibold text-stone-500">
+                        No posts in {calendarMonthName} matching current filters.
+                      </p>
+                    </div>
+                  ) : (
+                    activeMonthFilteredPosts.map((post) => {
+                      const catColor =
+                        CATEGORY_COLORS[post.category] || CATEGORY_COLORS.POST;
+                      return (
+                        <div
+                          key={post.id}
+                          onClick={() => onEditPost(post)}
+                          className={`p-3 rounded-2xl border cursor-pointer transition-all hover:border-[#C44D34] ${
+                            isDark
+                              ? 'bg-[#161C23] border-[#26313F]'
+                              : 'bg-[#FAF8F5] border-[#ECE8E0]'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <PlatformLogo platform={post.platform} size="xs" />
+                              <span
+                                className="font-bold text-[10px] uppercase tracking-wider"
+                                style={{ color: catColor.text }}
+                              >
+                                {post.category}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-bold text-[#C44D34] tabular-nums shrink-0">
+                              {formatSectionDate(post.date)}
+                            </span>
+                          </div>
+                          <h4 className="text-xs font-bold mt-1.5 leading-snug">
+                            {post.title}
+                          </h4>
+                          <p className="text-[11px] text-stone-500 dark:text-stone-400 mt-1 line-clamp-2">
+                            {post.caption}
+                          </p>
+                          <div className="mt-2 flex items-center justify-between">
+                            <StatusStageBadge status={post.status} size="xs" />
+                            {post.campaign && post.campaign !== 'No campaign' && (
+                              <span className="text-[10px] font-semibold text-stone-400 truncate max-w-[140px]">
+                                {post.campaign}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: MONTH-WISE POSTS LIST BREAKDOWN */}
+      {activeTab === 'overview' && (
+        <div className="mt-4 space-y-4">
+          {/* Month Selector Pills + Stage Tabs + Platform Dropdown */}
+          <div
+            className={`p-4 rounded-3xl border shadow-xs space-y-3 ${
+              isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+            }`}
+          >
+            {availableMonths.length > 0 && (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                <button
+                  onClick={() => setSelectedMonthFilter('ALL')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
+                    selectedMonthFilter === 'ALL'
+                      ? 'bg-[#C44D34] text-white'
+                      : isDark
+                      ? 'bg-[#161C23] text-stone-300 hover:text-white border border-[#26313F]'
+                      : 'bg-[#FAF8F5] text-stone-700 hover:text-stone-900 border border-[#E8E4DC]'
+                  }`}
+                >
+                  All Months ({clientPosts.length})
+                </button>
+                {availableMonths.map((m) => (
+                  <button
+                    key={m.key}
+                    onClick={() => {
+                      setSelectedMonthFilter(m.key);
+                      const [y, mo] = m.key.split('-').map(Number);
+                      if (y && mo) {
+                        setCalendarYear(y);
+                        setCalendarMonth(mo - 1);
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
+                      selectedMonthFilter === m.key
                         ? 'bg-[#C44D34] text-white'
                         : isDark
-                        ? 'bg-[#1D242C] text-stone-400 hover:text-white'
-                        : 'bg-white text-stone-600 hover:text-stone-900'
+                        ? 'bg-[#161C23] text-stone-300 hover:text-white border border-[#26313F]'
+                        : 'bg-[#FAF8F5] text-stone-700 hover:text-stone-900 border border-[#E8E4DC]'
                     }`}
                   >
-                    {plat === 'all' ? 'All Platforms' : plat}
+                    {m.label} ({m.count})
                   </button>
                 ))}
               </div>
             )}
+
+            <div className="pt-2 border-t border-stone-200/70 dark:border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  onClick={() => setFilterStage('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
+                    filterStage === 'all'
+                      ? 'bg-[#181E24] text-white dark:bg-stone-100 dark:text-stone-900'
+                      : isDark
+                      ? 'bg-[#161C23] text-stone-400 border border-[#26313F]'
+                      : 'bg-[#FAF8F5] text-stone-600 border border-[#E8E4DC]'
+                  }`}
+                >
+                  All Stages ({clientPosts.length})
+                </button>
+                {(['Planned', 'In review', 'Approved', 'Scheduled'] as PostStatus[]).map(
+                  (st) => (
+                    <button
+                      key={st}
+                      onClick={() =>
+                        setFilterStage((prev) => (prev === st ? 'all' : st))
+                      }
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5 border ${
+                        filterStage === st
+                          ? 'border-[#C44D34] ring-1 ring-[#C44D34] bg-[#C44D34]/10'
+                          : isDark
+                          ? 'bg-[#161C23] border-[#26313F] opacity-85 hover:opacity-100'
+                          : 'bg-[#FAF8F5] border-[#E8E4DC] opacity-90 hover:opacity-100'
+                      }`}
+                    >
+                      <StatusStageBadge status={st} size="xs" />
+                    </button>
+                  )
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <label className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+                  Platform:
+                </label>
+                <select
+                  value={filterPlatform}
+                  onChange={(e) => setFilterPlatform(e.target.value)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#C44D34] cursor-pointer ${
+                    isDark
+                      ? 'bg-[#161C23] border-[#26313F] text-stone-100'
+                      : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-800'
+                  }`}
+                >
+                  {platforms.map((plat) => (
+                    <option key={plat} value={plat}>
+                      {plat === 'all' ? 'All Platforms' : plat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
 
           {/* Month-by-Month Grouped Posts List */}
@@ -685,9 +1134,7 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
 
                       <div className="flex items-center gap-2 text-[11px] font-bold tabular-nums flex-wrap">
                         {mPlanned > 0 && (
-                          <span className="text-stone-500">
-                            {mPlanned} Planned
-                          </span>
+                          <span className="text-stone-500">{mPlanned} Planned</span>
                         )}
                         {mReview > 0 && (
                           <span className="text-amber-600 dark:text-amber-400">
@@ -768,181 +1215,6 @@ export const ClientDetailView: React.FC<ClientDetailViewProps> = ({
               })}
             </div>
           )}
-        </div>
-      )}
-
-      {/* TAB 2: FULL-PAGE MONTHLY CONTENT CALENDAR */}
-      {activeTab === 'calendar' && (
-        <div className="mt-4 space-y-4">
-          <div
-            className={`rounded-3xl border shadow-xs overflow-hidden ${
-              isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-            }`}
-          >
-            {/* Calendar Month Navigation Bar */}
-            <div className="p-4 sm:p-5 border-b border-stone-200 dark:border-stone-800 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#C44D34]">
-                  Monthly Content Calendar
-                </span>
-                <h2 className="text-lg sm:text-xl font-black tracking-tight mt-0.5">
-                  {calendarMonthName}
-                </h2>
-              </div>
-
-              {/* Month Quick Jump Pills + Prev/Next */}
-              <div className="flex items-center gap-2 flex-wrap">
-                {availableMonths.map((m) => {
-                  const [y, mo] = m.key.split('-').map(Number);
-                  const isActive =
-                    y === calendarYear && mo - 1 === calendarMonth;
-                  return (
-                    <button
-                      key={m.key}
-                      type="button"
-                      onClick={() => {
-                        setCalendarYear(y);
-                        setCalendarMonth(mo - 1);
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
-                        isActive
-                          ? 'bg-[#C44D34] text-white'
-                          : isDark
-                          ? 'bg-[#161C23] text-stone-300 hover:text-white border border-[#26313F]'
-                          : 'bg-[#FAF8F5] text-stone-700 hover:text-stone-900 border border-[#E8E4DC]'
-                      }`}
-                    >
-                      {m.label} ({m.count})
-                    </button>
-                  );
-                })}
-
-                <div className="flex items-center gap-1 ml-1">
-                  <button
-                    type="button"
-                    onClick={handlePrevMonth}
-                    className={`p-2 rounded-xl border cursor-pointer ${
-                      isDark
-                        ? 'bg-[#161C23] border-[#26313F] text-stone-200 hover:border-[#C44D34]'
-                        : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-700 hover:border-[#C44D34]'
-                    }`}
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNextMonth}
-                    className={`p-2 rounded-xl border cursor-pointer ${
-                      isDark
-                        ? 'bg-[#161C23] border-[#26313F] text-stone-200 hover:border-[#C44D34]'
-                        : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-700 hover:border-[#C44D34]'
-                    }`}
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* 7-Column Weekday Header */}
-            <div
-              className={`grid grid-cols-7 border-b text-center text-[11px] font-extrabold uppercase tracking-wider ${
-                isDark
-                  ? 'bg-[#161C23] border-[#26313F] text-stone-400'
-                  : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-500'
-              }`}
-            >
-              {WEEKDAYS.map((day) => (
-                <div key={day} className="py-2.5 border-r last:border-r-0 border-stone-200/60 dark:border-stone-800">
-                  {day}
-                </div>
-              ))}
-            </div>
-
-            {/* Full-Page 7-Column Calendar Day Cells */}
-            <div className="grid grid-cols-7">
-              {calendarCells.map((cell, idx) => {
-                const isToday = cell.dateStr === todayStr;
-                return (
-                  <div
-                    key={idx}
-                    className={`min-h-[145px] sm:min-h-[175px] p-2 sm:p-2.5 border-b border-r last:border-r-0 transition-colors flex flex-col ${
-                      !cell.dayNumber
-                        ? isDark
-                          ? 'bg-[#141A21]/60 border-[#242E3A]'
-                          : 'bg-stone-50/70 border-[#ECE8E0]'
-                        : isToday
-                        ? isDark
-                          ? 'bg-[#C44D34]/10 border-[#26313F]'
-                          : 'bg-[#C44D34]/[0.05] border-[#E8E4DC]'
-                        : isDark
-                        ? 'bg-[#1D242C] border-[#26313F]'
-                        : 'bg-white border-[#E8E4DC]'
-                    }`}
-                  >
-                    {cell.dayNumber && (
-                      <>
-                        {/* Date Number Header */}
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span
-                            className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-extrabold tabular-nums ${
-                              isToday
-                                ? 'bg-[#C44D34] text-white'
-                                : 'text-stone-700 dark:text-stone-300'
-                            }`}
-                          >
-                            {cell.dayNumber}
-                          </span>
-                          {cell.posts.length > 0 && (
-                            <span className="text-[10px] font-bold text-[#C44D34] tabular-nums">
-                              {cell.posts.length} {cell.posts.length === 1 ? 'post' : 'posts'}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Full Post Names Written Below the Date */}
-                        <div className="space-y-1.5 flex-1">
-                          {cell.posts.map((post) => {
-                            const stStyle = STATUS_STYLES[normalizePostStatus(post.status)];
-                            return (
-                              <div
-                                key={post.id}
-                                onClick={() => onEditPost(post)}
-                                className={`p-2 rounded-xl border text-left cursor-pointer transition-all hover:border-[#C44D34] shadow-2xs ${
-                                  isDark
-                                    ? 'bg-[#151C24] border-[#2B3746]'
-                                    : 'bg-[#FAF8F5] border-[#E5DFD3]'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between gap-1 mb-1">
-                                  <PlatformLogo platform={post.platform} size="xs" showLabel={false} />
-                                  <span
-                                    className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded"
-                                    style={{
-                                      color: stStyle.hex,
-                                      backgroundColor: `${stStyle.hex}18`,
-                                    }}
-                                  >
-                                    {post.status}
-                                  </span>
-                                </div>
-                                <div className="text-[11px] sm:text-xs font-bold text-stone-900 dark:text-white leading-snug break-words">
-                                  {post.title}
-                                </div>
-                                <div className="text-[10px] font-semibold text-[#C44D34] mt-0.5 uppercase tracking-wider">
-                                  {post.category}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
         </div>
       )}
 

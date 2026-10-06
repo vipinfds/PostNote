@@ -404,6 +404,27 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
     }
   };
 
+  const activeCalendarMonthKey = `${calendarYear}-${String(calendarMonth + 1).padStart(
+    2,
+    '0'
+  )}`;
+
+  const calendarStageAndPlatformPosts = React.useMemo(() => {
+    return clientPosts
+      .filter((p) => filterPlatform === 'all' || p.platform === filterPlatform)
+      .filter(
+        (p) => filterStage === 'all' || normalizePostStatus(p.status) === filterStage
+      );
+  }, [clientPosts, filterPlatform, filterStage]);
+
+  const activeCalendarMonthAllPosts = React.useMemo(() => {
+    const targetPrefix =
+      activeTab === 'upcoming' && selectedMonthFilter !== 'ALL'
+        ? selectedMonthFilter
+        : activeCalendarMonthKey;
+    return clientPosts.filter((p) => p.date.startsWith(targetPrefix));
+  }, [clientPosts, activeTab, selectedMonthFilter, activeCalendarMonthKey]);
+
   const calendarCells = React.useMemo(() => {
     const firstDayOfMonth = new Date(calendarYear, calendarMonth, 1).getDay();
     const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
@@ -421,7 +442,9 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
       const mPadded = String(calendarMonth + 1).padStart(2, '0');
       const dPadded = String(day).padStart(2, '0');
       const dateStr = `${calendarYear}-${mPadded}-${dPadded}`;
-      const dayPosts = clientPosts.filter((p) => p.date === dateStr);
+      const dayPosts = calendarStageAndPlatformPosts.filter(
+        (p) => p.date === dateStr
+      );
       cells.push({ dayNumber: day, dateStr, posts: dayPosts });
     }
 
@@ -430,13 +453,26 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
     }
 
     return cells;
-  }, [calendarYear, calendarMonth, clientPosts]);
+  }, [calendarYear, calendarMonth, calendarStageAndPlatformPosts]);
 
   const calendarMonthName = new Date(
     calendarYear,
     calendarMonth,
     1
   ).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const activeSummaryMonthLabel = React.useMemo(() => {
+    if (activeTab === 'upcoming' && selectedMonthFilter !== 'ALL') {
+      const [y, m] = selectedMonthFilter.split('-').map(Number);
+      if (y && m) {
+        return new Date(y, m - 1, 1).toLocaleDateString('en-US', {
+          month: 'long',
+          year: 'numeric',
+        });
+      }
+    }
+    return calendarMonthName;
+  }, [activeTab, selectedMonthFilter, calendarMonthName]);
 
   const renderClientPostReviewCard = (post: Post, isApprovedMode = false) => {
     const catColor = CATEGORY_COLORS[post.category] || CATEGORY_COLORS.POST;
@@ -737,9 +773,9 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
 
       {/* Main Container (Wider max-w-7xl so Full-Page Calendar has plenty of room) */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-5">
-        {/* TOP SUMMARY STRIP: Posts Done So Far + Separate Campaign Running Dates */}
+        {/* TOP SUMMARY STRIP: Posts So Far (Synced with Selected Month) + Clean Campaign Running Dates */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 mb-3 tabular-nums">
-          {/* Card 1: Posts Done So Far */}
+          {/* Card 1: Posts So Far for Selected Month */}
           <div
             onClick={() => {
               setAnalyticsDrillDown({ type: 'all', label: 'All Client Posts' });
@@ -751,17 +787,18 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
           >
             <div>
               <div className="text-[10px] font-extrabold uppercase tracking-widest text-stone-400">
-                Posts Done So Far
+                Posts So Far ({activeSummaryMonthLabel})
               </div>
               <div className="text-2xl font-black mt-1 flex items-baseline gap-2">
-                <span>{totalPosts}</span>
-                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  ({postsDoneSoFar} approved/scheduled)
+                <span>{activeCalendarMonthAllPosts.length}</span>
+                <span className="text-xs font-semibold text-stone-500 dark:text-stone-400">
+                  {activeCalendarMonthAllPosts.length === 1
+                    ? 'post in month'
+                    : 'posts in month'}
                 </span>
               </div>
-              <div className="text-[11px] text-stone-400 mt-1">
-                Across {availableMonths.length}{' '}
-                {availableMonths.length === 1 ? 'month' : 'months'} of content
+              <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1">
+                {totalPosts} total across all months ({postsDoneSoFar} approved/scheduled)
               </div>
             </div>
             <div className="w-10 h-10 rounded-xl bg-[#C44D34]/10 text-[#C44D34] flex items-center justify-center shrink-0">
@@ -769,7 +806,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
             </div>
           </div>
 
-          {/* Card 2: Campaign Running Dates (Mentioning Campaign Name, Start Date & Days Running separately) */}
+          {/* Card 2: Campaign Running Dates (Clean without '1 Day') */}
           <div
             className={`lg:col-span-8 p-4 rounded-2xl border ${
               isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
@@ -780,9 +817,6 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 <FolderKanban className="w-3.5 h-3.5 text-[#C44D34]" />
                 <span>Campaign Running Dates ({clientCampaigns.length})</span>
               </div>
-              <span className="text-[10px] text-stone-400">
-                Campaign name, start date &amp; days running
-              </span>
             </div>
 
             {clientCampaigns.length === 0 ? (
@@ -807,7 +841,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                         'en-US',
                         { month: 'short', day: 'numeric', year: 'numeric' }
                       )
-                    : 'Not started';
+                    : 'Not scheduled';
 
                   return (
                     <div
@@ -835,17 +869,17 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                           <strong className="text-stone-800 dark:text-stone-200">
                             {startFormatted}
                           </strong>{' '}
-                          • {campPosts.length} posts
+                          • {campPosts.length} {campPosts.length === 1 ? 'post' : 'posts'}
                         </div>
                       </div>
-                      <div className="px-2.5 py-1.5 rounded-xl bg-[#C44D34]/10 text-[#C44D34] text-xs font-black shrink-0 text-right">
-                        <div>
-                          {dur.daysSpan} {dur.daysSpan === 1 ? 'Day' : 'Days'}
+                      {dur.daysSpan > 1 && (
+                        <div className="px-2.5 py-1.5 rounded-xl bg-[#C44D34]/10 text-[#C44D34] text-xs font-black shrink-0 text-right">
+                          <div>{dur.daysSpan} Days</div>
+                          <div className="text-[9px] uppercase tracking-wider opacity-80">
+                            Running
+                          </div>
                         </div>
-                        <div className="text-[9px] uppercase tracking-wider opacity-80">
-                          Running
-                        </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1894,66 +1928,139 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
               }`}
             >
-              {/* Calendar Top Bar */}
-              <div className="p-4 sm:p-5 border-b border-stone-200 dark:border-stone-800 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#C44D34]">
-                    {client.name} • Full-Page Content Calendar
-                  </span>
-                  <h2 className="text-xl sm:text-2xl font-black tracking-tight mt-0.5">
-                    {calendarMonthName}
-                  </h2>
-                </div>
+              {/* Calendar Top Bar + Stage Tabs & Platform Dropdown */}
+              <div className="p-4 sm:p-5 border-b border-stone-200 dark:border-stone-800 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#C44D34]">
+                      {client.name} • Full-Page Content Calendar
+                    </span>
+                    <h2 className="text-xl sm:text-2xl font-black tracking-tight mt-0.5">
+                      {calendarMonthName}
+                    </h2>
+                  </div>
 
-                {/* Month Selector Pills + Prev/Next */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  {availableMonths.map((m) => {
-                    const [y, mo] = m.key.split('-').map(Number);
-                    const isActive = y === calendarYear && mo - 1 === calendarMonth;
-                    return (
+                  {/* Month Selector Pills + Prev/Next */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {availableMonths.map((m) => {
+                      const [y, mo] = m.key.split('-').map(Number);
+                      const isActive = y === calendarYear && mo - 1 === calendarMonth;
+                      return (
+                        <button
+                          key={m.key}
+                          type="button"
+                          onClick={() => {
+                            setCalendarYear(y);
+                            setCalendarMonth(mo - 1);
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
+                            isActive
+                              ? 'bg-[#C44D34] text-white'
+                              : isDark
+                              ? 'bg-[#161C23] text-stone-300 hover:text-white border border-[#26313F]'
+                              : 'bg-[#FAF8F5] text-stone-700 hover:text-stone-900 border border-[#E8E4DC]'
+                          }`}
+                        >
+                          {m.label} ({m.count})
+                        </button>
+                      );
+                    })}
+
+                    <div className="flex items-center gap-1 ml-1">
                       <button
-                        key={m.key}
                         type="button"
-                        onClick={() => {
-                          setCalendarYear(y);
-                          setCalendarMonth(mo - 1);
-                        }}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
-                          isActive
-                            ? 'bg-[#C44D34] text-white'
-                            : isDark
-                            ? 'bg-[#161C23] text-stone-300 hover:text-white border border-[#26313F]'
-                            : 'bg-[#FAF8F5] text-stone-700 hover:text-stone-900 border border-[#E8E4DC]'
+                        onClick={handlePrevMonth}
+                        className={`p-2 rounded-xl border cursor-pointer ${
+                          isDark
+                            ? 'bg-[#161C23] border-[#26313F] text-stone-200 hover:border-[#C44D34]'
+                            : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-700 hover:border-[#C44D34]'
                         }`}
                       >
-                        {m.label} ({m.count})
+                        <ChevronLeft className="w-4 h-4" />
                       </button>
-                    );
-                  })}
+                      <button
+                        type="button"
+                        onClick={handleNextMonth}
+                        className={`p-2 rounded-xl border cursor-pointer ${
+                          isDark
+                            ? 'bg-[#161C23] border-[#26313F] text-stone-200 hover:border-[#C44D34]'
+                            : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-700 hover:border-[#C44D34]'
+                        }`}
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
 
-                  <div className="flex items-center gap-1 ml-1">
+                {/* Stage Tabs (All, Planned, In review, Approved, Scheduled) + Clean Platform Dropdown */}
+                <div className="pt-3 border-t border-stone-200/70 dark:border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <button
                       type="button"
-                      onClick={handlePrevMonth}
-                      className={`p-2 rounded-xl border cursor-pointer ${
-                        isDark
-                          ? 'bg-[#161C23] border-[#26313F] text-stone-200 hover:border-[#C44D34]'
-                          : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-700 hover:border-[#C44D34]'
+                      onClick={() => setFilterStage('all')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
+                        filterStage === 'all'
+                          ? 'bg-[#C44D34] text-white'
+                          : isDark
+                          ? 'bg-[#161C23] text-stone-300 hover:text-white border border-[#26313F]'
+                          : 'bg-[#FAF8F5] text-stone-700 hover:text-stone-900 border border-[#E8E4DC]'
                       }`}
                     >
-                      <ChevronLeft className="w-4 h-4" />
+                      All Stages ({activeCalendarMonthAllPosts.length})
                     </button>
-                    <button
-                      type="button"
-                      onClick={handleNextMonth}
-                      className={`p-2 rounded-xl border cursor-pointer ${
+                    {(['Planned', 'In review', 'Approved', 'Scheduled'] as PostStatus[]).map(
+                      (st) => {
+                        const stCount = activeCalendarMonthAllPosts.filter(
+                          (p) => normalizePostStatus(p.status) === st
+                        ).length;
+                        return (
+                          <button
+                            key={st}
+                            type="button"
+                            onClick={() =>
+                              setFilterStage((prev) => (prev === st ? 'all' : st))
+                            }
+                            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 border ${
+                              filterStage === st
+                                ? 'border-[#C44D34] ring-1 ring-[#C44D34] bg-[#C44D34]/10'
+                                : isDark
+                                ? 'bg-[#161C23] border-[#26313F] opacity-85 hover:opacity-100'
+                                : 'bg-[#FAF8F5] border-[#E8E4DC] opacity-90 hover:opacity-100'
+                            }`}
+                          >
+                            <StatusStageBadge status={st} size="xs" />
+                            <span className="text-[11px] font-extrabold tabular-nums">
+                              ({stCount})
+                            </span>
+                          </button>
+                        );
+                      }
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <label className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+                      Platform:
+                    </label>
+                    <select
+                      id="portal-calendar-platform-dropdown"
+                      value={filterPlatform}
+                      onChange={(e) => setFilterPlatform(e.target.value)}
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#C44D34] cursor-pointer ${
                         isDark
-                          ? 'bg-[#161C23] border-[#26313F] text-stone-200 hover:border-[#C44D34]'
-                          : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-700 hover:border-[#C44D34]'
+                          ? 'bg-[#161C23] border-[#26313F] text-stone-100'
+                          : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-800'
                       }`}
                     >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
+                      {['all', 'Instagram', 'LinkedIn', 'YouTube', 'TikTok', 'Twitter', 'Facebook'].map(
+                        (plat) => (
+                          <option key={plat} value={plat}>
+                            {plat === 'all' ? 'All Platforms' : plat}
+                          </option>
+                        )
+                      )}
+                    </select>
                   </div>
                 </div>
               </div>
@@ -1988,25 +2095,32 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                           ? isDark
                             ? 'bg-[#141A21]/60 border-[#242E3A]'
                             : 'bg-stone-50/70 border-[#ECE8E0]'
-                          : isToday
-                          ? isDark
-                            ? 'bg-[#C44D34]/10 border-[#26313F]'
-                            : 'bg-[#C44D34]/[0.05] border-[#E8E4DC]'
                           : isDark
                           ? 'bg-[#1D242C] border-[#26313F]'
                           : 'bg-white border-[#E8E4DC]'
-                      }`}
+                      } ${isToday ? 'ring-1 ring-inset ring-[#C44D34]' : ''}`}
                     >
                       {cell.dayNumber && (
                         <>
                           {/* Date Number Header */}
                           <div className="flex items-center justify-between mb-2">
                             <span
-                              className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs sm:text-sm font-black tabular-nums ${
+                              className={
                                 isToday
-                                  ? 'bg-[#C44D34] text-white'
-                                  : 'text-stone-700 dark:text-stone-300'
-                              }`}
+                                  ? `inline-flex items-center justify-center font-black text-base sm:text-lg leading-none tabular-nums ${
+                                      isDark ? 'text-white' : 'text-[#181E24]'
+                                    }`
+                                  : 'inline-flex items-center justify-center w-7 h-7 text-xs sm:text-sm font-black tabular-nums text-stone-700 dark:text-stone-300'
+                              }
+                              style={
+                                isToday
+                                  ? {
+                                      textShadow: isDark
+                                        ? '0 1px 0 #000000, 1px 2px 0 rgba(196,77,52,0.75)'
+                                        : '0 1px 0 #ffffff, 1px 2px 0 rgba(196,77,52,0.35)',
+                                    }
+                                  : undefined
+                              }
                             >
                               {cell.dayNumber}
                             </span>
@@ -2137,33 +2251,28 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 )}
               </div>
 
-              {/* Platform Filter Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                {['all', 'Instagram', 'LinkedIn', 'Twitter', 'TikTok', 'Facebook'].map(
-                  (plat) => (
-                    <button
-                      key={plat}
-                      onClick={() => setFilterPlatform(plat)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1.5 ${
-                        filterPlatform === plat
-                          ? 'bg-[#C44D34] text-white'
-                          : isDark
-                          ? 'bg-[#1D242C] text-stone-400 hover:text-white'
-                          : 'bg-white text-stone-600 hover:text-stone-900'
-                      }`}
-                    >
-                      {plat === 'all' ? (
-                        <span>All Platforms</span>
-                      ) : (
-                        <PlatformLogo
-                          platform={plat}
-                          size="xs"
-                          className={filterPlatform === plat ? '!text-white' : ''}
-                        />
-                      )}
-                    </button>
-                  )
-                )}
+              {/* Platform Filter Dropdown */}
+              <div className="flex items-center gap-2 shrink-0">
+                <label className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+                  Platform:
+                </label>
+                <select
+                  value={filterPlatform}
+                  onChange={(e) => setFilterPlatform(e.target.value)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#C44D34] cursor-pointer ${
+                    isDark
+                      ? 'bg-[#1D242C] border-[#2A3440] text-stone-100'
+                      : 'bg-white border-[#E8E4DC] text-stone-800'
+                  }`}
+                >
+                  {['all', 'Instagram', 'LinkedIn', 'YouTube', 'TikTok', 'Twitter', 'Facebook'].map(
+                    (plat) => (
+                      <option key={plat} value={plat}>
+                        {plat === 'all' ? 'All Platforms' : plat}
+                      </option>
+                    )
+                  )}
+                </select>
               </div>
             </div>
 

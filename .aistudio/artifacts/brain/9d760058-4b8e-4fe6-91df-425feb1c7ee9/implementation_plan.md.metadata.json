@@ -1,6 +1,6 @@
 {
-  "summary":  "Plan to replace simulated Meta impressions/engagement metrics in ClientDetailView and ClientPortalView with accurate Post Pipeline & Duration metrics (Posts Done So Far, Start Date, Days Running, and the 4-stage pipeline), and unify the Client Portal & Share Link so Overview, Approvals, Posts, and Client Analytics are all accessible in a single shareable link.",
-  "updatedAt":  "2026-10-05T10:25:10.018422258Z",
+  "summary":  "Updated plan to keep today's date font color uniform black, tighten the calendar date cells so the Today box border fits the number + dots cleanly instead of looking oversized, and lock all 7x5/6 date cells to a uniform centered grid alignment.",
+  "updatedAt":  "2026-10-06T12:59:18.511443666Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

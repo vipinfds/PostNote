@@ -255,9 +255,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
         )}
       </header>
 
-      {/* Month Switcher & Today Button */}
-      <div className="flex items-center justify-between mt-1 mb-3.5 px-0.5">
-        <div className="flex items-center gap-2 sm:gap-3">
+      {/* Month Switcher & Today Button grouped together */}
+      <div className="flex flex-wrap items-center justify-start gap-2 sm:gap-3 mt-1 mb-3.5 px-0.5">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             id="prev-month-btn"
             onClick={prevMonth}
@@ -273,7 +273,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
           <h2
             id="calendar-month-title"
-            className="text-base sm:text-[17px] font-bold tracking-tight min-w-[130px] text-center sm:text-left"
+            className="text-base sm:text-[17px] font-bold tracking-tight min-w-[125px] text-center"
           >
             {monthNames[currentMonth]} {currentYear}
           </h2>
@@ -372,7 +372,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, idx) => (
                 <span
                   key={idx}
-                  className="text-[11px] font-semibold text-stone-500 dark:text-stone-400 uppercase"
+                  className="text-[11px] font-semibold text-stone-500 dark:text-stone-400 uppercase flex items-center justify-center"
                 >
                   {day}
                 </span>
@@ -380,7 +380,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </div>
 
             {/* Calendar Days */}
-            <div className="grid grid-cols-7 gap-y-1 pt-1.5">
+            <div className="grid grid-cols-7 gap-y-1.5 pt-2 pb-0.5 place-items-center">
               {calendarDays.map((cell, idx) => {
                 const dayPosts = getPostsForDate(cell.dateStr);
                 const isSelected = activeScheduleDate === cell.dateStr;
@@ -391,50 +391,55 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     key={idx}
                     id={`cal-day-${cell.dateStr}`}
                     onClick={() => setSelectedDayDate(cell.dateStr)}
-                    className={`min-h-[48px] sm:min-h-[58px] p-1 flex flex-col items-center justify-start rounded-xl transition-all relative group cursor-pointer ${
-                      isSelected
-                        ? isDark
-                          ? 'bg-stone-800/70 ring-1 ring-[#C44D34]/85'
-                          : 'bg-stone-100/80 ring-1 ring-[#C44D34]/80'
-                        : 'hover:bg-stone-100/70 dark:hover:bg-stone-800/50'
+                    className={`w-10 h-11 sm:w-11 sm:h-12 flex flex-col items-center justify-center rounded-xl transition-all relative group cursor-pointer ${
+                      cell.isToday
+                        ? 'border-2 border-[#C44D34]'
+                        : 'border-2 border-transparent hover:bg-stone-100/70 dark:hover:bg-stone-800/50'
                     }`}
                   >
-                    {/* Day number with circular today badge */}
-                    <div className="w-6 h-6 flex items-center justify-center">
-                      {cell.isToday ? (
-                        <span className="w-6 h-6 rounded-full bg-[#181E24] dark:bg-white text-white dark:text-[#181E24] font-bold text-xs flex items-center justify-center shadow-xs tabular-nums">
-                          {cell.dayNum}
-                        </span>
-                      ) : (
-                        <span
-                          className={`text-xs font-medium tabular-nums ${
-                            isOffMonth
-                              ? 'text-stone-300 dark:text-stone-600'
-                              : isDark
-                              ? 'text-stone-200'
-                              : 'text-stone-800'
-                          }`}
-                        >
-                          {cell.dayNum}
-                        </span>
-                      )}
+                    {/* Fixed-height numeral slot so all 7 columns share an exact baseline */}
+                    <div className="h-5 flex items-center justify-center">
+                      <span
+                        className={`leading-none tabular-nums select-none transition-all ${
+                          isSelected
+                            ? isDark
+                              ? 'font-black text-[15px] sm:text-[16px] text-white'
+                              : 'font-black text-[15px] sm:text-[16px] text-[#181E24]'
+                            : isOffMonth
+                            ? 'text-xs font-medium text-stone-300 dark:text-stone-600'
+                            : isDark
+                            ? 'text-xs font-medium text-stone-200'
+                            : 'text-xs font-medium text-stone-800'
+                        }`}
+                        style={
+                          isSelected
+                            ? {
+                                textShadow: isDark
+                                  ? '0 1px 0 rgba(0,0,0,0.85), 1px 1.5px 0 rgba(255,255,255,0.2)'
+                                  : '0 1px 0 #ffffff, 1px 1.5px 0 rgba(24,30,36,0.2)',
+                              }
+                            : undefined
+                        }
+                      >
+                        {cell.dayNum}
+                      </span>
                     </div>
 
-                    {/* Post dots */}
-                    <div className="flex flex-wrap items-center justify-center gap-1 mt-1 max-w-[36px]">
+                    {/* Fixed-height post dots slot so dates with 0 posts align identically to dates with posts */}
+                    <div className="h-2.5 flex items-center justify-center gap-1 mt-0.5">
                       {dayPosts.slice(0, 3).map((post, pIdx) => {
                         const col = CATEGORY_COLORS[post.category]?.dot || '#C44D34';
                         return (
                           <span
                             key={pIdx}
-                            className="w-1.5 h-1.5 rounded-full"
+                            className="w-1.5 h-1.5 rounded-full shrink-0"
                             style={{ backgroundColor: col }}
                             title={`${post.category}: ${post.title}`}
                           />
                         );
                       })}
                       {dayPosts.length > 3 && (
-                        <span className="w-1 h-1 rounded-full bg-stone-400" />
+                        <span className="w-1 h-1 rounded-full bg-stone-400 shrink-0" />
                       )}
                     </div>
                   </button>

@@ -5,7 +5,6 @@ import crypto from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
-import localtunnel from 'localtunnel';
 import { INITIAL_POSTS, INITIAL_CLIENTS, INITIAL_CAMPAIGNS, INITIAL_IDEAS } from './src/data/initialData';
 import { Post, Client } from './src/types';
 
@@ -341,7 +340,9 @@ async function startLocaltunnel(subdomain = 'postnote-vipin') {
   }
 
   try {
-    const tunnel = await localtunnel({
+    const localtunnelModule: any = await import('localtunnel');
+    const localtunnelFn = localtunnelModule.default || localtunnelModule;
+    const tunnel = await localtunnelFn({
       port: 3000,
       host: 'https://loca.lt',
       subdomain: cleanSub,
@@ -2864,37 +2865,10 @@ ${text}
   const isProdRuntime =
     hasBuiltDist &&
     (process.env.NODE_ENV === 'production' ||
-      process.argv[1]?.includes('server.cjs'));
+      process.argv[1]?.includes('server.cjs') ||
+      !process.argv[1]?.endsWith('server.ts'));
 
-  if (!isProdRuntime) {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-
-    // Dev SPA fallback so direct links serve index.html without 404
-    app.use('*', async (req, res, next) => {
-      if (req.method !== 'GET') return next();
-      try {
-        const url = req.originalUrl;
-        const indexPath = path.resolve(process.cwd(), 'index.html');
-        let template = await fs.promises.readFile(indexPath, 'utf-8');
-        template = await vite.transformIndexHtml(url, template);
-        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
-      } catch (e) {
-        vite.ssrFixStacktrace(e as Error);
-        next(e);
-      }
-    });
-  } else {
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
-
+  // Bind to PORT immediately so Cloud Run startup probe passes without waiting for async Vite init
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
     console.log(`[Multi-AI Hub] MCP (Claude/Cursor), OpenAPI (ChatGPT), and Gemini Copilot ready`);
@@ -2902,6 +2876,51 @@ ${text}
       initializeActiveTunnel();
     }
   });
+
+  if (isProdRuntime) {
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      if (fs.existsSync(distIndexPath)) {
+        res.sendFile(distIndexPath);
+      } else {
+        res.status(200).send('PostNote Studio starting...');
+      }
+    });
+  } else {
+    try {
+      const { createServer: createViteServer } = await import('vite');
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+
+      // Dev SPA fallback so direct links serve index.html without 404
+      app.use('*', async (req, res, next) => {
+        if (req.method !== 'GET') return next();
+        try {
+          const url = req.originalUrl;
+          const indexPath = path.resolve(process.cwd(), 'index.html');
+          let template = await fs.promises.readFile(indexPath, 'utf-8');
+          template = await vite.transformIndexHtml(url, template);
+          res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+        } catch (e) {
+          vite.ssrFixStacktrace(e as Error);
+          next(e);
+        }
+      });
+    } catch (viteErr) {
+      console.warn('[Server] Vite dev server unavailable, falling back to static dist:', viteErr);
+      app.use(express.static(distPath));
+      app.get('*', (req, res) => {
+        if (fs.existsSync(distIndexPath)) {
+          res.sendFile(distIndexPath);
+        } else {
+          res.sendFile(path.resolve(process.cwd(), 'index.html'));
+        }
+      });
+    }
+  }
 }
 
 process.on('uncaughtException', (err) => {

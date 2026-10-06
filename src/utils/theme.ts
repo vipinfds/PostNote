@@ -203,7 +203,7 @@ export function computeCampaignDuration(
       d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const label =
       minDate === maxDate
-        ? `${fmt(d1)} (1 Day)`
+        ? `Started ${fmt(d1)}`
         : `${fmt(d1)} – ${fmt(d2)} · ${daysSpan} Days`;
     return {
       startStr: minDate,
