@@ -13,6 +13,8 @@ import {
   ChevronRight,
   Layers,
   CheckCheck,
+  Share2,
+  Check,
 } from 'lucide-react';
 import { Post, MediaItem, Client } from '../types';
 import { getCategoryBadgeStyle, normalizePostStatus } from '../utils/theme';
@@ -47,6 +49,22 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
   const [changeRequestComment, setChangeRequestComment] = useState<string>('');
   const [commentingPostId, setCommentingPostId] = useState<string | null>(null);
   const [inlineCommentText, setInlineCommentText] = useState<string>('');
+  const [copiedPortalClientId, setCopiedPortalClientId] = useState<string | null>(null);
+
+  const handleCopyClientPortalLink = (clientId: string) => {
+    const clean = clientId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const token = `pn_${clean}_live`;
+    const origin =
+      typeof window !== 'undefined' && window.location.origin
+        ? window.location.origin
+        : 'https://postnote.studio';
+    const url = `${origin}/?portal=${encodeURIComponent(clientId)}&token=${token}&view=approvals`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).catch(() => {});
+    }
+    setCopiedPortalClientId(clientId);
+    setTimeout(() => setCopiedPortalClientId(null), 2200);
+  };
 
   // Track which client review batches are expanded (by clientId)
   const [expandedBatchIds, setExpandedBatchIds] = useState<Record<string, boolean>>({});
@@ -605,30 +623,60 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div
-                        className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0"
+                        className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-xs"
                         style={{ backgroundColor: batch.color }}
                       >
-                        {batch.clientName.charAt(0).toUpperCase()}
+                        {batch.clientName.substring(0, 2).toUpperCase()}
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="text-sm font-bold text-stone-900 dark:text-white">
-                            {batch.clientName} Review Batch
+                            {batch.clientName}
                           </h3>
+                          {clients.find((c) => c.id === batch.clientId)?.handle && (
+                            <span className="text-[11px] text-stone-400 font-medium">
+                              {clients.find((c) => c.id === batch.clientId)?.handle}
+                            </span>
+                          )}
                           <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 text-[10px] font-extrabold uppercase tabular-nums">
                             {batch.posts.length} {batch.posts.length === 1 ? 'Post' : 'Posts'}
                           </span>
                         </div>
                         <p className="text-[11px] text-stone-400 mt-0.5">
-                          Click to {isOpen ? 'collapse' : 'expand all posts'} in this review batch
+                          Click to {isOpen ? 'collapse' : 'expand posts'} for {batch.clientName}
                         </p>
                       </div>
                     </div>
 
                     <div
-                      className="flex items-center gap-2"
+                      className="flex items-center gap-2 flex-wrap"
                       onClick={(e) => e.stopPropagation()}
                     >
+                      <button
+                        type="button"
+                        onClick={() => handleCopyClientPortalLink(batch.clientId)}
+                        className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                          copiedPortalClientId === batch.clientId
+                            ? 'bg-emerald-600 border-emerald-600 text-white'
+                            : isDark
+                            ? 'bg-[#161D25] border-[#2C3846] text-stone-200 hover:border-[#C44D34]'
+                            : 'bg-[#FAF8F5] border-[#E5DFD3] text-stone-700 hover:border-[#C44D34]'
+                        }`}
+                        title="Copy unified client portal link (Overview, Approvals, Posts & Analytics)"
+                      >
+                        {copiedPortalClientId === batch.clientId ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Portal Link Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Share2 className="w-3.5 h-3.5 text-[#C44D34]" />
+                            <span>Copy Portal Link</span>
+                          </>
+                        )}
+                      </button>
+
                       {batch.posts.length > 1 && (
                         <button
                           type="button"
@@ -700,16 +748,21 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0"
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-xs"
                       style={{ backgroundColor: batch.color }}
                     >
-                      {batch.clientName.charAt(0).toUpperCase()}
+                      {batch.clientName.substring(0, 2).toUpperCase()}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-sm font-bold text-stone-900 dark:text-white">
-                          {batch.clientName} Approved Batch
+                          {batch.clientName}
                         </h3>
+                        {clients.find((c) => c.id === batch.clientId)?.handle && (
+                          <span className="text-[11px] text-stone-400 font-medium">
+                            {clients.find((c) => c.id === batch.clientId)?.handle}
+                          </span>
+                        )}
                         <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-extrabold uppercase tabular-nums">
                           {batch.posts.length} Approved
                         </span>

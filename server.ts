@@ -2859,10 +2859,11 @@ ${text}
 
   // Vite middleware in dev or static files in production
   const distPath = path.join(process.cwd(), 'dist');
+  const distIndexPath = path.join(distPath, 'index.html');
+  const hasBuiltDist = fs.existsSync(distIndexPath);
   const isProdRuntime =
-    process.env.NODE_ENV === 'production' ||
-    Boolean(process.env.K_SERVICE) ||
-    (fs.existsSync(path.join(distPath, 'index.html')) &&
+    hasBuiltDist &&
+    (process.env.NODE_ENV === 'production' ||
       process.argv[1]?.includes('server.cjs'));
 
   if (!isProdRuntime) {

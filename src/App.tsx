@@ -1567,6 +1567,7 @@ export default function App() {
           <ClientDetailView
             client={selectedClientDetail}
             posts={posts}
+            campaigns={campaigns}
             initialTab={clientDetailTab}
             onBack={() => setSelectedClientDetail(null)}
             onNewPostForClient={(cId) => handleOpenNewPost(undefined, cId)}
@@ -1585,6 +1586,7 @@ export default function App() {
         <ClientsView
           clients={clients}
           posts={posts}
+          campaigns={campaigns}
           subscription={subscription}
           onNavigateToBilling={handleNavigateToBilling}
           onSelectClient={(client, initialTab = 'overview') => {
