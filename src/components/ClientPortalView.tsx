@@ -24,6 +24,7 @@ import {
   Activity,
   ChevronLeft,
   List,
+  GripVertical,
 } from 'lucide-react';
 import { Client, Post, Campaign, SubscriptionState, PostStatus, MediaItem } from '../types';
 import {
@@ -37,6 +38,7 @@ import { INITIAL_CAMPAIGNS } from '../data/initialData';
 import { StatusStageBadge } from './StatusStageBadge';
 import { MediaCarousel } from './MediaCarousel';
 import { PlatformLogo } from './PlatformLogo';
+import { BrandLogo } from './BrandLogo';
 
 export type ClientPortalTab =
   | 'overview'
@@ -56,6 +58,7 @@ interface ClientPortalViewProps {
   onApprovePost: (postId: string) => void;
   onRequestChanges: (postId: string, notes?: string, clientAuthorName?: string) => void;
   onAddClientFeedback?: (postId: string, comment: string, clientAuthorName?: string) => void;
+  onReschedulePost?: (postId: string, newDateStr: string) => void;
   onExit?: () => void;
   isDark?: boolean;
 }
@@ -76,9 +79,12 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   onApprovePost,
   onRequestChanges,
   onAddClientFeedback,
+  onReschedulePost,
   onExit,
   isDark,
 }) => {
+  const [draggedPostId, setDraggedPostId] = useState<string | null>(null);
+  const [dragOverDateStr, setDragOverDateStr] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
     'overview' | 'approvals' | 'upcoming' | 'calendar' | 'analytics'
   >(
@@ -755,20 +761,25 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
           </div>
         </div>
 
-        {!isLockedPortal && onExit && (
-          <button
-            id="exit-client-portal-btn"
-            onClick={onExit}
-            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
-              isDark
-                ? 'bg-[#1D242C] border-[#2A3440] text-stone-200 hover:border-[#C44D34]'
-                : 'bg-[#FAF8F5] border-[#E5DFD3] text-stone-700 hover:border-[#C44D34]'
-            }`}
-          >
-            <Eye className="w-3.5 h-3.5 text-[#C44D34]" />
-            <span>Back to Studio</span>
-          </button>
-        )}
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="hidden sm:flex items-center">
+            <BrandLogo size="sm" isDark={isDark} />
+          </div>
+          {!isLockedPortal && onExit && (
+            <button
+              id="exit-client-portal-btn"
+              onClick={onExit}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
+                isDark
+                  ? 'bg-[#1D242C] border-[#2A3440] text-stone-200 hover:border-[#C44D34]'
+                  : 'bg-[#FAF8F5] border-[#E5DFD3] text-stone-700 hover:border-[#C44D34]'
+              }`}
+            >
+              <Eye className="w-3.5 h-3.5 text-[#C44D34]" />
+              <span>Back to Studio</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Main Container (Wider max-w-7xl so Full-Page Calendar has plenty of room) */}
@@ -2083,22 +2094,56 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 ))}
               </div>
 
-              {/* Full-Page 7-Column Calendar Grid */}
+              {/* Full-Page 7-Column Calendar Grid with Drag-and-Drop */}
               <div className="grid grid-cols-7">
                 {calendarCells.map((cell, idx) => {
                   const isToday = cell.dateStr === todayStr;
+                  const isDropTarget =
+                    Boolean(cell.dateStr) && dragOverDateStr === cell.dateStr;
+
                   return (
                     <div
                       key={idx}
-                      className={`min-h-[160px] sm:min-h-[195px] p-2 sm:p-3 border-b border-r last:border-r-0 transition-colors flex flex-col ${
+                      onDragOver={(e) => {
+                        if (!cell.dateStr) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        if (dragOverDateStr !== cell.dateStr) {
+                          setDragOverDateStr(cell.dateStr);
+                        }
+                      }}
+                      onDragEnter={(e) => {
+                        if (!cell.dateStr) return;
+                        e.preventDefault();
+                        setDragOverDateStr(cell.dateStr);
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverDateStr === cell.dateStr) {
+                          setDragOverDateStr(null);
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setDragOverDateStr(null);
+                        if (!cell.dateStr) return;
+                        const postId =
+                          e.dataTransfer.getData('text/plain') || draggedPostId;
+                        setDraggedPostId(null);
+                        if (postId && onReschedulePost) {
+                          onReschedulePost(postId, cell.dateStr);
+                        }
+                      }}
+                      className={`min-h-[160px] sm:min-h-[195px] p-2 sm:p-3 border-b border-r last:border-r-0 transition-all flex flex-col ${
                         !cell.dayNumber
                           ? isDark
                             ? 'bg-[#141A21]/60 border-[#242E3A]'
                             : 'bg-stone-50/70 border-[#ECE8E0]'
+                          : isDropTarget
+                          ? 'bg-[#C44D34]/15 ring-2 ring-inset ring-[#C44D34]'
                           : isDark
                           ? 'bg-[#1D242C] border-[#26313F]'
                           : 'bg-white border-[#E8E4DC]'
-                      } ${isToday ? 'ring-1 ring-inset ring-[#C44D34]' : ''}`}
+                      } ${isToday && !isDropTarget ? 'ring-1 ring-inset ring-[#C44D34]' : ''}`}
                     >
                       {cell.dayNumber && (
                         <>
@@ -2131,26 +2176,43 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                             )}
                           </div>
 
-                          {/* Full Post Names Written Below the Date */}
+                          {/* Draggable Full Post Names Written Below the Date */}
                           <div className="space-y-2 flex-1">
                             {cell.posts.map((post) => {
                               const stStyle = STATUS_STYLES[normalizePostStatus(post.status)];
+                              const isDragging = draggedPostId === post.id;
                               return (
                                 <div
                                   key={post.id}
+                                  draggable={Boolean(onReschedulePost)}
+                                  onDragStart={(e) => {
+                                    setDraggedPostId(post.id);
+                                    e.dataTransfer.setData('text/plain', post.id);
+                                    e.dataTransfer.effectAllowed = 'move';
+                                  }}
+                                  onDragEnd={() => {
+                                    setDraggedPostId(null);
+                                    setDragOverDateStr(null);
+                                  }}
                                   onClick={() => setSelectedPortalPostId(post.id)}
-                                  className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all hover:border-[#C44D34] shadow-2xs ${
+                                  title="Click to inspect • Drag to another date to reschedule"
+                                  className={`p-2.5 rounded-xl border text-left cursor-grab active:cursor-grabbing transition-all hover:border-[#C44D34] shadow-2xs ${
+                                    isDragging ? 'opacity-45 scale-95' : ''
+                                  } ${
                                     isDark
                                       ? 'bg-[#151C24] border-[#2B3746]'
                                       : 'bg-[#FAF8F5] border-[#E5DFD3]'
                                   }`}
                                 >
                                   <div className="flex items-center justify-between gap-1 mb-1">
-                                    <PlatformLogo
-                                      platform={post.platform}
-                                      size="xs"
-                                      showLabel={false}
-                                    />
+                                    <div className="flex items-center gap-1">
+                                      <GripVertical className="w-3 h-3 text-stone-400 shrink-0" />
+                                      <PlatformLogo
+                                        platform={post.platform}
+                                        size="xs"
+                                        showLabel={false}
+                                      />
+                                    </div>
                                     <span
                                       className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded"
                                       style={{

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Calendar,
   Users,
-  List,
+  FolderKanban,
   BarChart3,
   Lightbulb,
   CheckCircle2,
@@ -26,6 +26,7 @@ import {
   WorkspaceRole,
   WorkspaceSummary,
 } from '../types';
+import { BrandLogo } from './BrandLogo';
 
 interface DesktopSidebarProps {
   activeTab: MainTab;
@@ -73,7 +74,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     activeWorkspace?.name ||
     (currentUser ? `${currentUser.name}'s Private Studio` : 'FirstDraft Studio');
 
-  const coreNavItems = [
+  const coreNavItems: Array<{
+    id: MainTab;
+    label: string;
+    icon: React.ElementType;
+    badge?: string;
+    secondaryBadge?: string;
+  }> = [
     {
       id: 'home' as MainTab,
       label: 'Calendar & Feed',
@@ -84,22 +91,23 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       label: 'Clients',
       icon: Users,
       badge: clientsCount > 0 ? String(clientsCount) : undefined,
+      secondaryBadge:
+        waitingApprovalsCount > 0 ? `${waitingApprovalsCount} review` : undefined,
     },
     {
       id: 'content' as MainTab,
-      label: 'Content Queue',
-      icon: List,
+      label: 'Campaigns',
+      icon: FolderKanban,
     },
   ];
 
-  const workflowNavItems = [
-    {
-      id: 'approvals' as MoreSubScreen,
-      label: 'Approvals',
-      icon: CheckCircle2,
-      badge: waitingApprovalsCount > 0 ? String(waitingApprovalsCount) : undefined,
-      badgeColor: 'bg-amber-500 text-white',
-    },
+  const workflowNavItems: Array<{
+    id: MoreSubScreen;
+    label: string;
+    icon: React.ElementType;
+    badge?: string;
+    badgeColor?: string;
+  }> = [
     {
       id: 'ideas' as MoreSubScreen,
       label: 'Ideas Bank',
@@ -131,123 +139,26 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       {/* Scrollable Navigation Sections */}
       <div className="flex-1 overflow-y-auto pr-1 space-y-4">
         {/* Brand header */}
-        <div className="flex items-center justify-between px-2 pt-1">
-          <div>
-            <h1
-              className="font-serif text-2xl font-bold tracking-tight text-[#C44D34] select-none"
-              style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+        <div className="flex flex-col items-start px-2 pt-1">
+          <BrandLogo size="lg" isDark={isDark} />
+          <p className="text-[10px] uppercase font-bold tracking-wider text-stone-400 mt-1">
+            Agency Content Studio
+          </p>
+          {subscription && (
+            <button
+              type="button"
+              onClick={() => onSelectSubScreen('billing')}
+              className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-[#C44D34]/10 text-[#C44D34] hover:bg-[#C44D34]/20 transition-colors cursor-pointer"
             >
-              PostNote
-            </h1>
-            <p className="text-[10px] uppercase font-bold tracking-wider text-stone-400">
-              Agency Content Studio
-            </p>
-          </div>
-        </div>
-
-        {/* Active Workspace Dropdown */}
-        <div>
-          <button
-            type="button"
-            onClick={() => setIsWorkspaceDropdownOpen((prev) => !prev)}
-            className={`w-full p-2.5 rounded-2xl border text-left flex items-center justify-between text-xs transition-colors cursor-pointer ${
-              isDark
-                ? 'bg-[#1C2531] border-[#2A3646] hover:border-[#C44D34]'
-                : 'bg-white border-[#E2DDD3] hover:border-[#C44D34]'
-            }`}
-          >
-            <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
-              <div className="w-7 h-7 rounded-xl bg-[#C44D34] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-                <Building2 className="w-3.5 h-3.5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="font-bold text-xs truncate">{workspaceDisplayName}</p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-wider text-[#C44D34]">
-                    <Shield className="w-2.5 h-2.5" />
-                    {myRole}
-                  </span>
-                  {currentUser?.email && (
-                    <span className="text-[10px] text-stone-400 truncate">
-                      • {currentUser.email}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-            {isWorkspaceDropdownOpen ? (
-              <ChevronUp className="w-4 h-4 text-stone-400 shrink-0" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-stone-400 shrink-0" />
-            )}
-          </button>
-
-          {isWorkspaceDropdownOpen && (
-            <div
-              className={`mt-2 p-2.5 rounded-xl border space-y-2 text-xs animate-in fade-in duration-150 ${
-                isDark
-                  ? 'bg-[#18202B] border-[#2A3646]'
-                  : 'bg-[#F3EFE6] border-[#E2DDD3]'
-              }`}
-            >
-              {workspaces.length > 0 && (
-                <div className="space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 px-1">
-                    Switch Workspace
-                  </p>
-                  {workspaces.map((ws) => {
-                    const isSelected = ws.id === activeWorkspaceId;
-                    return (
-                      <button
-                        key={ws.id}
-                        type="button"
-                        onClick={() => {
-                          if (onSwitchWorkspace) onSwitchWorkspace(ws.id);
-                          setIsWorkspaceDropdownOpen(false);
-                        }}
-                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-xs font-semibold transition-colors cursor-pointer ${
-                          isSelected
-                            ? 'bg-[#C44D34] text-white'
-                            : isDark
-                            ? 'text-stone-300 hover:bg-[#222C38]'
-                            : 'text-stone-800 hover:bg-white'
-                        }`}
-                      >
-                        <div className="min-w-0 pr-2">
-                          <p className="truncate font-bold">{ws.name}</p>
-                          <p
-                            className={`text-[10px] ${
-                              isSelected ? 'text-white/80' : 'text-stone-400'
-                            }`}
-                          >
-                            {ws.isPersonal ? 'Private · Owner' : `Team · ${ws.myRole}`}
-                          </p>
-                        </div>
-                        {isSelected && <Check className="w-3.5 h-3.5 shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              <div className="pt-1.5 border-t border-stone-200/70 dark:border-stone-700/70 flex flex-col gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsWorkspaceDropdownOpen(false);
-                    onSelectSubScreen('settings');
-                  }}
-                  className="w-full py-1.5 px-2.5 rounded-lg bg-[#C44D34]/15 text-[#C44D34] hover:bg-[#C44D34]/25 font-bold text-[11px] text-center transition-colors cursor-pointer"
-                >
-                  Settings & Team ({teamMembersCount})
-                </button>
-                {currentUser?.email && (
-                  <p className="text-[10px] text-stone-500 dark:text-stone-400 text-center truncate px-1">
-                    {currentUser.email}
-                  </p>
-                )}
-              </div>
-            </div>
+              <Sparkles className="w-3 h-3" />
+              <span>
+                {subscription.isTrial
+                  ? `${subscription.trialDaysLeft} days left`
+                  : subscription.planId === 'free'
+                  ? 'Free Plan • Upgrade'
+                  : `${subscription.planId.toUpperCase()} Pro`}
+              </span>
+            </button>
           )}
         </div>
 
@@ -287,19 +198,26 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                   <span>{item.label}</span>
                 </div>
 
-                {item.badge && (
-                  <span
-                    className={`px-1.5 py-0.2 rounded-md text-[10px] font-bold ${
-                      isActive
-                        ? 'bg-white/20 text-white'
-                        : isDark
-                        ? 'bg-stone-800 text-stone-300'
-                        : 'bg-stone-200 text-stone-700'
-                    }`}
-                  >
-                    {item.badge}
-                  </span>
-                )}
+                <div className="flex items-center gap-1">
+                  {item.secondaryBadge && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-500 text-white">
+                      {item.secondaryBadge}
+                    </span>
+                  )}
+                  {item.badge && (
+                    <span
+                      className={`px-1.5 py-0.2 rounded-md text-[10px] font-bold ${
+                        isActive
+                          ? 'bg-white/20 text-white'
+                          : isDark
+                          ? 'bg-stone-800 text-stone-300'
+                          : 'bg-stone-200 text-stone-700'
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </div>
               </button>
             );
           })}

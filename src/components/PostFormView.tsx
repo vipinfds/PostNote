@@ -59,8 +59,12 @@ interface PostFormViewProps {
   initialMode?: 'view' | 'edit';
   initialModalTab?: 'details' | 'activity';
   currentUser?: { name: string; email: string; role: string } | null;
+  myRole?: string;
   onBack: () => void;
-  onSave: (postData: Omit<Post, 'id' | 'createdAt'> & { id?: string }) => void;
+  onSave: (
+    postData: Omit<Post, 'id' | 'createdAt'> & { id?: string },
+    options?: { keepOpen?: boolean }
+  ) => void;
   onCreateClient?: (clientData: {
     name: string;
     handle: string;
@@ -240,6 +244,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
   );
   const [title, setTitle] = useState<string>(initialPost?.title || '');
   const [caption, setCaption] = useState<string>(initialPost?.caption || '');
+  const [createdInSessionCount, setCreatedInSessionCount] = useState<number>(0);
 
   // Media attachments state
   const [attachedMedia, setAttachedMedia] = useState<MediaItem[]>(() => {
@@ -402,8 +407,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
     setAttachedMedia((prev) => [...prev, samples[prev.length % 2]]);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const saveCurrentPost = (keepOpen: boolean) => {
     if (!title.trim()) return;
 
     const selectedClient = clients.find((c) => c.id === clientId);
@@ -411,24 +415,39 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
       ? selectedClient.name
       : initialPost?.clientName || 'Unknown';
 
-    onSave({
-      ...(initialPost?.id ? { id: initialPost.id } : {}),
-      clientId,
-      clientName,
-      campaignId: campaignId || undefined,
-      title: title.trim(),
-      caption: caption.trim(),
-      date,
-      status,
-      category,
-      platform,
-      media: attachedMedia,
-      mediaUrl: attachedMedia[0]?.url || attachedMedia[0]?.thumbnailUrl,
-      mediaType: attachedMedia[0]?.type,
-      createdBy: initialPost?.createdBy,
-      submittedBy: initialPost?.submittedBy,
-      activityLog: initialPost?.activityLog,
-    });
+    onSave(
+      {
+        ...(initialPost?.id && !keepOpen ? { id: initialPost.id } : {}),
+        clientId,
+        clientName,
+        campaignId: campaignId || undefined,
+        title: title.trim(),
+        caption: caption.trim(),
+        date,
+        status,
+        category,
+        platform,
+        media: attachedMedia,
+        mediaUrl: attachedMedia[0]?.url || attachedMedia[0]?.thumbnailUrl,
+        mediaType: attachedMedia[0]?.type,
+        createdBy: initialPost?.createdBy,
+        submittedBy: initialPost?.submittedBy,
+        activityLog: initialPost?.activityLog,
+      },
+      { keepOpen }
+    );
+
+    if (keepOpen) {
+      setTitle('');
+      setCaption('');
+      setAttachedMedia([]);
+      setCreatedInSessionCount((c) => c + 1);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveCurrentPost(false);
   };
 
   const handlePostCommentSubmit = (e: React.FormEvent) => {
@@ -537,6 +556,11 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                 ? 'Edit Post'
                 : 'Post Details'}
             </h2>
+            {!isExistingPost && createdInSessionCount > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                {createdInSessionCount} created
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
@@ -1720,12 +1744,30 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                 )}
               </div>
 
-              {/* Action Button */}
-              <div className="pt-3">
+              {/* Action Buttons: Create Single or Create Multiple Posts */}
+              <div className="pt-3 flex flex-col sm:flex-row items-center gap-2.5">
+                {!isExistingPost && (
+                  <button
+                    id="post-form-save-and-add-another-btn"
+                    type="button"
+                    onClick={() => saveCurrentPost(true)}
+                    disabled={!title.trim()}
+                    className={`w-full sm:w-1/2 py-3 px-4 rounded-xl border font-bold text-xs tracking-wider uppercase flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed ${
+                      isDark
+                        ? 'bg-[#1D242C] border-[#C44D34] text-[#F06449] hover:bg-[#C44D34]/15'
+                        : 'bg-white border-[#C44D34] text-[#C44D34] hover:bg-[#C44D34]/10'
+                    }`}
+                  >
+                    <Plus className="w-4 h-4 stroke-[2.5]" />
+                    <span>Create & Add Another</span>
+                  </button>
+                )}
                 <button
                   id="post-form-submit-btn"
                   type="submit"
-                  className="w-full py-3 rounded-xl bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white font-bold text-xs tracking-wider uppercase shadow-md transition-all active:scale-[0.99] cursor-pointer"
+                  className={`${
+                    !isExistingPost ? 'w-full sm:w-1/2' : 'w-full'
+                  } py-3 rounded-xl bg-[#181E24] dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-black dark:hover:bg-white font-bold text-xs tracking-wider uppercase shadow-md transition-all active:scale-[0.99] cursor-pointer`}
                 >
                   {isExistingPost ? 'Save Changes' : 'Create Post'}
                 </button>

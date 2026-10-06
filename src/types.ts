@@ -53,6 +53,7 @@ export type Platform =
   | 'LinkedIn'
   | 'Twitter'
   | 'TikTok'
+  | 'YouTube'
   | 'Other';
 
 export type PostPlatform = Platform;

@@ -2,9 +2,8 @@ import React from 'react';
 import {
   Calendar,
   Users,
-  List,
+  FolderKanban,
   Lightbulb,
-  CheckCircle2,
   BarChart3,
   Settings as SettingsIcon,
   ChevronRight,
@@ -53,32 +52,30 @@ export const MoreMenuView: React.FC<MoreMenuViewProps> = ({
         {
           type: 'tab',
           id: 'clients',
-          title: 'Clients',
-          description: 'Client profiles, portal links and social handles',
+          title: 'Clients & Approvals',
+          description: 'Client workspaces, approvals, portal links and handles',
           icon: Users,
-          badge: clientsCount > 0 ? clientsCount : undefined,
+          badge:
+            waitingApprovalsCount > 0
+              ? `${waitingApprovalsCount} in review`
+              : clientsCount > 0
+              ? clientsCount
+              : undefined,
+          badgeColor:
+            waitingApprovalsCount > 0 ? 'bg-amber-500 text-white' : undefined,
         },
         {
           type: 'tab',
           id: 'content',
-          title: 'Content Queue',
-          description: 'Unified queue timeline, statuses and campaigns',
-          icon: List,
+          title: 'Campaigns',
+          description: 'Client campaigns, timelines and deliverables',
+          icon: FolderKanban,
         },
       ],
     },
     {
       category: 'Workflow & Insights',
       items: [
-        {
-          type: 'subscreen',
-          id: 'approvals',
-          title: 'Approvals',
-          description: 'Review posts and client sign-offs before live',
-          icon: CheckCircle2,
-          badge: waitingApprovalsCount > 0 ? waitingApprovalsCount : undefined,
-          badgeColor: 'bg-amber-500 text-white',
-        },
         {
           type: 'subscreen',
           id: 'ideas',

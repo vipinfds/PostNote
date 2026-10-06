@@ -20,6 +20,7 @@ import {
 } from '../firebase';
 import { staticAuthenticateUser } from '../utils/staticWorkspaceStore';
 import { WorkspaceSummary } from '../types';
+import { BrandLogo } from './BrandLogo';
 
 export interface AuthenticatedUser {
   name: string;
@@ -434,10 +435,13 @@ export const SignInView: React.FC<SignInViewProps> = ({ onSignInSuccess, isDark 
       <div className="w-full max-w-md">
         {/* PostNote Header */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#C44D34]/10 text-[#C44D34] text-xs font-bold uppercase tracking-wider mb-3">
-            <span>●</span> PostNote Private Studio
+          <div className="mb-2 flex justify-center">
+            <BrandLogo size="xl" isDark={isDark} />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-white">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#C44D34]/10 text-[#C44D34] text-[11px] font-bold uppercase tracking-wider mb-3">
+            <span>●</span> Private Content Studio
+          </div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-stone-900 dark:text-white">
             {authMode === 'signin' ? 'Sign in to your Studio' : 'Create Private Account'}
           </h1>
           <p className="text-xs sm:text-sm text-stone-500 dark:text-stone-400 mt-1">

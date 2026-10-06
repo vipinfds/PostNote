@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Calendar,
   Users,
-  List,
+  FolderKanban,
   Lightbulb,
   CheckCircle2,
   BarChart3,
@@ -25,6 +25,7 @@ import {
   WorkspaceRole,
   WorkspaceSummary,
 } from '../types';
+import { BrandLogo } from './BrandLogo';
 
 interface MobileNavDrawerProps {
   isOpen: boolean;
@@ -80,7 +81,13 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
     activeWorkspace?.name ||
     (currentUser ? `${currentUser.name}'s Private Studio` : 'FirstDraft Studio');
 
-  const studioItems = [
+  const studioItems: Array<{
+    id: MainTab;
+    label: string;
+    icon: React.ElementType;
+    badge?: string;
+    secondaryBadge?: string;
+  }> = [
     {
       id: 'home' as MainTab,
       label: 'Calendar & Feed',
@@ -91,22 +98,23 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
       label: 'Clients',
       icon: Users,
       badge: clientsCount > 0 ? String(clientsCount) : undefined,
+      secondaryBadge:
+        waitingApprovalsCount > 0 ? `${waitingApprovalsCount} review` : undefined,
     },
     {
       id: 'content' as MainTab,
-      label: 'Content Queue',
-      icon: List,
+      label: 'Campaigns',
+      icon: FolderKanban,
     },
   ];
 
-  const workflowItems = [
-    {
-      id: 'approvals' as MoreSubScreen,
-      label: 'Approvals',
-      icon: CheckCircle2,
-      badge: waitingApprovalsCount > 0 ? String(waitingApprovalsCount) : undefined,
-      badgeColor: 'bg-amber-500 text-white',
-    },
+  const workflowItems: Array<{
+    id: MoreSubScreen;
+    label: string;
+    icon: React.ElementType;
+    badge?: string;
+    badgeColor?: string;
+  }> = [
     {
       id: 'ideas' as MoreSubScreen,
       label: 'Ideas Bank',
@@ -160,18 +168,11 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
       >
         {/* Drawer Header */}
         <div className="flex items-center justify-between px-4 py-3.5 border-b border-stone-200/80 dark:border-stone-800/80">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#C44D34] flex items-center justify-center text-white font-bold text-sm shadow-xs">
-              P
-            </div>
-            <div>
-              <h1 className="font-serif font-bold text-base tracking-tight leading-tight">
-                PostNote
-              </h1>
-              <p className="text-[10px] text-stone-500 dark:text-stone-400 font-medium">
-                Social Agency Studio
-              </p>
-            </div>
+          <div className="flex flex-col items-start">
+            <BrandLogo size="md" isDark={isDark} />
+            <p className="text-[10px] text-stone-500 dark:text-stone-400 font-medium mt-0.5">
+              Social Agency Studio
+            </p>
           </div>
 
           <button
@@ -329,17 +330,24 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
                     <span>{item.label}</span>
                   </div>
 
-                  {item.badge && (
-                    <span
-                      className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
-                        isActive
-                          ? 'bg-white/20 text-white'
-                          : 'bg-[#C44D34]/15 text-[#C44D34]'
-                      }`}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {item.secondaryBadge && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-500 text-white">
+                        {item.secondaryBadge}
+                      </span>
+                    )}
+                    {item.badge && (
+                      <span
+                        className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
+                          isActive
+                            ? 'bg-white/20 text-white'
+                            : 'bg-[#C44D34]/15 text-[#C44D34]'
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
                 </button>
               );
             })}

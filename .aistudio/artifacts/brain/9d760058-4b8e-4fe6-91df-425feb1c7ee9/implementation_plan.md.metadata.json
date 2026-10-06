@@ -1,6 +1,6 @@
 {
-  "summary":  "Updated plan to keep today's date font color uniform black, tighten the calendar date cells so the Today box border fits the number + dots cleanly instead of looking oversized, and lock all 7x5/6 date cells to a uniform centered grid alignment.",
-  "updatedAt":  "2026-10-06T12:59:18.511443666Z",
-  "requestFeedback":  true,
-  "userFacing":  true
+  "summary": "Plan to (1) rename 'AGENDA & CONTENT QUEUE' to 'CONTENT QUEUE' in HomeView.tsx, remove the Approved Only stage dropdown, and show posts across all stages, (2) remove the 'Needs Client Approval' pill in ClientsView.tsx and combine Campaigns into the Clients tab with a 'Clients (N) | Campaigns (N)' switcher and remove the separate Campaigns menu tab, and (3) unify the internal Client Page with the Unified Client PortalView (adding Edit Client, Share Portal, and New Post actions when viewed internally by the studio).",
+  "updatedAt": "2026-10-06T21:54:16.497018484Z",
+  "requestFeedback": true,
+  "userFacing": true
 }

@@ -136,6 +136,25 @@ function ensureDefaultOwnerWorkspace() {
   if (!workspaceStore.users) workspaceStore.users = {};
   if (!workspaceStore.workspaces) workspaceStore.workspaces = {};
 
+  // Merge any new sample posts or clients from INITIAL_POSTS / INITIAL_CLIENTS that aren't in workspaceStore yet
+  const existingPostIds = new Set(workspaceStore.posts.map((p) => p.id));
+  let addedNewSeedData = false;
+  for (const seedPost of INITIAL_POSTS) {
+    if (!existingPostIds.has(seedPost.id)) {
+      workspaceStore.posts.push(seedPost);
+      existingPostIds.add(seedPost.id);
+      addedNewSeedData = true;
+    }
+  }
+  const existingClientIds = new Set(workspaceStore.clients.map((c) => c.id));
+  for (const seedClient of INITIAL_CLIENTS) {
+    if (!existingClientIds.has(seedClient.id)) {
+      workspaceStore.clients.push(seedClient);
+      existingClientIds.add(seedClient.id);
+      addedNewSeedData = true;
+    }
+  }
+
   const ownerEmail = 'vipin@firstdraftstudio.in';
   if (!workspaceStore.users[ownerEmail]) {
     workspaceStore.users[ownerEmail] = {
@@ -176,6 +195,12 @@ function ensureDefaultOwnerWorkspace() {
     workspaceStore.workspaces['ws_vipin'].clients = workspaceStore.clients;
     workspaceStore.workspaces['ws_vipin'].campaigns = workspaceStore.campaigns;
     workspaceStore.workspaces['ws_vipin'].ideas = workspaceStore.ideas;
+  }
+
+  if (addedNewSeedData) {
+    try {
+      fs.writeFileSync(DATA_FILE, JSON.stringify(workspaceStore, null, 2), 'utf-8');
+    } catch {}
   }
 }
 ensureDefaultOwnerWorkspace();

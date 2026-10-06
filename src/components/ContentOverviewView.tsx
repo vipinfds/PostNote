@@ -15,6 +15,10 @@ import {
   BarChart3,
   Link as LinkIcon,
   Pencil,
+  CheckSquare,
+  Square,
+  Trash2,
+  AlertCircle,
 } from 'lucide-react';
 import { Post, Client, Campaign, PostStatus, CampaignExternalLink } from '../types';
 import {
@@ -39,6 +43,8 @@ interface ContentOverviewViewProps {
   onSaveCampaign?: (campaign: Omit<Campaign, 'id'> & { id?: string }) => void;
   onOpenNewPost: () => void;
   onEditPost: (post: Post) => void;
+  onBulkUpdateStatus?: (postIds: string[], newStatus: PostStatus) => void;
+  onBulkDeletePosts?: (postIds: string[]) => void;
   initialTab?: 'feed' | 'campaigns';
   isDark?: boolean;
   onRefresh?: () => Promise<void> | void;
@@ -51,16 +57,19 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
   onSaveCampaign,
   onOpenNewPost,
   onEditPost,
-  initialTab = 'feed',
+  onBulkUpdateStatus,
+  onBulkDeletePosts,
+  initialTab = 'campaigns',
   isDark,
   onRefresh,
 }) => {
-  const [activeTab, setActiveTab] = useState<'feed' | 'campaigns'>(initialTab);
+  const [activeTab] = useState<'feed' | 'campaigns'>(initialTab);
   const [selectedClientId, setSelectedClientId] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'All' | PostStatus>('All');
   const [filterMode, setFilterMode] = useState<'upcoming' | 'past' | 'all'>('upcoming');
   const [searchQuery, setSearchQuery] = useState('');
   const [isClientPickerOpen, setIsClientPickerOpen] = useState(false);
+  const [selectedPostIds, setSelectedPostIds] = useState<string[]>([]);
 
   // Campaign creation / edit modal state
   const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
@@ -102,13 +111,17 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
     return true;
   });
 
-  const upcomingCount = baseMatchingPosts.filter((p) => p.date >= todayStr).length;
+  const upcomingCount = baseMatchingPosts.filter(
+    (p) => p.date >= todayStr || normalizePostStatus(p.status) !== 'Scheduled'
+  ).length;
   const pastCount = baseMatchingPosts.filter((p) => p.date < todayStr).length;
   const allRangeCount = baseMatchingPosts.length;
 
   const filteredPosts = baseMatchingPosts
     .filter((p) => {
-      if (filterMode === 'upcoming') return p.date >= todayStr;
+      const isDelayed =
+        p.date < todayStr && normalizePostStatus(p.status) !== 'Scheduled';
+      if (filterMode === 'upcoming') return p.date >= todayStr || isDelayed;
       if (filterMode === 'past') return p.date < todayStr;
       return true;
     })
@@ -118,6 +131,26 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
         ? b.date.localeCompare(a.date)
         : a.date.localeCompare(b.date)
     );
+
+  const visiblePostIds = filteredPosts.map((p) => p.id);
+  const allVisibleSelected =
+    visiblePostIds.length > 0 &&
+    visiblePostIds.every((id) => selectedPostIds.includes(id));
+
+  const toggleSelectPost = (postId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedPostIds((prev) =>
+      prev.includes(postId) ? prev.filter((id) => id !== postId) : [...prev, postId]
+    );
+  };
+
+  const toggleSelectAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedPostIds((prev) => prev.filter((id) => !visiblePostIds.includes(id)));
+    } else {
+      setSelectedPostIds((prev) => Array.from(new Set([...prev, ...visiblePostIds])));
+    }
+  };
 
   // Group by date
   const groupedByDate: Record<string, Post[]> = {};
@@ -301,54 +334,33 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
           </div>
         </div>
 
-        {/* Main Mode Toggle: Queue & Feed vs Campaigns */}
+        {/* Filter Bar: Client Filter + Campaign Search */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mt-3">
-          <div
-            className={`p-1 rounded-xl border grid grid-cols-2 sm:flex items-center gap-1 ${
-              isDark ? 'bg-[#18202A] border-[#2A3646]' : 'bg-stone-100 border-stone-200'
-            }`}
-          >
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setActiveTab('feed')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                activeTab === 'feed'
-                  ? 'bg-white dark:bg-[#253242] text-stone-900 dark:text-white shadow-xs font-bold'
-                  : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
+              onClick={() => setIsClientPickerOpen(true)}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                isDark
+                  ? 'bg-[#1D242C] border-[#2A3440] text-stone-200 hover:bg-[#252E38]'
+                  : 'bg-white border-[#E8E4DC] text-stone-700 hover:bg-stone-50 shadow-xs'
               }`}
             >
-              <Clock className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Post Queue</span>
-              <span
-                className={`px-1.5 py-0.2 rounded-md text-[10px] font-bold tabular-nums ${
-                  activeTab === 'feed'
-                    ? 'bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-200'
-                    : 'bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300'
-                }`}
-              >
-                {posts.length}
+              {selectedClient?.color && (
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: selectedClient.color }}
+                />
+              )}
+              <span className="truncate max-w-[160px] sm:max-w-[220px]">
+                {selectedClient ? selectedClient.name : 'All Clients'}
               </span>
+              <ChevronDown className="w-3.5 h-3.5 stroke-[2.5] text-stone-400 shrink-0" />
             </button>
 
-            <button
-              onClick={() => setActiveTab('campaigns')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                activeTab === 'campaigns'
-                  ? 'bg-white dark:bg-[#253242] text-stone-900 dark:text-white shadow-xs font-bold'
-                  : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
-              }`}
-            >
-              <FolderKanban className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Campaigns</span>
-              <span
-                className={`px-1.5 py-0.2 rounded-md text-[10px] font-bold tabular-nums ${
-                  activeTab === 'campaigns'
-                    ? 'bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-200'
-                    : 'bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300'
-                }`}
-              >
-                {campaigns.length}
-              </span>
-            </button>
+            <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-[#C44D34]/10 text-[#C44D34] tabular-nums">
+              {filteredCampaigns.length}{' '}
+              {filteredCampaigns.length === 1 ? 'Campaign' : 'Campaigns'}
+            </span>
           </div>
 
           {/* Search input */}
@@ -356,9 +368,7 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
             <input
               type="text"
-              placeholder={
-                activeTab === 'feed' ? 'Search posts or clients...' : 'Search campaigns...'
-              }
+              placeholder="Search campaigns or clients..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className={`w-full pl-8 pr-3 py-2 sm:py-1.5 rounded-xl border text-xs transition-colors focus:outline-none focus:ring-1 focus:ring-[#C44D34] ${
@@ -418,25 +428,48 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
 
             {/* Client filter & Date-Range toggle row (Upcoming | Past | All) */}
             <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-              <button
-                onClick={() => setIsClientPickerOpen(true)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all cursor-pointer ${
-                  isDark
-                    ? 'bg-[#1D242C] border-[#2A3440] text-stone-200 hover:bg-[#252E38]'
-                    : 'bg-white border-[#E8E4DC] text-stone-700 hover:bg-stone-50 shadow-xs'
-                }`}
-              >
-                {selectedClient?.color && (
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: selectedClient.color }}
-                  />
+              <div className="flex items-center gap-2">
+                {visiblePostIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={toggleSelectAllVisible}
+                    className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                      allVisibleSelected
+                        ? 'bg-[#C44D34]/10 border-[#C44D34] text-[#C44D34]'
+                        : isDark
+                        ? 'bg-[#1D242C] border-[#2A3440] text-stone-300 hover:border-stone-600'
+                        : 'bg-white border-[#E8E4DC] text-stone-600 hover:border-stone-300'
+                    }`}
+                  >
+                    {allVisibleSelected ? (
+                      <CheckSquare className="w-3.5 h-3.5 text-[#C44D34]" />
+                    ) : (
+                      <Square className="w-3.5 h-3.5 text-stone-400" />
+                    )}
+                    <span>Select All</span>
+                  </button>
                 )}
-                <span className="truncate max-w-[140px] sm:max-w-[200px]">
-                  {selectedClient ? selectedClient.name : 'All clients'}
-                </span>
-                <ChevronDown className="w-3.5 h-3.5 stroke-[2.5] text-stone-400 shrink-0" />
-              </button>
+
+                <button
+                  onClick={() => setIsClientPickerOpen(true)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                    isDark
+                      ? 'bg-[#1D242C] border-[#2A3440] text-stone-200 hover:bg-[#252E38]'
+                      : 'bg-white border-[#E8E4DC] text-stone-700 hover:bg-stone-50 shadow-xs'
+                  }`}
+                >
+                  {selectedClient?.color && (
+                    <span
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: selectedClient.color }}
+                    />
+                  )}
+                  <span className="truncate max-w-[140px] sm:max-w-[200px]">
+                    {selectedClient ? selectedClient.name : 'All clients'}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 stroke-[2.5] text-stone-400 shrink-0" />
+                </button>
+              </div>
 
               {/* Date-Range Segmented Toggle: Upcoming | Past | All */}
               <div
@@ -482,6 +515,84 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                 })}
               </div>
             </div>
+
+            {/* BULK STATUS & ACTION BAR (Appears when 1+ posts are checked) */}
+            {selectedPostIds.length > 0 && (
+              <div
+                id="content-overview-bulk-action-bar"
+                className={`p-3 rounded-2xl border flex flex-wrap items-center justify-between gap-2.5 shadow-sm transition-all ${
+                  isDark
+                    ? 'bg-[#1F2935] border-[#C44D34]/60 text-stone-100'
+                    : 'bg-[#FFF7F5] border-[#C44D34]/40 text-stone-900'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-lg bg-[#C44D34] text-white text-xs font-bold tabular-nums">
+                    {selectedPostIds.length} Selected
+                  </span>
+                  <span className="text-xs font-semibold text-stone-600 dark:text-stone-300">
+                    Transition selected posts in one click:
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {onBulkUpdateStatus && (
+                    <select
+                      id="content-overview-bulk-status-select"
+                      aria-label="Bulk change status for selected posts"
+                      defaultValue=""
+                      onChange={(e) => {
+                        const targetStatus = e.target.value as PostStatus;
+                        if (!targetStatus) return;
+                        onBulkUpdateStatus(selectedPostIds, targetStatus);
+                        setSelectedPostIds([]);
+                        e.target.value = '';
+                      }}
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#C44D34] ${
+                        isDark
+                          ? 'bg-[#161E27] border-[#334254] text-stone-100'
+                          : 'bg-white border-stone-300 text-stone-800 shadow-xs'
+                      }`}
+                    >
+                      <option value="" disabled>
+                        Move to Status...
+                      </option>
+                      {POST_STAGES.map((stage) => (
+                        <option key={stage} value={stage}>
+                          Set to {stage}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {onBulkDeletePosts && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onBulkDeletePosts(selectedPostIds);
+                        setSelectedPostIds([]);
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete ({selectedPostIds.length})</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPostIds([])}
+                    className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${
+                      isDark
+                        ? 'border-stone-700 text-stone-300 hover:bg-stone-800'
+                        : 'border-stone-200 text-stone-600 hover:bg-stone-100'
+                    }`}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -508,15 +619,33 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                 </button>
               </div>
             ) : (
-              Object.entries(groupedByDate).map(([dateStr, datePosts]) => (
+              Object.entries(groupedByDate).map(([dateStr, datePosts]) => {
+                const isDatePast = dateStr < todayStr;
+                const hasDelayedInGroup = datePosts.some(
+                  (p) => p.date < todayStr && normalizePostStatus(p.status) !== 'Scheduled'
+                );
+
+                return (
                 <div key={dateStr} className="space-y-2.5">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                    <h3
+                      className={`text-xs font-bold uppercase tracking-wider ${
+                        hasDelayedInGroup
+                          ? 'text-red-600 dark:text-red-400'
+                          : 'text-stone-500 dark:text-stone-400'
+                      }`}
+                    >
                       {formatSectionDate(dateStr)}
                     </h3>
                     {dateStr === todayStr && (
                       <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#C44D34]/10 text-[#C44D34]">
                         TODAY
+                      </span>
+                    )}
+                    {isDatePast && hasDelayedInGroup && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-red-600 text-white shadow-xs">
+                        <AlertCircle className="w-3 h-3" />
+                        DELAYED · NOT SCHEDULED
                       </span>
                     )}
                     <span className="text-[11px] text-stone-400">
@@ -527,20 +656,43 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                     {datePosts.map((post) => {
                       const catStyle = CATEGORY_COLORS[post.category] || CATEGORY_COLORS.POST;
+                      const isDelayedPost =
+                        post.date < todayStr && normalizePostStatus(post.status) !== 'Scheduled';
+                      const isChecked = selectedPostIds.includes(post.id);
 
                       return (
                         <div
                           key={post.id}
                           onClick={() => onEditPost(post)}
-                          className={`p-4 rounded-2xl border shadow-xs cursor-pointer hover:border-[#C44D34] transition-all group flex flex-col justify-between ${
-                            isDark
-                              ? 'bg-[#1D242C] border-[#2A3440] hover:bg-[#222B34]'
-                              : 'bg-white border-[#E8E4DC] hover:shadow-sm'
+                          className={`p-4 rounded-2xl border shadow-xs cursor-pointer transition-all group flex flex-col justify-between ${
+                            isDelayedPost
+                              ? isDark
+                                ? 'bg-red-950/25 border-red-500/60 hover:border-red-400'
+                                : 'bg-red-50/70 border-red-300 hover:border-red-500'
+                              : isChecked
+                              ? isDark
+                                ? 'bg-[#222C38] border-[#C44D34]'
+                                : 'bg-[#FFF9F7] border-[#C44D34]'
+                              : isDark
+                              ? 'bg-[#1D242C] border-[#2A3440] hover:bg-[#222B34] hover:border-[#C44D34]'
+                              : 'bg-white border-[#E8E4DC] hover:shadow-sm hover:border-[#C44D34]'
                           }`}
                         >
                           <div>
                             <div className="flex items-center justify-between text-xs mb-1.5 gap-2">
                               <div className="flex items-center gap-1.5 min-w-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => toggleSelectPost(post.id, e)}
+                                  className="p-0.5 rounded text-stone-400 hover:text-[#C44D34] transition-colors shrink-0 cursor-pointer"
+                                  title={isChecked ? 'Deselect post' : 'Select post for bulk status update'}
+                                >
+                                  {isChecked ? (
+                                    <CheckSquare className="w-4 h-4 text-[#C44D34]" />
+                                  ) : (
+                                    <Square className="w-4 h-4" />
+                                  )}
+                                </button>
                                 <span
                                   className="w-2 h-2 rounded-full shrink-0"
                                   style={{ backgroundColor: catStyle.dot }}
@@ -557,10 +709,24 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                                 </span>
                               </div>
 
-                              <StatusStageBadge status={post.status} size="xs" />
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {isDelayedPost && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-extrabold uppercase tracking-wider">
+                                    <AlertCircle className="w-2.5 h-2.5" />
+                                    Delayed
+                                  </span>
+                                )}
+                                <StatusStageBadge status={post.status} size="xs" />
+                              </div>
                             </div>
 
-                            <h4 className="text-sm font-bold text-stone-900 dark:text-white mt-1 group-hover:text-[#C44D34] transition-colors line-clamp-1">
+                            <h4
+                              className={`text-sm font-bold mt-1 transition-colors line-clamp-1 ${
+                                isDelayedPost
+                                  ? 'text-red-700 dark:text-red-300 group-hover:text-red-600'
+                                  : 'text-stone-900 dark:text-white group-hover:text-[#C44D34]'
+                              }`}
+                            >
                               {post.title}
                             </h4>
 
@@ -652,7 +818,8 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                     })}
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         )}

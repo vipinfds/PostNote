@@ -20,7 +20,7 @@ import {
 } from './data/initialData';
 import { INITIAL_SUBSCRIPTION_STATE } from './data/pricingData';
 import { getTodayDateStr } from './utils/theme';
-import { Menu, Plus, Building2, Shield, ArrowRight, Lock, Users, LogOut, Cloud, CloudOff, Bell, CheckCheck, MessageSquare, CheckCircle2, RotateCcw } from 'lucide-react';
+import { Menu, Plus, Building2, Shield, ArrowRight, Lock, Users, LogOut, Cloud, CloudOff, Bell, CheckCheck, MessageSquare, CheckCircle2, RotateCcw, ChevronDown, ChevronUp, Check } from 'lucide-react';
 import {
   auth,
   isFirebaseConfigured,
@@ -55,6 +55,7 @@ import { PostFormView } from './components/PostFormView';
 import { ClientModal } from './components/ClientModal';
 import { Toast } from './components/Toast';
 import { ScreenLoader } from './components/ScreenLoader';
+import { BrandLogo } from './components/BrandLogo';
 
 // Screen imports
 import { IdeasBankView } from './components/IdeasBankView';
@@ -76,6 +77,8 @@ export default function App() {
     name: string;
     email: string;
     role: string;
+    companyName?: string;
+    jobTitle?: string;
     uid?: string;
     personalWorkspaceId?: string;
   } | null>(() => {
@@ -202,7 +205,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [activeMoreSubScreen, setActiveMoreSubScreen] = useState<MoreSubScreen | null>(null);
   const [selectedClientDetail, setSelectedClientDetail] = useState<Client | null>(null);
-  const [clientDetailTab, setClientDetailTab] = useState<'overview' | 'analytics'>('overview');
+  const [clientDetailTab, setClientDetailTab] = useState<
+    'overview' | 'analytics' | 'approvals' | 'calendar'
+  >('overview');
   const [portalClient, setPortalClient] = useState<Client | null>(null);
   const [portalTab, setPortalTab] = useState<'overview' | 'upcoming' | 'analytics' | 'approvals' | 'calendar'>('overview');
   const [portalIsViewOnly, setPortalIsViewOnly] = useState<boolean>(true);
@@ -701,7 +706,58 @@ export default function App() {
     setIsPostFormOpen(true);
   };
 
-  const handleSavePost = (postData: Omit<Post, 'id' | 'createdAt'> & { id?: string }) => {
+  const [isHeaderWorkspaceOpen, setIsHeaderWorkspaceOpen] = useState(false);
+
+  const handleReschedulePost = (postId: string, newDateStr: string) => {
+    if (myRole === 'Viewer') {
+      showToast('Viewers have read-only access and cannot reschedule posts');
+      return;
+    }
+
+    const targetPost = posts.find((p) => p.id === postId);
+    if (!targetPost || targetPost.date === newDateStr) return;
+
+    const actorName = currentUser?.name || 'Studio Member';
+    const actorEmail = currentUser?.email || 'team@firstdraftstudio.in';
+    const nowIso = new Date().toISOString();
+
+    const formattedTargetDate = new Date(`${newDateStr}T00:00:00`).toLocaleDateString(
+      'en-US',
+      { month: 'short', day: 'numeric', year: 'numeric' }
+    );
+
+    const rescheduleActivity: PostActivityItem = {
+      id: `act-${Date.now()}`,
+      type: 'edited',
+      actorName,
+      actorEmail,
+      actorRole: myRole,
+      timestamp: nowIso,
+      details: `Rescheduled post from ${targetPost.date} to ${newDateStr} (${formattedTargetDate})`,
+    };
+
+    const updatedPost: Post = {
+      ...targetPost,
+      date: newDateStr,
+      activityLog: [...(targetPost.activityLog || []), rescheduleActivity],
+    };
+
+    setPosts((prev) => prev.map((p) => (p.id === postId ? updatedPost : p)));
+    if (auth?.currentUser && activeWorkspaceId) {
+      syncPostToFirestore(
+        activeWorkspaceId,
+        auth.currentUser.uid,
+        updatedPost,
+        false
+      ).catch(() => {});
+    }
+    showToast(`Rescheduled "${targetPost.title}" to ${formattedTargetDate}`);
+  };
+
+  const handleSavePost = (
+    postData: Omit<Post, 'id' | 'createdAt'> & { id?: string },
+    options?: { keepOpen?: boolean }
+  ) => {
     if (myRole === 'Viewer') {
       showToast('Viewers have read-only access and cannot create or edit posts');
       return;
@@ -825,10 +881,16 @@ export default function App() {
           targetSummary: 'Approvers (Owners, Admins & Managers)',
         });
       }
-      showToast('Post created & activity logged');
+      showToast(
+        options?.keepOpen
+          ? 'Post created! Ready to add the next post'
+          : 'Post created & activity logged'
+      );
     }
-    setIsPostFormOpen(false);
-    setEditingPost(null);
+    if (!options?.keepOpen) {
+      setIsPostFormOpen(false);
+      setEditingPost(null);
+    }
   };
 
   const handleDeletePost = (postId: string) => {
@@ -843,6 +905,73 @@ export default function App() {
     showToast('Post deleted');
     setIsPostFormOpen(false);
     setEditingPost(null);
+  };
+
+  // Bulk status update handler
+  const handleBulkUpdatePostsStatus = (postIds: string[], newStatus: Post['status']) => {
+    if (myRole === 'Viewer') {
+      showToast('Viewers have read-only access');
+      return;
+    }
+    if (postIds.length === 0) return;
+
+    const idSet = new Set(postIds);
+    const actorName = currentUser?.name || 'Team Member';
+    const actorEmail = currentUser?.email || 'team@firstdraftstudio.in';
+
+    setPosts((prev) =>
+      prev.map((p) => {
+        if (!idSet.has(p.id)) return p;
+        const activityEntry: PostActivityItem = {
+          id: `act-bulk-${Date.now()}-${p.id}`,
+          type:
+            newStatus === 'Approved'
+              ? 'approved'
+              : newStatus === 'In review'
+              ? 'submitted_for_review'
+              : 'edited',
+          actorName,
+          actorEmail,
+          actorRole: myRole,
+          timestamp: new Date().toISOString(),
+          details: `Bulk updated status from ${p.status} to ${newStatus}`,
+        };
+        const updated: Post = {
+          ...p,
+          status: newStatus,
+          activityLog: [...(p.activityLog || []), activityEntry],
+        };
+        if (auth.currentUser && activeWorkspaceId) {
+          syncPostToFirestore(activeWorkspaceId, auth.currentUser.uid, updated, false).catch(
+            () => {}
+          );
+        }
+        return updated;
+      })
+    );
+
+    showToast(
+      `Updated ${postIds.length} ${postIds.length === 1 ? 'post' : 'posts'} to ${newStatus}`
+    );
+  };
+
+  // Bulk delete handler
+  const handleBulkDeletePosts = (postIds: string[]) => {
+    if (myRole === 'Viewer') {
+      showToast('Viewers have read-only access');
+      return;
+    }
+    if (postIds.length === 0) return;
+    const idSet = new Set(postIds);
+    setPosts((prev) => prev.filter((p) => !idSet.has(p.id)));
+    if (auth.currentUser && activeWorkspaceId) {
+      postIds.forEach((id) => {
+        deletePostFromFirestore(activeWorkspaceId, id).catch(() => {});
+      });
+    }
+    showToast(
+      `Deleted ${postIds.length} ${postIds.length === 1 ? 'post' : 'posts'}`
+    );
   };
 
   // Client handlers
@@ -1481,6 +1610,7 @@ export default function App() {
           isLockedPortal={isLockedPortalSession}
           onApprovePost={handleApprovePost}
           onAddClientFeedback={handleAddClientFeedback}
+          onReschedulePost={isLockedPortalSession ? undefined : handleReschedulePost}
           onRequestChanges={(postId, notes, clientAuthorName) => {
             const targetPost = posts.find((p) => p.id === postId);
             const submitter = targetPost?.submittedBy || targetPost?.createdBy;
@@ -1569,6 +1699,8 @@ export default function App() {
           onNavigateToBilling={handleNavigateToBilling}
           onOpenNewPost={handleOpenNewPost}
           onEditPost={handleEditPost}
+          onBulkUpdateStatus={handleBulkUpdatePostsStatus}
+          onBulkDeletePosts={handleBulkDeletePosts}
           isDark={isDark}
           onRefresh={handleManualRefresh}
         />
@@ -1587,6 +1719,10 @@ export default function App() {
             onBack={() => setSelectedClientDetail(null)}
             onNewPostForClient={(cId) => handleOpenNewPost(undefined, cId)}
             onEditPost={handleEditPost}
+            onApprovePost={handleApprovePost}
+            onRequestChanges={handleRequestChanges}
+            onAddPostComment={handleAddPostComment}
+            onReschedulePost={handleReschedulePost}
             onOpenPortal={(client, tab = 'overview', isViewOnly = true) => {
               setPortalClient(client);
               setPortalTab(tab);
@@ -1640,6 +1776,8 @@ export default function App() {
           onSaveCampaign={handleSaveCampaign}
           onOpenNewPost={() => handleOpenNewPost()}
           onEditPost={handleEditPost}
+          onBulkUpdateStatus={handleBulkUpdatePostsStatus}
+          onBulkDeletePosts={handleBulkDeletePosts}
           isDark={isDark}
           onRefresh={handleManualRefresh}
         />
@@ -1690,6 +1828,8 @@ export default function App() {
             onSaveCampaign={handleSaveCampaign}
             onOpenNewPost={() => handleOpenNewPost()}
             onEditPost={handleEditPost}
+            onBulkUpdateStatus={handleBulkUpdatePostsStatus}
+            onBulkDeletePosts={handleBulkDeletePosts}
             initialTab="campaigns"
             isDark={isDark}
             onRefresh={handleManualRefresh}
@@ -1736,6 +1876,52 @@ export default function App() {
             workspaces={workspaces}
             activeWorkspaceId={activeWorkspaceId}
             onSwitchWorkspace={handleSwitchWorkspace}
+            onUpdateProfile={(profile) => {
+              const previousEmail = currentUser?.email;
+              setCurrentUser((prev) => {
+                if (!prev) return prev;
+                const updatedUser = {
+                  ...prev,
+                  name: profile.name,
+                  email: profile.email,
+                  companyName: profile.companyName,
+                  jobTitle: profile.jobTitle,
+                };
+                try {
+                  localStorage.setItem('postnote_auth_user', JSON.stringify(updatedUser));
+                } catch {}
+                return updatedUser;
+              });
+              if (profile.companyName) {
+                setWorkspaces((prev) =>
+                  prev.map((ws) =>
+                    ws.id === activeWorkspaceId || (!activeWorkspaceId && ws.isPersonal)
+                      ? { ...ws, name: profile.companyName, ownerName: profile.name }
+                      : ws
+                  )
+                );
+              }
+              setTeamMembers((prev) =>
+                prev.map((m) =>
+                  (previousEmail && m.email.toLowerCase() === previousEmail.toLowerCase()) ||
+                  m.role === 'Owner'
+                    ? {
+                        ...m,
+                        name: profile.name,
+                        email: profile.email,
+                        avatar:
+                          profile.name
+                            .split(' ')
+                            .map((p) => p[0])
+                            .join('')
+                            .substring(0, 2)
+                            .toUpperCase() || 'ST',
+                      }
+                    : m
+                )
+              );
+              showToast('Profile & company details updated');
+            }}
             onInviteMember={handleInviteMember}
             onUpdateMemberRole={handleUpdateMemberRole}
             onRemoveMember={handleRemoveMember}
@@ -1846,11 +2032,11 @@ export default function App() {
         >
           <div className="flex items-center justify-between mb-6">
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-widest text-[#C44D34]">
-                PostNote Studio
-              </span>
+              <div className="mb-1">
+                <BrandLogo size="md" isDark={isDark} />
+              </div>
               <h1
-                className="font-serif text-2xl font-bold tracking-tight mt-0.5"
+                className="font-serif text-xl sm:text-2xl font-bold tracking-tight"
                 style={{ fontFamily: "'Fraunces', Georgia, serif" }}
               >
                 Select a Workspace
@@ -1982,12 +2168,7 @@ export default function App() {
                 <Menu className="w-5 h-5 stroke-[2.2]" />
               </button>
 
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-md bg-[#C44D34] flex items-center justify-center text-white font-bold text-xs shadow-xs">
-                  P
-                </div>
-                <span className="font-serif font-bold text-sm tracking-tight">PostNote</span>
-              </div>
+              <BrandLogo size="sm" isDark={isDark} />
             </div>
 
             <div className="flex items-center gap-2">
@@ -2055,15 +2236,111 @@ export default function App() {
                 : 'bg-[#FAF7F2]/90 border-[#E8E2D8] text-stone-500'
             }`}
           >
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="font-semibold text-stone-700 dark:text-stone-300 truncate">
-                {workspaces.find((w) => w.id === activeWorkspaceId)?.name ||
-                  (currentUser ? `${currentUser.name}'s Private Studio` : 'Workspace')}
-              </span>
-              <span className="text-stone-300 dark:text-stone-700">•</span>
-              <span className="text-[11px] text-stone-400 truncate">
-                {currentUser?.email}
-              </span>
+            {/* Interactive Top-Bar Workspace Switcher (Moved from Sidebar) */}
+            <div className="relative">
+              <button
+                id="top-header-workspace-switcher-btn"
+                type="button"
+                onClick={() => setIsHeaderWorkspaceOpen((prev) => !prev)}
+                className={`inline-flex items-center gap-2.5 px-3 py-1.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                  isDark
+                    ? 'bg-[#1C2531] border-[#2A3646] hover:border-[#C44D34]'
+                    : 'bg-white border-[#E2DDD3] hover:border-[#C44D34] shadow-2xs'
+                }`}
+              >
+                <div className="w-6 h-6 rounded-lg bg-[#C44D34] text-white flex items-center justify-center font-bold text-xs shrink-0">
+                  <Building2 className="w-3.5 h-3.5" />
+                </div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-bold text-xs text-stone-800 dark:text-stone-100 truncate max-w-[200px]">
+                    {workspaces.find((w) => w.id === activeWorkspaceId)?.name ||
+                      (currentUser ? `${currentUser.name}'s Private Studio` : 'Workspace')}
+                  </span>
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-[#C44D34]/15 text-[#C44D34] text-[9px] font-extrabold uppercase tracking-wider shrink-0">
+                    <Shield className="w-2.5 h-2.5" />
+                    {myRole}
+                  </span>
+                </div>
+                {isHeaderWorkspaceOpen ? (
+                  <ChevronUp className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                )}
+              </button>
+
+              {isHeaderWorkspaceOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsHeaderWorkspaceOpen(false)}
+                  />
+                  <div
+                    className={`absolute left-0 top-full mt-2 w-72 p-3 rounded-2xl border shadow-2xl space-y-2.5 text-xs z-50 animate-fade-in ${
+                      isDark
+                        ? 'bg-[#18202B] border-[#2A3646] text-stone-100'
+                        : 'bg-white border-[#E2DDD3] text-stone-800'
+                    }`}
+                  >
+                    {workspaces.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 px-1">
+                          Switch Workspace
+                        </p>
+                        {workspaces.map((ws) => {
+                          const isSelected = ws.id === activeWorkspaceId;
+                          return (
+                            <button
+                              key={ws.id}
+                              type="button"
+                              onClick={() => {
+                                handleSwitchWorkspace(ws.id);
+                                setIsHeaderWorkspaceOpen(false);
+                              }}
+                              className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left text-xs font-semibold transition-colors cursor-pointer ${
+                                isSelected
+                                  ? 'bg-[#C44D34] text-white'
+                                  : isDark
+                                  ? 'text-stone-300 hover:bg-[#222C38]'
+                                  : 'text-stone-800 hover:bg-stone-100'
+                              }`}
+                            >
+                              <div className="min-w-0 pr-2">
+                                <p className="truncate font-bold">{ws.name}</p>
+                                <p
+                                  className={`text-[10px] ${
+                                    isSelected ? 'text-white/80' : 'text-stone-400'
+                                  }`}
+                                >
+                                  {ws.isPersonal ? 'Private · Owner' : `Team · ${ws.myRole}`}
+                                </p>
+                              </div>
+                              {isSelected && <Check className="w-3.5 h-3.5 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <div className="pt-2 border-t border-stone-200/70 dark:border-stone-700/70 flex flex-col gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsHeaderWorkspaceOpen(false);
+                          handleSelectSubScreen('settings');
+                        }}
+                        className="w-full py-1.5 px-2.5 rounded-lg bg-[#C44D34]/15 text-[#C44D34] hover:bg-[#C44D34]/25 font-bold text-[11px] text-center transition-colors cursor-pointer"
+                      >
+                        Settings & Team ({teamMembers.length})
+                      </button>
+                      {currentUser?.email && (
+                        <p className="text-[10px] text-stone-500 dark:text-stone-400 text-center truncate px-1">
+                          {currentUser.email}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="flex items-center gap-2.5">
@@ -2253,7 +2530,9 @@ export default function App() {
           <div className="lg:hidden sticky bottom-0 z-30">
             <BottomNav
               activeTab={activeTab === 'queue' ? 'content' : activeTab}
+              activeMoreSubScreen={activeMoreSubScreen}
               onSelectTab={(tab) => handleSelectTab(tab)}
+              onSelectSubScreen={(sub) => handleSelectSubScreen(sub)}
               isDark={isDark}
             />
           </div>

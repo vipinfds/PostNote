@@ -9,7 +9,6 @@ import {
   LogOut,
   ChevronRight,
   Bot,
-  CreditCard,
   Building2,
   UserPlus,
   Send,
@@ -21,6 +20,7 @@ import {
   Shield,
   X,
   Sparkles,
+  Pencil,
 } from 'lucide-react';
 import {
   ThemeMode,
@@ -43,6 +43,8 @@ interface SettingsViewProps {
     name: string;
     email: string;
     role?: string;
+    companyName?: string;
+    jobTitle?: string;
   } | null;
   myRole?: WorkspaceRole;
   teamMembers?: TeamMember[];
@@ -50,6 +52,12 @@ interface SettingsViewProps {
   workspaces?: WorkspaceSummary[];
   activeWorkspaceId?: string;
   onSwitchWorkspace?: (workspaceId: string) => void;
+  onUpdateProfile?: (profile: {
+    name: string;
+    email: string;
+    companyName: string;
+    jobTitle?: string;
+  }) => void;
   onInviteMember?: (email: string, role?: WorkspaceRole, name?: string) => void;
   onUpdateMemberRole?: (memberId: string, role: WorkspaceRole) => void;
   onRemoveMember?: (id: string) => void;
@@ -112,6 +120,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   workspaces = [],
   activeWorkspaceId,
   onSwitchWorkspace,
+  onUpdateProfile,
   onInviteMember,
   onUpdateMemberRole,
   onRemoveMember,
@@ -130,8 +139,39 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const canManageTeam = myRole === 'Owner' || myRole === 'Admin';
   const activeWs = workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0];
   const activeWsName =
+    currentUser?.companyName ||
     activeWs?.name ||
     (currentUser ? `${currentUser.name}'s Private Studio` : 'PostNote Studio');
+
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editName, setEditName] = useState(currentUser?.name || '');
+  const [editEmail, setEditEmail] = useState(currentUser?.email || '');
+  const [editCompanyName, setEditCompanyName] = useState(
+    currentUser?.companyName || activeWsName
+  );
+  const [editJobTitle, setEditJobTitle] = useState(currentUser?.jobTitle || '');
+
+  const handleOpenEditProfile = () => {
+    setEditName(currentUser?.name || '');
+    setEditEmail(currentUser?.email || '');
+    setEditCompanyName(currentUser?.companyName || activeWsName);
+    setEditJobTitle(currentUser?.jobTitle || '');
+    setIsEditingProfile(true);
+  };
+
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editName.trim() || !editEmail.trim()) return;
+    if (onUpdateProfile) {
+      onUpdateProfile({
+        name: editName.trim(),
+        email: editEmail.trim().toLowerCase(),
+        companyName: editCompanyName.trim() || activeWsName,
+        jobTitle: editJobTitle.trim() || undefined,
+      });
+    }
+    setIsEditingProfile(false);
+  };
 
   const planName =
     subscription?.planId === 'free'
@@ -249,52 +289,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div>
             <h2 className="text-base font-bold tracking-tight">Settings</h2>
             <p className="text-[11px] text-stone-400">
-              Workspace &amp; Current Plan, Team Access &amp; Role Assignment, Appearance, and Plans &amp; Billing
+              Workspace &amp; Plan, Team Access &amp; Role Assignment, Appearance, and AI Assistants
             </p>
           </div>
         </div>
       </div>
 
       <div className="space-y-4 mt-4">
-        {/* 1. User Profile Card */}
-        <div
-          className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs transition-colors ${
-            isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-          }`}
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-full bg-[#C44D34]/15 text-[#C44D34] font-bold flex items-center justify-center text-sm shrink-0">
-              {initials}
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm font-bold text-stone-900 dark:text-white truncate">
-                  {displayName}
-                </h3>
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#C44D34]/10 text-[#C44D34]">
-                  {myRole}
-                </span>
-              </div>
-              <p className="text-xs text-stone-500 dark:text-stone-400 truncate">
-                {displayEmail}
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={onSignOut}
-            className={`px-3.5 py-2 sm:py-1.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shrink-0 cursor-pointer ${
-              isDark
-                ? 'border-stone-700 text-stone-300 hover:bg-stone-800'
-                : 'border-stone-200 text-stone-600 hover:bg-stone-100'
-            }`}
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Sign out</span>
-          </button>
-        </div>
-
-        {/* 2. Workspace & Current Plan Banner (Clicking directs to Plans & Billing) */}
+        {/* 1. Active Workspace & Current Plan Banner (Placed at the top of Settings) */}
         <div
           className={`p-4 rounded-2xl border shadow-xs transition-colors space-y-3 ${
             isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
@@ -387,6 +389,189 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 })}
               </div>
             </div>
+          )}
+        </div>
+
+        {/* 2. User Profile Card with Edit Profile (Name, Email, Company Name, Job Title & Delete Account) */}
+        <div
+          className={`p-4 sm:p-5 rounded-2xl border shadow-xs transition-colors space-y-4 ${
+            isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+          }`}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-12 h-12 rounded-2xl bg-[#C44D34]/15 text-[#C44D34] font-extrabold flex items-center justify-center text-sm shrink-0">
+                {initials}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm sm:text-base font-bold text-stone-900 dark:text-white truncate">
+                    {displayName}
+                  </h3>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#C44D34]/10 text-[#C44D34]">
+                    {myRole}
+                  </span>
+                  {currentUser?.jobTitle && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300">
+                      {currentUser.jobTitle}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-wrap text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                  <span className="truncate">{displayEmail}</span>
+                  <span>•</span>
+                  <span className="font-semibold text-stone-700 dark:text-stone-300 inline-flex items-center gap-1">
+                    <Building2 className="w-3 h-3 text-[#C44D34]" />
+                    {activeWsName}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                id="settings-edit-profile-btn"
+                type="button"
+                onClick={() =>
+                  isEditingProfile ? setIsEditingProfile(false) : handleOpenEditProfile()
+                }
+                className={`px-3.5 py-2 sm:py-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                  isEditingProfile
+                    ? 'border-[#C44D34] bg-[#C44D34]/10 text-[#C44D34]'
+                    : isDark
+                    ? 'border-stone-700 bg-[#151C24] text-stone-200 hover:border-[#C44D34]'
+                    : 'border-stone-200 bg-[#FAF8F5] text-stone-800 hover:border-[#C44D34]'
+                }`}
+              >
+                <Pencil className="w-3.5 h-3.5 text-[#C44D34]" />
+                <span>{isEditingProfile ? 'Cancel' : 'Edit Profile'}</span>
+              </button>
+
+              <button
+                onClick={onSignOut}
+                className={`px-3.5 py-2 sm:py-1.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                  isDark
+                    ? 'border-stone-700 text-stone-300 hover:bg-stone-800'
+                    : 'border-stone-200 text-stone-600 hover:bg-stone-100'
+                }`}
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign out</span>
+              </button>
+            </div>
+          </div>
+
+          {isEditingProfile && (
+            <form
+              onSubmit={handleSaveProfile}
+              className={`pt-4 border-t grid grid-cols-1 sm:grid-cols-2 gap-3 animate-fade-in ${
+                isDark ? 'border-stone-800' : 'border-stone-200/80'
+              }`}
+            >
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-400 mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Your full name"
+                  className={`w-full px-3.5 py-2 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#C44D34] ${
+                    isDark
+                      ? 'bg-[#252E38] border-[#34414D] text-white placeholder-stone-500'
+                      : 'bg-stone-50 border-stone-200 text-stone-900 placeholder-stone-400'
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-400 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  className={`w-full px-3.5 py-2 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#C44D34] ${
+                    isDark
+                      ? 'bg-[#252E38] border-[#34414D] text-white placeholder-stone-500'
+                      : 'bg-stone-50 border-stone-200 text-stone-900 placeholder-stone-400'
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-400 mb-1">
+                  Company / Studio Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editCompanyName}
+                  onChange={(e) => setEditCompanyName(e.target.value)}
+                  placeholder="e.g. FirstDraft Studio"
+                  className={`w-full px-3.5 py-2 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#C44D34] ${
+                    isDark
+                      ? 'bg-[#252E38] border-[#34414D] text-white placeholder-stone-500'
+                      : 'bg-stone-50 border-stone-200 text-stone-900 placeholder-stone-400'
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-400 mb-1">
+                  Job Title / Designation (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={editJobTitle}
+                  onChange={(e) => setEditJobTitle(e.target.value)}
+                  placeholder="e.g. Founder & Creative Director"
+                  className={`w-full px-3.5 py-2 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#C44D34] ${
+                    isDark
+                      ? 'bg-[#252E38] border-[#34414D] text-white placeholder-stone-500'
+                      : 'bg-stone-50 border-stone-200 text-stone-900 placeholder-stone-400'
+                  }`}
+                />
+              </div>
+
+              {/* Footer Actions: Delete Account on Left | Cancel & Save Profile on Right */}
+              <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-2 pt-3 mt-1 border-t border-stone-200/70 dark:border-stone-800">
+                <button
+                  type="button"
+                  onClick={onDeleteAccount}
+                  className="px-3.5 py-2 rounded-xl border border-red-200 dark:border-red-950 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete account</span>
+                </button>
+
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingProfile(false)}
+                    className={`px-3.5 py-2 rounded-xl border text-xs font-semibold cursor-pointer ${
+                      isDark
+                        ? 'border-stone-700 text-stone-300 hover:bg-stone-800'
+                        : 'border-stone-200 text-stone-600 hover:bg-stone-100'
+                    }`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-xl bg-[#C44D34] hover:bg-[#A83E28] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors"
+                  >
+                    <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>Save Profile</span>
+                  </button>
+                </div>
+              </div>
+            </form>
           )}
         </div>
 
@@ -660,75 +845,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </button>
           </div>
         )}
-
-        {/* 6. SECOND LAST: Plans & Billing */}
-        <div
-          id="settings-billing-section"
-          className={`p-4 rounded-2xl border shadow-xs transition-colors ${
-            isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-          }`}
-        >
-          <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-2.5">
-            Plans &amp; Billing
-          </h3>
-          <button
-            id="settings-nav-billing"
-            type="button"
-            onClick={onNavigateToBilling}
-            className={`w-full p-3.5 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer group ${
-              isDark
-                ? 'bg-[#161D25] border-[#263240] hover:border-[#C44D34]'
-                : 'bg-[#FAF8F5] border-[#E8E2D8] hover:border-[#C44D34]'
-            }`}
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                <CreditCard className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-bold text-stone-900 dark:text-white group-hover:text-[#C44D34] transition-colors">
-                    Plans &amp; Billing
-                  </span>
-                  <span className="px-2 py-0.5 rounded-md bg-[#C44D34]/15 text-[#C44D34] text-[10px] font-extrabold uppercase">
-                    {planName}
-                  </span>
-                  {subscription?.isTrial && (
-                    <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold uppercase">
-                      {subscription.trialDaysLeft}d Trial
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-stone-500 dark:text-stone-400 truncate mt-0.5">
-                  Manage studio subscription, client quotas, and billing preferences
-                </p>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-[#C44D34] shrink-0" />
-          </button>
-        </div>
-
-        {/* 7. LAST: Delete Account Card */}
-        <div
-          className={`p-4 rounded-2xl border shadow-xs transition-colors ${
-            isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-          }`}
-        >
-          <h3 className="text-xs font-bold uppercase tracking-wider text-red-500 mb-2">
-            Delete account
-          </h3>
-          <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed mb-4">
-            Permanently delete your account along with all your clients and posts. This action cannot be undone.
-          </p>
-
-          <button
-            onClick={onDeleteAccount}
-            className="px-4 py-2 rounded-xl border border-red-200 dark:border-red-950 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Delete account</span>
-          </button>
-        </div>
       </div>
 
       {/* Team Members Pop-Up Modal (List + Role Controls on the Right Side) */}

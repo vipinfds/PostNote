@@ -1,14 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="112" fill="#C44D34" />
-  <rect x="36" y="36" width="440" height="440" rx="84" fill="none" stroke="#FAF7F2" stroke-opacity="0.22" stroke-width="6" />
+  <rect width="512" height="512" rx="112" fill="#FAF7F2" />
+  <rect x="24" y="24" width="464" height="464" rx="92" fill="none" stroke="#E8E2D8" stroke-width="8" />
   <text
-    x="256"
-    y="348"
+    x="228"
+    y="358"
     text-anchor="middle"
-    fill="#FAF7F2"
-    font-family="Georgia, 'Times New Roman', serif"
-    font-weight="bold"
-    font-size="310"
+    fill="#151B21"
+    font-family="'Fraunces', Georgia, 'Times New Roman', serif"
+    font-weight="900"
+    font-size="330"
   >P</text>
-  <circle cx="380" cy="332" r="24" fill="#FAF7F2" />
+  <circle cx="372" cy="336" r="34" fill="#B93822" />
 </svg>

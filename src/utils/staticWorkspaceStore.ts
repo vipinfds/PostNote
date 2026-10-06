@@ -99,6 +99,19 @@ function loadStaticStore(): StaticMultiTenantStore {
       lastUpdated: new Date().toISOString(),
     };
     saveStaticStore(store);
+  } else {
+    const existingIds = new Set(store.workspaces['ws_vipin'].posts.map((p) => p.id));
+    let added = false;
+    for (const seedPost of INITIAL_POSTS) {
+      if (!existingIds.has(seedPost.id)) {
+        store.workspaces['ws_vipin'].posts.push(seedPost);
+        existingIds.add(seedPost.id);
+        added = true;
+      }
+    }
+    if (added) {
+      saveStaticStore(store);
+    }
   }
 
   return store;

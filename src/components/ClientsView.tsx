@@ -13,6 +13,7 @@ import {
   Search,
   FolderKanban,
   ExternalLink,
+  CheckCircle2,
 } from 'lucide-react';
 import { Client, Post, SubscriptionState, PostStatus, Campaign } from '../types';
 import { PLANS } from '../data/pricingData';
@@ -28,7 +29,10 @@ interface ClientsViewProps {
   campaigns?: Campaign[];
   subscription?: SubscriptionState;
   onNavigateToBilling?: () => void;
-  onSelectClient: (client: Client, initialTab?: 'overview' | 'analytics') => void;
+  onSelectClient: (
+    client: Client,
+    initialTab?: 'overview' | 'analytics' | 'approvals' | 'calendar'
+  ) => void;
   onOpenNewClientModal: () => void;
   onEditClient: (client: Client, e: React.MouseEvent) => void;
   onDeleteClient: (clientId: string, e: React.MouseEvent) => void;
@@ -57,6 +61,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 }) => {
   const [sharingClient, setSharingClient] = useState<Client | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [approvalFilter, setApprovalFilter] = useState<'all' | 'needs-approval'>('all');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('postnote_clients_view_mode');
@@ -103,14 +108,35 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     onOpenNewClientModal();
   };
 
+  const totalWaitingApprovalsCount = React.useMemo(
+    () => posts.filter((p) => normalizePostStatus(p.status) === 'In review').length,
+    [posts]
+  );
+
+  const clientsWithApprovalsCount = React.useMemo(
+    () =>
+      clients.filter((c) =>
+        posts.some(
+          (p) => p.clientId === c.id && normalizePostStatus(p.status) === 'In review'
+        )
+      ).length,
+    [clients, posts]
+  );
+
   const filteredClients = clients.filter((c) => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return true;
-    return (
+    const matchesSearch =
+      !query ||
       c.name.toLowerCase().includes(query) ||
       c.handle.toLowerCase().includes(query) ||
-      (c.notes && c.notes.toLowerCase().includes(query))
-    );
+      (c.notes && c.notes.toLowerCase().includes(query));
+    if (!matchesSearch) return false;
+    if (approvalFilter === 'needs-approval') {
+      return posts.some(
+        (p) => p.clientId === c.id && normalizePostStatus(p.status) === 'In review'
+      );
+    }
+    return true;
   });
 
   return (
@@ -125,9 +151,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         <div className="flex items-center gap-2.5">
           <Users className="w-5 h-5 text-[#C44D34] stroke-[2.2]" />
           <div>
-            <h2 className="text-xl font-bold tracking-tight">Clients</h2>
+            <h2 className="text-xl font-bold tracking-tight">Clients & Approvals</h2>
             <p className="text-[11px] text-stone-500 dark:text-stone-400">
-              Manage client workspaces, monthly post progress, active campaigns, and shareable portals
+              Manage client workspaces, client approvals, monthly post progress, active campaigns, and shareable portals
             </p>
           </div>
         </div>
@@ -176,34 +202,81 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         </div>
       </div>
 
-      {/* Plan limit indicator & Search Bar */}
-      <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-        <div
-          className={`py-2 px-3.5 rounded-xl border flex items-center justify-between text-[11px] flex-1 ${
-            isAtLimit
-              ? 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300'
-              : isDark
-              ? 'bg-[#1D242C] border-[#2A3440] text-stone-300'
-              : 'bg-white border-[#E8E4DC] text-stone-600'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <span className="font-semibold">
-              {clients.length} of {currentPlan.limits.clients} clients
-            </span>
-            <span className="opacity-60">•</span>
-            <span className="font-medium">{currentPlan.name} Plan</span>
+      {/* Plan limit indicator, Approval Filter & Search Bar */}
+      <div className="mt-3 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 flex-1">
+          <div
+            className={`py-2 px-3.5 rounded-xl border flex items-center justify-between gap-3 text-[11px] ${
+              isAtLimit
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300'
+                : isDark
+                ? 'bg-[#1D242C] border-[#2A3440] text-stone-300'
+                : 'bg-white border-[#E8E4DC] text-stone-600'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-semibold">
+                {clients.length} of {currentPlan.limits.clients} clients
+              </span>
+              <span className="opacity-60">•</span>
+              <span className="font-medium">{currentPlan.name} Plan</span>
+            </div>
+
+            {onNavigateToBilling && (
+              <button
+                onClick={onNavigateToBilling}
+                className="font-bold text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>{isAtLimit ? 'Upgrade for more' : 'Tiers & Pro'}</span>
+              </button>
+            )}
           </div>
 
-          {onNavigateToBilling && (
+          {/* Client Approval Filter Pills */}
+          <div
+            className={`p-1 rounded-xl border flex items-center gap-1 ${
+              isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+            }`}
+          >
             <button
-              onClick={onNavigateToBilling}
-              className="font-bold text-[#C44D34] hover:underline flex items-center gap-1 cursor-pointer"
+              type="button"
+              onClick={() => setApprovalFilter('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                approvalFilter === 'all'
+                  ? 'bg-[#C44D34] text-white shadow-2xs'
+                  : 'text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200'
+              }`}
             >
-              <Sparkles className="w-3 h-3" />
-              <span>{isAtLimit ? 'Upgrade for more' : 'Tiers & Pro'}</span>
+              All Clients ({clients.length})
             </button>
-          )}
+            <button
+              type="button"
+              onClick={() =>
+                setApprovalFilter((prev) =>
+                  prev === 'needs-approval' ? 'all' : 'needs-approval'
+                )
+              }
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                approvalFilter === 'needs-approval'
+                  ? 'bg-amber-500 text-white shadow-2xs'
+                  : 'text-stone-600 hover:text-stone-900 dark:text-stone-300 dark:hover:text-white'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <span>Needs Client Approval</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold tabular-nums ${
+                  approvalFilter === 'needs-approval'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                }`}
+              >
+                {totalWaitingApprovalsCount} ({clientsWithApprovalsCount}{' '}
+                {clientsWithApprovalsCount === 1 ? 'client' : 'clients'})
+              </span>
+            </button>
+          </div>
         </div>
 
         {/* Quick Search */}
@@ -370,6 +443,29 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     onClick={(e) => e.stopPropagation()}
                     className="flex flex-wrap items-center gap-1.5 shrink-0"
                   >
+                    <button
+                      onClick={() => onSelectClient(client, 'approvals')}
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        inReviewCount > 0
+                          ? 'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white'
+                          : isDark
+                          ? 'border-[#2C3848] bg-[#161E27] text-stone-200 hover:border-[#C44D34] hover:text-[#C44D34]'
+                          : 'border-stone-200 bg-[#FAF8F5] text-stone-700 hover:border-[#C44D34] hover:text-[#C44D34]'
+                      }`}
+                      title={`Review ${client.name} client approvals`}
+                    >
+                      <CheckCircle2
+                        className={`w-3.5 h-3.5 ${
+                          inReviewCount > 0 ? 'text-amber-500' : 'text-emerald-600'
+                        }`}
+                      />
+                      <span>
+                        {inReviewCount > 0
+                          ? `Approvals (${inReviewCount} in review)`
+                          : `Approvals (${approvedCount} approved)`}
+                      </span>
+                    </button>
+
                     {onOpenPortalPreview && (
                       <button
                         onClick={() => onOpenPortalPreview(client, 'overview', false)}
@@ -671,6 +767,20 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                 <div className="mt-4 pt-3 border-t border-stone-100 dark:border-stone-800 flex items-center gap-1.5">
                   <button
+                    onClick={() => onSelectClient(client, 'approvals')}
+                    className={`flex-1 py-1.5 px-2 rounded-xl border text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                      inReviewCount > 0
+                        ? 'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white'
+                        : isDark
+                        ? 'border-[#2C3848] bg-[#161E27] text-stone-200 hover:border-[#C44D34] hover:text-[#C44D34]'
+                        : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-[#C44D34] hover:text-[#C44D34]'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Approvals ({inReviewCount})</span>
+                  </button>
+
+                  <button
                     onClick={() => onSelectClient(client, 'analytics')}
                     className={`flex-1 py-1.5 px-2 rounded-xl border text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
                       isDark
@@ -684,14 +794,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                   <button
                     onClick={() => setSharingClient(client)}
-                    className={`flex-1 py-1.5 px-2 rounded-xl border text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                    className={`py-1.5 px-2 rounded-xl border text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
                       isDark
                         ? 'border-[#2C3848] bg-[#161E27] text-stone-200 hover:border-[#C44D34] hover:text-[#C44D34]'
                         : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-[#C44D34] hover:text-[#C44D34]'
                     }`}
                   >
                     <Share2 className="w-3.5 h-3.5 text-[#C44D34]" />
-                    <span>Share</span>
                   </button>
 
                   {onNewPostForClient && (
