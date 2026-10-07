@@ -41,6 +41,7 @@ interface ContentOverviewViewProps {
   clients: Client[];
   campaigns?: Campaign[];
   onSaveCampaign?: (campaign: Omit<Campaign, 'id'> & { id?: string }) => void;
+  onSelectClientCampaign?: (client: Client, campaignId: string) => void;
   onOpenNewPost: () => void;
   onEditPost: (post: Post) => void;
   onBulkUpdateStatus?: (postIds: string[], newStatus: PostStatus) => void;
@@ -55,6 +56,7 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
   clients,
   campaigns = [],
   onSaveCampaign,
+  onSelectClientCampaign,
   onOpenNewPost,
   onEditPost,
   onBulkUpdateStatus,
@@ -923,19 +925,34 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                     }`}
                   >
                     <div
-                      onClick={() => setExpandedCampaignId(isExpanded ? null : camp.id)}
+                      onClick={() => {
+                        if (client && onSelectClientCampaign) {
+                          onSelectClientCampaign(client, camp.id);
+                        } else {
+                          setExpandedCampaignId(isExpanded ? null : camp.id);
+                        }
+                      }}
                       className="cursor-pointer"
                     >
-                      {/* Top row: Client + Duration + Edit + Expand */}
+                      {/* Top row: Client + Duration + Edit + Open Campaign */}
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs mb-1.5">
                         <div className="flex items-center gap-2">
                           <span
                             className="w-2.5 h-2.5 rounded-full shrink-0"
                             style={{ backgroundColor: client?.color || '#C44D34' }}
                           />
-                          <span className="font-bold text-stone-600 dark:text-stone-300 uppercase tracking-wider text-[10px]">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (client && onSelectClientCampaign) {
+                                onSelectClientCampaign(client, camp.id);
+                              }
+                            }}
+                            className="font-bold text-stone-600 dark:text-stone-300 hover:text-[#C44D34] uppercase tracking-wider text-[10px] cursor-pointer"
+                          >
                             {client ? client.name : camp.clientName || 'All Clients'}
-                          </span>
+                          </button>
                           <span className="text-stone-300 dark:text-stone-700">·</span>
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-500 dark:text-stone-400 tabular-nums">
                             <Calendar className="w-3 h-3 text-[#C44D34]" />
@@ -955,8 +972,8 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                             </button>
                           )}
                           <span className="text-[11px] font-bold text-[#C44D34] flex items-center gap-1">
-                            <BarChart3 className="w-3.5 h-3.5" />
-                            <span>{isExpanded ? 'Hide Analytics' : 'View Analytics'}</span>
+                            <FolderKanban className="w-3.5 h-3.5" />
+                            <span>Open Campaign Page</span>
                           </span>
                           <ChevronRight
                             className={`w-4 h-4 text-stone-400 transition-transform ${

@@ -52,8 +52,8 @@ export const MoreMenuView: React.FC<MoreMenuViewProps> = ({
         {
           type: 'tab',
           id: 'clients',
-          title: 'Clients & Approvals',
-          description: 'Client workspaces, approvals, portal links and handles',
+          title: 'Clients & Campaigns',
+          description: 'Client portals, approvals, campaigns, and handles',
           icon: Users,
           badge:
             waitingApprovalsCount > 0
@@ -63,13 +63,6 @@ export const MoreMenuView: React.FC<MoreMenuViewProps> = ({
               : undefined,
           badgeColor:
             waitingApprovalsCount > 0 ? 'bg-amber-500 text-white' : undefined,
-        },
-        {
-          type: 'tab',
-          id: 'content',
-          title: 'Campaigns',
-          description: 'Client campaigns, timelines and deliverables',
-          icon: FolderKanban,
         },
       ],
     },

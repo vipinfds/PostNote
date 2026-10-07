@@ -62,8 +62,31 @@ export const ClientShareModal: React.FC<ClientShareModalProps> = ({
       typeof window !== 'undefined' && window.location.origin
         ? window.location.origin
         : 'https://postnote.studio';
-    return `${origin}/?portal=${encodeURIComponent(client.id)}&token=${clientSecretToken}`;
-  }, [client.id, clientSecretToken]);
+    const params = new URLSearchParams({
+      portal: client.id,
+      token: clientSecretToken,
+      name: client.name,
+      handle: client.handle,
+      color: client.color,
+    });
+    if (client.socialUrl) {
+      params.set('socialUrl', client.socialUrl);
+    }
+    return `${origin}/?${params.toString()}`;
+  }, [client.id, client.name, client.handle, client.color, client.socialUrl, clientSecretToken]);
+
+  // Automatically sync this client's latest portal snapshot to the server when Share Modal opens
+  React.useEffect(() => {
+    fetch('/api/portals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: client.id,
+        client,
+        posts: clientPosts,
+      }),
+    }).catch(() => {});
+  }, [client, clientPosts]);
 
   const handleCopy = () => {
     if (navigator.clipboard) {

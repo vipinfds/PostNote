@@ -1,6 +1,6 @@
 {
-  "summary": "Plan to (1) rename 'AGENDA & CONTENT QUEUE' to 'CONTENT QUEUE' in HomeView.tsx, remove the Approved Only stage dropdown, and show posts across all stages, (2) remove the 'Needs Client Approval' pill in ClientsView.tsx and combine Campaigns into the Clients tab with a 'Clients (N) | Campaigns (N)' switcher and remove the separate Campaigns menu tab, and (3) unify the internal Client Page with the Unified Client PortalView (adding Edit Client, Share Portal, and New Post actions when viewed internally by the studio).",
-  "updatedAt": "2026-10-06T21:54:16.497018484Z",
+  "summary": "Implementation plan to remove Primary Handle from Client Modal, unify inline client creation in New Post with multi-account social links, remove the 4 stage boxes in Analytics (keeping the 4-stage workflow progress bar, legend, Platform Distribution, and Post Breakdown list), and declutter the Clients tab and Client Portal headers by moving campaign info to a subtle secondary row/footer.",
+  "updatedAt": "2026-10-07T05:32:25.300574013Z",
   "requestFeedback": true,
   "userFacing": true
 }

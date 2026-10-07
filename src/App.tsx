@@ -206,10 +206,13 @@ export default function App() {
   const [activeMoreSubScreen, setActiveMoreSubScreen] = useState<MoreSubScreen | null>(null);
   const [selectedClientDetail, setSelectedClientDetail] = useState<Client | null>(null);
   const [clientDetailTab, setClientDetailTab] = useState<
-    'overview' | 'analytics' | 'approvals' | 'calendar'
+    'overview' | 'analytics' | 'approvals' | 'calendar' | 'upcoming' | 'campaigns'
   >('overview');
+  const [clientDetailCampaignId, setClientDetailCampaignId] = useState<string | null>(null);
   const [portalClient, setPortalClient] = useState<Client | null>(null);
-  const [portalTab, setPortalTab] = useState<'overview' | 'upcoming' | 'analytics' | 'approvals' | 'calendar'>('overview');
+  const [portalTab, setPortalTab] = useState<
+    'overview' | 'upcoming' | 'analytics' | 'approvals' | 'calendar' | 'campaigns'
+  >('overview');
   const [portalIsViewOnly, setPortalIsViewOnly] = useState<boolean>(true);
   const [isLockedPortalSession, setIsLockedPortalSession] = useState<boolean>(false);
 
@@ -546,6 +549,10 @@ export default function App() {
 
         // Clean portalId
         const cleanPortalId = decodeURIComponent(portalId).trim();
+        const socialUrlParam =
+          typeof window !== 'undefined' && window.location.search
+            ? new URLSearchParams(window.location.search).get('socialUrl')
+            : null;
 
         // Find existing client in local state
         let found = clients.find(
@@ -566,33 +573,48 @@ export default function App() {
           }
         }
 
-        // If not found in local memory, try fetching from backend portal registry
-        if (!found) {
-          try {
-            const res = await fetch(`/api/portals/${encodeURIComponent(cleanPortalId)}`);
-            if (res.ok) {
-              const data = await res.json();
-              if (data?.portal?.client) {
-                found = data.portal.client;
-                // Add to client state
-                setClients((prev) => [found!, ...prev.filter((c) => c.id !== found!.id)]);
-                if (data.portal.posts && Array.isArray(data.portal.posts) && data.portal.posts.length > 0) {
-                  setPosts((prevPosts) => {
-                    const existingIds = new Set(prevPosts.map((p) => p.id));
-                    const newPosts = data.portal.posts.filter((p: any) => !existingIds.has(p.id));
-                    return [...newPosts, ...prevPosts];
-                  });
-                }
+        // Always fetch the latest portal data from backend /api/portals/:id so shared client portals stay live-synced
+        try {
+          const res = await fetch(`/api/portals/${encodeURIComponent(cleanPortalId)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.portal?.client) {
+              found = { ...(found || {}), ...data.portal.client };
+              setClients((prev) => [found!, ...prev.filter((c) => c.id !== found!.id)]);
+              if (data.portal.posts && Array.isArray(data.portal.posts) && data.portal.posts.length > 0) {
+                setPosts((prevPosts) => {
+                  const incomingById = new Map(data.portal.posts.map((p: Post) => [p.id, p]));
+                  const updatedExisting = prevPosts.map((p) => incomingById.get(p.id) || p);
+                  const existingIds = new Set(prevPosts.map((p) => p.id));
+                  const newPosts = data.portal.posts.filter((p: Post) => !existingIds.has(p.id));
+                  return [...newPosts, ...updatedExisting];
+                });
+              }
+              if (data.portal.campaigns && Array.isArray(data.portal.campaigns) && data.portal.campaigns.length > 0) {
+                setCampaigns((prevCamps) => {
+                  const incomingCampById = new Map(
+                    data.portal.campaigns.map((c: Campaign) => [c.id, c])
+                  );
+                  const updatedExisting = prevCamps.map((c) => incomingCampById.get(c.id) || c);
+                  const existingIds = new Set(prevCamps.map((c) => c.id));
+                  const newCamps = data.portal.campaigns.filter(
+                    (c: Campaign) => !existingIds.has(c.id)
+                  );
+                  return [...newCamps, ...updatedExisting];
+                });
               }
             }
-          } catch {}
-        }
+          }
+        } catch {}
 
         // If still not found, construct resilient client from URL query parameters
         if (!found) {
           const reconstructedName =
-            clientNameParam || cleanPortalId.replace(/^client-/, '').charAt(0).toUpperCase() + cleanPortalId.replace(/^client-/, '').slice(1);
-          const reconstructedHandle = clientHandleParam || `@${cleanPortalId.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+            clientNameParam ||
+            cleanPortalId.replace(/^client-/, '').charAt(0).toUpperCase() +
+              cleanPortalId.replace(/^client-/, '').slice(1);
+          const reconstructedHandle =
+            clientHandleParam || `@${cleanPortalId.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
           const reconstructedColor = clientColorParam || '#3B82F6';
 
           found = {
@@ -600,6 +622,7 @@ export default function App() {
             name: reconstructedName,
             handle: reconstructedHandle,
             color: reconstructedColor,
+            socialUrl: socialUrlParam || undefined,
             notes: 'Client workspace portal — analytics and live review',
             postsCount: 5,
           };
@@ -631,7 +654,7 @@ export default function App() {
     // Listen to hash changes if client link uses hash routing
     window.addEventListener('hashchange', parseAndSetPortal);
     return () => window.removeEventListener('hashchange', parseAndSetPortal);
-  }, [clients]);
+  }, [clients.length]);
 
   // Tab navigation with light screen loading flash
   const handleSelectTab = (tab: TabType) => {
@@ -981,6 +1004,8 @@ export default function App() {
     handle: string;
     color: string;
     notes?: string;
+    socialUrl?: string;
+    socialLinks?: Client['socialLinks'];
   }) => {
     if (myRole === 'Viewer') {
       showToast('Viewers have read-only access and cannot modify clients');
@@ -999,6 +1024,9 @@ export default function App() {
       showToast('Client updated');
       if (selectedClientDetail?.id === clientData.id) {
         setSelectedClientDetail((prev) => (prev ? { ...prev, ...clientData } : null));
+      }
+      if (portalClient?.id === clientData.id) {
+        setPortalClient((prev) => (prev ? { ...prev, ...clientData } : null));
       }
       return updatedClient;
     } else {
@@ -1596,12 +1624,18 @@ export default function App() {
 
     // 0. If Client Portal View is open (live client mode)
     if (portalClient) {
+      const activePortalClient =
+        clients.find((c) => c.id === portalClient.id) || portalClient;
       // STRICT CLIENT ISOLATION: Only posts belonging to this client are passed
-      const clientScopedPosts = posts.filter((p) => p.clientId === portalClient.id);
+      const clientScopedPosts = posts.filter(
+        (p) =>
+          p.clientId === activePortalClient.id ||
+          p.clientName.toLowerCase() === activePortalClient.name.toLowerCase()
+      );
 
       return (
         <ClientPortalView
-          client={portalClient}
+          client={activePortalClient}
           posts={clientScopedPosts}
           campaigns={campaigns}
           subscription={subscription}
@@ -1670,6 +1704,21 @@ export default function App() {
 
             showToast('Client Feedback submitted & studio team notified');
           }}
+          onEditClient={
+            isLockedPortalSession
+              ? undefined
+              : (client, e) => {
+                  e.stopPropagation();
+                  setEditingClient(client);
+                  setIsClientModalOpen(true);
+                }
+          }
+          onNewPostForClient={
+            isLockedPortalSession
+              ? undefined
+              : (cId) => handleOpenNewPost(undefined, cId)
+          }
+          onEditPost={isLockedPortalSession ? undefined : handleEditPost}
           onExit={
             isLockedPortalSession
               ? undefined
@@ -1710,24 +1759,32 @@ export default function App() {
     // 3. Tab: CLIENTS
     if (activeTab === 'clients') {
       if (selectedClientDetail) {
+        const liveSelectedClient =
+          clients.find((c) => c.id === selectedClientDetail.id) || selectedClientDetail;
         return (
-          <ClientDetailView
-            client={selectedClientDetail}
+          <ClientPortalView
+            client={liveSelectedClient}
             posts={posts}
             campaigns={campaigns}
+            subscription={subscription}
             initialTab={clientDetailTab}
-            onBack={() => setSelectedClientDetail(null)}
+            initialCampaignId={clientDetailCampaignId}
+            isViewOnly={false}
+            isLockedPortal={false}
+            onApprovePost={handleApprovePost}
+            onRequestChanges={(postId, notes) => handleRequestChanges(postId, notes)}
+            onAddClientFeedback={(postId, comment) => handleAddPostComment(postId, comment)}
+            onReschedulePost={handleReschedulePost}
+            onEditClient={(client, e) => {
+              e.stopPropagation();
+              setEditingClient(client);
+              setIsClientModalOpen(true);
+            }}
             onNewPostForClient={(cId) => handleOpenNewPost(undefined, cId)}
             onEditPost={handleEditPost}
-            onApprovePost={handleApprovePost}
-            onRequestChanges={handleRequestChanges}
-            onAddPostComment={handleAddPostComment}
-            onReschedulePost={handleReschedulePost}
-            onOpenPortal={(client, tab = 'overview', isViewOnly = true) => {
-              setPortalClient(client);
-              setPortalTab(tab);
-              setPortalIsViewOnly(isViewOnly);
-              setIsLockedPortalSession(false);
+            onExit={() => {
+              setSelectedClientDetail(null);
+              setClientDetailCampaignId(null);
             }}
             isDark={isDark}
           />
@@ -1740,9 +1797,10 @@ export default function App() {
           campaigns={campaigns}
           subscription={subscription}
           onNavigateToBilling={handleNavigateToBilling}
-          onSelectClient={(client, initialTab = 'overview') => {
+          onSelectClient={(client, initialTab = 'overview', initialCampaignId) => {
             setSelectedClientDetail(client);
             setClientDetailTab(initialTab);
+            setClientDetailCampaignId(initialCampaignId || null);
           }}
           onOpenNewClientModal={() => {
             setEditingClient(null);
@@ -1755,11 +1813,11 @@ export default function App() {
           }}
           onDeleteClient={handleDeleteClient}
           onNewPostForClient={(cId) => handleOpenNewPost(undefined, cId)}
-          onOpenPortalPreview={(client, tab = 'overview', isViewOnly = true) => {
-            setPortalClient(client);
-            setPortalTab(tab);
-            setPortalIsViewOnly(isViewOnly);
-            setIsLockedPortalSession(false);
+          onSaveCampaign={handleSaveCampaign}
+          onEditPost={handleEditPost}
+          onOpenPortalPreview={(client, tab = 'overview') => {
+            setSelectedClientDetail(client);
+            setClientDetailTab(tab);
           }}
           isDark={isDark}
         />
@@ -1774,6 +1832,12 @@ export default function App() {
           clients={clients}
           campaigns={campaigns}
           onSaveCampaign={handleSaveCampaign}
+          onSelectClientCampaign={(client, campaignId) => {
+            setActiveTab('clients');
+            setSelectedClientDetail(client);
+            setClientDetailTab('campaigns');
+            setClientDetailCampaignId(campaignId);
+          }}
           onOpenNewPost={() => handleOpenNewPost()}
           onEditPost={handleEditPost}
           onBulkUpdateStatus={handleBulkUpdatePostsStatus}
@@ -1826,6 +1890,13 @@ export default function App() {
             clients={clients}
             campaigns={campaigns}
             onSaveCampaign={handleSaveCampaign}
+            onSelectClientCampaign={(client, campaignId) => {
+              setActiveTab('clients');
+              setActiveMoreSubScreen(null);
+              setSelectedClientDetail(client);
+              setClientDetailTab('campaigns');
+              setClientDetailCampaignId(campaignId);
+            }}
             onOpenNewPost={() => handleOpenNewPost()}
             onEditPost={handleEditPost}
             onBulkUpdateStatus={handleBulkUpdatePostsStatus}

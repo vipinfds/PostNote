@@ -101,11 +101,6 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({
       secondaryBadge:
         waitingApprovalsCount > 0 ? `${waitingApprovalsCount} review` : undefined,
     },
-    {
-      id: 'content' as MainTab,
-      label: 'Campaigns',
-      icon: FolderKanban,
-    },
   ];
 
   const workflowItems: Array<{

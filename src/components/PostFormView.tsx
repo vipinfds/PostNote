@@ -25,10 +25,13 @@ import {
   UserCheck,
   Clock,
   Bell,
+  ExternalLink,
 } from 'lucide-react';
 import {
   Post,
   Client,
+  ClientSocialLink,
+  Platform,
   Campaign,
   PostCategory,
   PostPlatform,
@@ -70,6 +73,8 @@ interface PostFormViewProps {
     handle: string;
     color: string;
     notes?: string;
+    socialUrl?: string;
+    socialLinks?: ClientSocialLink[];
   }) => Client | void;
   onDelete?: (postId: string) => void;
   onApprovePost?: (postId: string) => void;
@@ -205,29 +210,97 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
     clients.length === 0 && !isExistingPost
   );
   const [newClientName, setNewClientName] = useState('');
-  const [newClientHandle, setNewClientHandle] = useState('');
   const [newClientColor, setNewClientColor] = useState('#C44D34');
+  const [newClientSocialLinks, setNewClientSocialLinks] = useState<ClientSocialLink[]>([]);
+  const [newClientDraftPlatform, setNewClientDraftPlatform] = useState<Platform>('Instagram');
+  const [newClientDraftLabel, setNewClientDraftLabel] = useState('');
+  const [newClientDraftUrl, setNewClientDraftUrl] = useState('');
+
+  const normalizeInlineUrl = (raw: string): string => {
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    return trimmed.startsWith('http://') || trimmed.startsWith('https://')
+      ? trimmed
+      : `https://${trimmed}`;
+  };
+
+  const detectInlinePlatform = (url: string, fallback: Platform): Platform => {
+    const lower = url.toLowerCase();
+    if (lower.includes('linkedin')) return 'LinkedIn';
+    if (lower.includes('twitter') || lower.includes('x.com')) return 'Twitter';
+    if (lower.includes('tiktok')) return 'TikTok';
+    if (lower.includes('facebook') || lower.includes('fb.com')) return 'Facebook';
+    if (lower.includes('youtube') || lower.includes('youtu.be')) return 'YouTube';
+    if (lower.includes('instagram') || lower.includes('instagr.am')) return 'Instagram';
+    return fallback;
+  };
+
+  const handleAddInlineClientLink = () => {
+    const formatted = normalizeInlineUrl(newClientDraftUrl);
+    if (!formatted) return;
+    const autoPlatform = detectInlinePlatform(formatted, newClientDraftPlatform);
+    const cleanLabel = newClientDraftLabel.trim();
+    setNewClientSocialLinks((prev) => [
+      ...prev,
+      {
+        platform: newClientDraftPlatform !== 'Instagram' ? newClientDraftPlatform : autoPlatform,
+        url: formatted,
+        ...(cleanLabel ? { label: cleanLabel, handle: cleanLabel } : {}),
+      },
+    ]);
+    setNewClientDraftLabel('');
+    setNewClientDraftUrl('');
+  };
+
+  const handleRemoveInlineClientLink = (idx: number) => {
+    setNewClientSocialLinks((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   const handleCreateInlineClient = () => {
     if (!newClientName.trim() || !onCreateClient) return;
+
+    const finalLinks = [...newClientSocialLinks];
+    if (newClientDraftUrl.trim()) {
+      const extraUrl = normalizeInlineUrl(newClientDraftUrl);
+      if (extraUrl) {
+        const autoPlat = detectInlinePlatform(extraUrl, newClientDraftPlatform);
+        const cleanLabel = newClientDraftLabel.trim();
+        finalLinks.push({
+          platform: newClientDraftPlatform !== 'Instagram' ? newClientDraftPlatform : autoPlat,
+          url: extraUrl,
+          ...(cleanLabel ? { label: cleanLabel, handle: cleanLabel } : {}),
+        });
+      }
+    }
+
     const rawHandle =
-      newClientHandle.trim() ||
+      finalLinks[0]?.label ||
+      finalLinks[0]?.handle ||
       newClientName
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9_]/g, '');
-    const formattedHandle = rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`;
+    const formattedHandle = rawHandle
+      ? rawHandle.startsWith('@')
+        ? rawHandle
+        : `@${rawHandle}`
+      : '';
+
     const created = onCreateClient({
       name: newClientName.trim(),
       handle: formattedHandle,
       color: newClientColor,
       notes: '',
+      socialUrl: finalLinks[0]?.url || undefined,
+      socialLinks: finalLinks,
     });
     if (created && created.id) {
       setClientId(created.id);
     }
     setNewClientName('');
-    setNewClientHandle('');
+    setNewClientSocialLinks([]);
+    setNewClientDraftLabel('');
+    setNewClientDraftUrl('');
     setIsAddingNewClient(false);
   };
 
@@ -1112,7 +1185,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                       value={c.id}
                       className="bg-white dark:bg-[#1D242C] text-stone-800 dark:text-stone-200"
                     >
-                      {c.name} ({c.handle})
+                      {c.name}
                     </option>
                   ))}
                   <option
@@ -1123,7 +1196,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                   </option>
                 </select>
 
-                {/* Inline Quick Add Client Drawer */}
+                {/* Inline Quick Add Client Drawer (Synced with Edit Client & Social Accounts) */}
                 {isAddingNewClient && (
                   <div
                     className={`mt-2.5 p-3.5 rounded-2xl border space-y-3 animate-fade-in ${
@@ -1132,7 +1205,7 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#C44D34]">
-                        Create New Client Directly
+                        New Client & Social Accounts
                       </span>
                       {clients.length > 0 && (
                         <button
@@ -1145,40 +1218,135 @@ export const PostFormView: React.FC<PostFormViewProps> = ({
                       )}
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1">
-                          Client / Brand Name *
-                        </label>
-                        <input
-                          type="text"
-                          value={newClientName}
-                          onChange={(e) => setNewClientName(e.target.value)}
-                          placeholder="e.g. Acme Studio"
-                          maxLength={100}
-                          className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#C44D34] ${
-                            isDark
-                              ? 'bg-[#222B35] border-[#32404E] text-white'
-                              : 'bg-white border-stone-200 text-stone-900'
-                          }`}
-                        />
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1">
+                        Client / Brand Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={newClientName}
+                        onChange={(e) => setNewClientName(e.target.value)}
+                        placeholder="e.g. Acme Studio"
+                        maxLength={100}
+                        className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#C44D34] ${
+                          isDark
+                            ? 'bg-[#222B35] border-[#32404E] text-white'
+                            : 'bg-white border-stone-200 text-stone-900'
+                        }`}
+                      />
+                    </div>
+
+                    {/* Multi-Account Social Links Builder */}
+                    <div
+                      className={`p-3 rounded-xl border space-y-2 ${
+                        isDark ? 'bg-[#131920] border-[#283340]' : 'bg-white border-[#E8E2D5]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 flex items-center gap-1">
+                          <LinkIcon className="w-3 h-3 text-[#C44D34]" />
+                          <span>Social Account Links ({newClientSocialLinks.length})</span>
+                        </span>
+                        <span className="text-[10px] font-semibold text-[#C44D34]">
+                          1-Click Redirect
+                        </span>
                       </div>
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1">
-                          Social Handle
-                        </label>
-                        <input
-                          type="text"
-                          value={newClientHandle}
-                          onChange={(e) => setNewClientHandle(e.target.value)}
-                          placeholder="@acmestudio"
-                          maxLength={100}
-                          className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#C44D34] ${
+
+                      {newClientSocialLinks.length > 0 && (
+                        <div className="space-y-1.5">
+                          {newClientSocialLinks.map((lnk, idx) => (
+                            <div
+                              key={`${lnk.platform}-${idx}`}
+                              className={`px-2.5 py-1.5 rounded-lg border flex items-center justify-between gap-2 text-xs ${
+                                isDark
+                                  ? 'bg-[#1D252F] border-[#2C3847]'
+                                  : 'bg-stone-50 border-stone-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <PlatformLogo platform={lnk.platform} size="xs" showLabel={false} />
+                                <span className="font-bold truncate">{lnk.platform}</span>
+                                <span className="text-[10px] text-stone-400 truncate">
+                                  ({lnk.url})
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <a
+                                  href={lnk.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1 text-[#C44D34] hover:underline"
+                                  title="Test link"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveInlineClientLink(idx)}
+                                  className="p-1 text-stone-400 hover:text-red-500 cursor-pointer"
+                                  title="Remove link"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5">
+                        <select
+                          value={newClientDraftPlatform}
+                          onChange={(e) => setNewClientDraftPlatform(e.target.value as Platform)}
+                          className={`px-2 py-1.5 rounded-lg border text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#C44D34] ${
                             isDark
                               ? 'bg-[#222B35] border-[#32404E] text-white'
-                              : 'bg-white border-stone-200 text-stone-900'
+                              : 'bg-stone-50 border-stone-200 text-stone-900'
+                          }`}
+                        >
+                          {(
+                            [
+                              'Instagram',
+                              'LinkedIn',
+                              'Twitter',
+                              'TikTok',
+                              'Facebook',
+                              'YouTube',
+                              'Other',
+                            ] as Platform[]
+                          ).map((p) => (
+                            <option key={p} value={p}>
+                              {p}
+                            </option>
+                          ))}
+                        </select>
+
+                        <input
+                          type="text"
+                          value={newClientDraftUrl}
+                          onChange={(e) => setNewClientDraftUrl(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddInlineClientLink();
+                            }
+                          }}
+                          placeholder="Paste profile URL (e.g. instagram.com/brand)"
+                          className={`flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-[#C44D34] ${
+                            isDark
+                              ? 'bg-[#222B35] border-[#32404E] text-white placeholder-stone-500'
+                              : 'bg-stone-50 border-stone-200 text-stone-900 placeholder-stone-400'
                           }`}
                         />
+
+                        <button
+                          type="button"
+                          onClick={handleAddInlineClientLink}
+                          className="px-2.5 py-1.5 rounded-lg bg-[#181E24] hover:bg-black text-white text-[11px] font-bold flex items-center justify-center gap-1 shrink-0 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>Add Link</span>
+                        </button>
                       </div>
                     </div>
 

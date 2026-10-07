@@ -58,12 +58,21 @@ export type Platform =
 
 export type PostPlatform = Platform;
 
+export interface ClientSocialLink {
+  platform: Platform;
+  url: string;
+  handle?: string;
+  label?: string;
+}
+
 export interface Client {
   id: string;
   name: string;
   handle: string;
   color: string;
   notes?: string;
+  socialUrl?: string;
+  socialLinks?: ClientSocialLink[];
   postsCount?: number;
   createdAt?: string;
 }

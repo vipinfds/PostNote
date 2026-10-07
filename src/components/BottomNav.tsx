@@ -51,13 +51,6 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       tab: 'clients',
     },
     {
-      id: 'content',
-      label: 'Campaigns',
-      icon: FolderKanban,
-      type: 'tab',
-      tab: 'content',
-    },
-    {
       id: 'ideas',
       label: 'Ideas Bank',
       icon: Lightbulb,
@@ -119,7 +112,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           : 'bg-[#FAF7F2]/95 border-[#EAE5DC] text-[#8C827A]'
       }`}
     >
-      <div className="grid grid-cols-6 items-center max-w-xl mx-auto">
+      <div className="grid grid-cols-5 items-center max-w-xl mx-auto">
         {navItems.map((item) => {
           const isActive = isItemActive(item);
           const Icon = item.icon;

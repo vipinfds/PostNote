@@ -2806,16 +2806,81 @@ Be concise, friendly, and helpful.`;
   });
 
   app.get('/api/portals/:id', (req, res) => {
-    const id = req.params.id;
-    const found = sharedPortalsMap.get(id);
+    const rawId = decodeURIComponent(req.params.id || '').trim();
+    const lowerId = rawId.toLowerCase();
+
+    // 1. Check live workspaceStore first so the Client Portal always reflects the latest posts, campaigns, and social URLs
+    const allClients: Client[] = [...(workspaceStore.clients || [])];
+    const allPosts: Post[] = [...(workspaceStore.posts || [])];
+    const allCampaigns: any[] = [...(workspaceStore.campaigns || [])];
+
+    if (workspaceStore.workspaces) {
+      for (const ws of Object.values(workspaceStore.workspaces)) {
+        if (Array.isArray(ws.clients)) {
+          for (const c of ws.clients) {
+            const idx = allClients.findIndex((existing) => existing.id === c.id);
+            if (idx >= 0) allClients[idx] = { ...allClients[idx], ...c };
+            else allClients.push(c);
+          }
+        }
+        if (Array.isArray(ws.posts)) {
+          for (const p of ws.posts) {
+            const idx = allPosts.findIndex((existing) => existing.id === p.id);
+            if (idx >= 0) allPosts[idx] = p;
+            else allPosts.push(p);
+          }
+        }
+        if (Array.isArray(ws.campaigns)) {
+          for (const camp of ws.campaigns) {
+            const idx = allCampaigns.findIndex((existing) => existing.id === camp.id);
+            if (idx >= 0) allCampaigns[idx] = camp;
+            else allCampaigns.push(camp);
+          }
+        }
+      }
+    }
+
+    const liveClient = allClients.find(
+      (c) =>
+        c.id.toLowerCase() === lowerId ||
+        c.handle.replace('@', '').toLowerCase() === lowerId ||
+        c.name.toLowerCase() === lowerId ||
+        c.id.toLowerCase().includes(lowerId) ||
+        c.name.toLowerCase().includes(lowerId)
+    );
+
+    if (liveClient) {
+      const livePosts = allPosts.filter(
+        (p) =>
+          p.clientId === liveClient.id ||
+          p.clientName.toLowerCase() === liveClient.name.toLowerCase()
+      );
+      const liveCampaigns = allCampaigns.filter(
+        (camp) =>
+          camp.clientId === liveClient.id ||
+          (camp.clientName && camp.clientName.toLowerCase() === liveClient.name.toLowerCase())
+      );
+      return res.json({
+        portal: {
+          id: liveClient.id,
+          client: liveClient,
+          posts: livePosts,
+          campaigns: liveCampaigns,
+          updatedAt: new Date().toISOString(),
+        },
+      });
+    }
+
+    // 2. Fallback to sharedPortalsMap
+    const found = sharedPortalsMap.get(rawId);
     if (found) {
       return res.json({ portal: found });
     }
     for (const p of sharedPortalsMap.values()) {
       if (
-        p.client?.id === id ||
-        p.client?.handle?.replace('@', '').toLowerCase() === id.toLowerCase() ||
-        p.client?.name?.toLowerCase() === id.toLowerCase()
+        p.client?.id === rawId ||
+        p.client?.handle?.replace('@', '').toLowerCase() === lowerId ||
+        p.client?.name?.toLowerCase() === lowerId
       ) {
         return res.json({ portal: p });
       }
@@ -2893,15 +2958,6 @@ ${text}
       process.argv[1]?.includes('server.cjs') ||
       !process.argv[1]?.endsWith('server.ts'));
 
-  // Bind to PORT immediately so Cloud Run startup probe passes without waiting for async Vite init
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
-    console.log(`[Multi-AI Hub] MCP (Claude/Cursor), OpenAPI (ChatGPT), and Gemini Copilot ready`);
-    if (process.env.ENABLE_AUTO_TUNNEL === 'true') {
-      initializeActiveTunnel();
-    }
-  });
-
   if (isProdRuntime) {
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
@@ -2946,6 +3002,14 @@ ${text}
       });
     }
   }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
+    console.log(`[Multi-AI Hub] MCP (Claude/Cursor), OpenAPI (ChatGPT), and Gemini Copilot ready`);
+    if (process.env.ENABLE_AUTO_TUNNEL === 'true') {
+      initializeActiveTunnel();
+    }
+  });
 }
 
 process.on('uncaughtException', (err) => {

@@ -94,11 +94,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       secondaryBadge:
         waitingApprovalsCount > 0 ? `${waitingApprovalsCount} review` : undefined,
     },
-    {
-      id: 'content' as MainTab,
-      label: 'Campaigns',
-      icon: FolderKanban,
-    },
   ];
 
   const workflowNavItems: Array<{

@@ -325,21 +325,21 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
         </div>
       </div>
 
-      {/* MAIN TOPPER: 4-STAGE WORKFLOW BREAKDOWN */}
+      {/* MAIN TOPPER: 4-STAGE WORKFLOW BREAKDOWN (Progress Bar & Interactive Legend Only) */}
       <div
         id="analytics-workflow-breakdown-card"
-        className={`mt-3.5 p-4 rounded-3xl border shadow-xs transition-all ${
+        className={`mt-3.5 p-4 sm:p-5 rounded-3xl border shadow-xs transition-all ${
           isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
         }`}
       >
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div>
             <h3 className="text-xs font-extrabold uppercase tracking-wider text-stone-500 dark:text-stone-300">
               4-STAGE WORKFLOW BREAKDOWN{' '}
               {activeClient ? `• ${activeClient.name.toUpperCase()}` : ''}
             </h3>
             <p className="text-[11px] text-stone-400">
-              Click any color segment or stage card to filter Platform Distribution & Post List below (click away to reset)
+              Click any progress segment or stage below to filter Platform Distribution & Post List
             </p>
           </div>
 
@@ -361,39 +361,44 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           </div>
         </div>
 
-        {/* Clickable Multi-Color Segmented Pipeline Bar */}
-        <div className="mb-3">
+        {/* Clickable Multi-Color Segmented Pipeline Progress Bar */}
+        <div>
           <div className="w-full h-4 rounded-xl bg-stone-100 dark:bg-stone-800 overflow-hidden flex gap-1 p-0.5">
-            {statusData.map((item) => {
-              const isSelected = selectedStage === item.status;
-              if (item.count === 0) return null;
-              return (
-                <button
-                  key={item.status}
-                  type="button"
-                  onClick={(e) => handleToggleStage(item.status, e)}
-                  title={`Filter by ${item.status}: ${item.count} posts (${item.percent}%)`}
-                  className={`h-full first:rounded-l-lg last:rounded-r-lg transition-all duration-300 cursor-pointer ${
-                    isSelected
-                      ? 'ring-2 ring-offset-1 ring-stone-900 dark:ring-white scale-y-105'
-                      : selectedStage
-                      ? 'opacity-40 hover:opacity-85'
-                      : 'hover:opacity-90'
-                  }`}
-                  style={{
-                    width: `${Math.max(item.percent, 8)}%`,
-                    backgroundColor: item.hex,
-                  }}
-                />
-              );
-            })}
+            {totalDeliverables === 0 ? (
+              <div className="w-full h-full rounded-lg bg-stone-200 dark:bg-stone-700" />
+            ) : (
+              statusData.map((item) => {
+                const isSelected = selectedStage === item.status;
+                if (item.count === 0) return null;
+                return (
+                  <button
+                    key={item.status}
+                    type="button"
+                    onClick={(e) => handleToggleStage(item.status, e)}
+                    title={`Filter by ${item.status}: ${item.count} posts (${item.percent}%)`}
+                    className={`h-full first:rounded-l-lg last:rounded-r-lg transition-all duration-300 cursor-pointer ${
+                      isSelected
+                        ? 'ring-2 ring-offset-1 ring-stone-900 dark:ring-white scale-y-105'
+                        : selectedStage
+                        ? 'opacity-40 hover:opacity-85'
+                        : 'hover:opacity-90'
+                    }`}
+                    style={{
+                      width: `${Math.max(item.percent, 8)}%`,
+                      backgroundColor: item.hex,
+                    }}
+                  />
+                );
+              })
+            )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-stone-400 mt-2 tabular-nums">
-            <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-stone-500 dark:text-stone-400 mt-3 tabular-nums">
+            <div className="flex items-center gap-4 flex-wrap">
               {statusData.map((item) => (
                 <button
                   key={item.status}
+                  id={`analytics-stage-${item.status.toLowerCase().replace(/\s+/g, '-')}`}
                   type="button"
                   onClick={(e) => handleToggleStage(item.status, e)}
                   className={`inline-flex items-center gap-1.5 font-bold cursor-pointer transition-opacity ${
@@ -403,12 +408,12 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                   }`}
                 >
                   <span
-                    className="w-2 h-2 rounded-full shrink-0"
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
                     style={{ backgroundColor: item.hex }}
                   />
-                  <span>
-                    {item.status}: {item.count} ({item.percent}%)
-                  </span>
+                  <span>{item.status}:</span>
+                  <strong style={{ color: item.hex }}>{item.count}</strong>
+                  <span className="text-[11px] opacity-75">({item.percent}%)</span>
                 </button>
               ))}
             </div>
@@ -423,62 +428,6 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               </button>
             )}
           </div>
-        </div>
-
-        {/* 4 Compact Interactive Stage Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 tabular-nums">
-          {statusData.map((item) => {
-            const isSelected = selectedStage === item.status;
-
-            return (
-              <button
-                key={item.status}
-                id={`analytics-stage-${item.status.toLowerCase().replace(/\s+/g, '-')}`}
-                type="button"
-                onClick={(e) => handleToggleStage(item.status, e)}
-                className={`w-full text-left p-3 rounded-2xl border transition-all cursor-pointer group ${
-                  isSelected
-                    ? 'border-[#C44D34] ring-2 ring-[#C44D34]/30 bg-[#C44D34]/[0.06]'
-                    : selectedStage
-                    ? isDark
-                      ? 'bg-[#161D25]/60 border-[#25303E] opacity-60 hover:opacity-100'
-                      : 'bg-[#FAF8F5]/60 border-[#ECE8E0] opacity-60 hover:opacity-100'
-                    : isDark
-                    ? 'bg-[#161D25] border-[#25303E] hover:border-[#C44D34]/60'
-                    : 'bg-[#FAF8F5] border-[#ECE8E0] hover:border-[#C44D34]/60'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <StatusStageBadge status={item.status} size="xs" />
-                  <span className="text-[11px] font-bold text-stone-400">
-                    {item.percent}%
-                  </span>
-                </div>
-
-                <div className="flex items-baseline justify-between mb-1.5">
-                  <span
-                    className="text-xl font-black"
-                    style={{ color: item.hex }}
-                  >
-                    {item.count}
-                  </span>
-                  <span className="text-[10px] font-bold text-[#C44D34]">
-                    {isSelected ? 'Filtered' : 'Filter'}
-                  </span>
-                </div>
-
-                <div className="w-full h-1.5 rounded-full bg-stone-200/70 dark:bg-stone-800 overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{
-                      width: `${item.percent}%`,
-                      backgroundColor: item.hex,
-                    }}
-                  />
-                </div>
-              </button>
-            );
-          })}
         </div>
       </div>
 

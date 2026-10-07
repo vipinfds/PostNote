@@ -66,8 +66,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [selectedDayDate, setSelectedDayDate] = useState<string>(() => todayParts.dateStr);
   const [selectedClientId, setSelectedClientId] = useState<string>('ALL');
   const [agendaRangeFilter, setAgendaRangeFilter] = useState<'upcoming' | 'past' | 'all'>('upcoming');
-  // Default to 'Approved' as requested, switchable via dropdown
-  const [agendaStageFilter, setAgendaStageFilter] = useState<'All' | PostStatus>('Approved');
+  // Show all stages in CONTENT QUEUE
+  const [agendaStageFilter, setAgendaStageFilter] = useState<'All' | PostStatus>('All');
   const [agendaSearchQuery, setAgendaSearchQuery] = useState<string>('');
   const [isAgendaSearchOpen, setIsAgendaSearchOpen] = useState<boolean>(false);
   const [selectedPostIds, setSelectedPostIds] = useState<string[]>([]);
@@ -715,57 +715,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
       {/* 2. Unified Agenda & Content Queue Section Directly Below Calendar & Today's Schedule */}
       <div className="mt-6 sm:mt-7">
         <div className="flex flex-col gap-3 border-b border-stone-300/70 dark:border-stone-800 pb-3 mb-4 px-1">
-          {/* Single Clean Header Row: Title + Stage View Dropdown on Left | Search Icon + Upcoming/Past/All on Right End */}
+          {/* Single Clean Header Row: CONTENT QUEUE Title on Left | Search Icon + Upcoming/Past/All Dropdown on Right End */}
           <div className="flex items-center justify-between gap-2 flex-nowrap overflow-x-auto no-scrollbar">
             <div className="flex items-center gap-2.5 shrink-0">
               <span
                 id="subtab-agenda"
                 className="text-xs font-bold tracking-widest uppercase text-[#C44D34] whitespace-nowrap"
               >
-                AGENDA & CONTENT QUEUE •{' '}
+                CONTENT QUEUE •{' '}
                 {selectedClientObj ? selectedClientObj.name : 'ALL CLIENTS'}
               </span>
-
-              {/* Stage View Dropdown (Defaults to Approved) */}
-              <div className="flex items-center gap-1.5 shrink-0">
-                <label
-                  htmlFor="agenda-stage-dropdown"
-                  className="text-[11px] font-bold text-stone-400 uppercase tracking-wider whitespace-nowrap"
-                >
-                  View:
-                </label>
-                <select
-                  id="agenda-stage-dropdown"
-                  value={agendaStageFilter}
-                  onChange={(e) =>
-                    setAgendaStageFilter(e.target.value as 'All' | PostStatus)
-                  }
-                  className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#C44D34] transition-colors shrink-0 ${
-                    isDark
-                      ? 'bg-[#1D242C] border-[#2A3440] text-stone-100'
-                      : 'bg-white border-[#E8E4DC] text-stone-800 shadow-2xs'
-                  }`}
-                >
-                  <option value="Approved">
-                    Approved Only ({agendaStageCounts.Approved})
-                  </option>
-                  <option value="All">
-                    All Stages ({agendaStageCounts.All})
-                  </option>
-                  <option value="Planned">
-                    Planned ({agendaStageCounts.Planned})
-                  </option>
-                  <option value="In review">
-                    In review ({agendaStageCounts['In review']})
-                  </option>
-                  <option value="Scheduled">
-                    Scheduled ({agendaStageCounts.Scheduled})
-                  </option>
-                </select>
-              </div>
             </div>
 
-            {/* Right End: Search Icon (Expandable) + Segmented Date-Range Toggle (Upcoming | Past | All) */}
+            {/* Right End: Search Icon (Expandable) + Date-Range Dropdown (Upcoming | Past | All) */}
             <div className="flex items-center justify-end gap-2 ml-auto shrink-0">
               {/* Compact Search Icon Toggle */}
               {isAgendaSearchOpen || agendaSearchQuery ? (

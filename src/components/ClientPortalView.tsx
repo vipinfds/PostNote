@@ -25,6 +25,10 @@ import {
   ChevronLeft,
   List,
   GripVertical,
+  Pencil,
+  Share2,
+  Plus,
+  ArrowLeft,
 } from 'lucide-react';
 import { Client, Post, Campaign, SubscriptionState, PostStatus, MediaItem } from '../types';
 import {
@@ -35,6 +39,7 @@ import {
   normalizePostStatus,
 } from '../utils/theme';
 import { INITIAL_CAMPAIGNS } from '../data/initialData';
+import { ClientShareModal } from './ClientShareModal';
 import { StatusStageBadge } from './StatusStageBadge';
 import { MediaCarousel } from './MediaCarousel';
 import { PlatformLogo } from './PlatformLogo';
@@ -45,7 +50,8 @@ export type ClientPortalTab =
   | 'upcoming'
   | 'analytics'
   | 'approvals'
-  | 'calendar';
+  | 'calendar'
+  | 'campaigns';
 
 interface ClientPortalViewProps {
   client: Client;
@@ -53,12 +59,16 @@ interface ClientPortalViewProps {
   campaigns?: Campaign[];
   subscription?: SubscriptionState;
   initialTab?: ClientPortalTab;
+  initialCampaignId?: string | null;
   isViewOnly?: boolean;
   isLockedPortal?: boolean;
   onApprovePost: (postId: string) => void;
   onRequestChanges: (postId: string, notes?: string, clientAuthorName?: string) => void;
   onAddClientFeedback?: (postId: string, comment: string, clientAuthorName?: string) => void;
   onReschedulePost?: (postId: string, newDateStr: string) => void;
+  onEditClient?: (client: Client, e: React.MouseEvent) => void;
+  onNewPostForClient?: (clientId: string) => void;
+  onEditPost?: (post: Post) => void;
   onExit?: () => void;
   isDark?: boolean;
 }
@@ -75,25 +85,23 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   posts,
   campaigns = INITIAL_CAMPAIGNS,
   initialTab = 'overview',
+  initialCampaignId = null,
   isLockedPortal = false,
   onApprovePost,
   onRequestChanges,
   onAddClientFeedback,
   onReschedulePost,
+  onEditClient,
+  onNewPostForClient,
+  onEditPost,
   onExit,
   isDark,
 }) => {
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [draggedPostId, setDraggedPostId] = useState<string | null>(null);
   const [dragOverDateStr, setDragOverDateStr] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<
-    'overview' | 'approvals' | 'upcoming' | 'calendar' | 'analytics'
-  >(
-    initialTab as
-      | 'overview'
-      | 'approvals'
-      | 'upcoming'
-      | 'calendar'
-      | 'analytics'
+  const [activeTab, setActiveTab] = useState<ClientPortalTab>(
+    initialTab === 'approvals' ? 'upcoming' : initialTab
   );
   const [feedbackPostId, setFeedbackPostId] = useState<string | null>(null);
   const [feedbackNote, setFeedbackNote] = useState('');
@@ -105,25 +113,44 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>('ALL');
 
   // Grouped Review Batch Expansion state (when multiple posts are sent for review at once)
-  const [isReviewBatchExpanded, setIsReviewBatchExpanded] = useState<boolean>(false);
-  const [isApprovedBatchExpanded, setIsApprovedBatchExpanded] = useState<boolean>(true);
+  const [isReviewBatchExpanded, setIsReviewBatchExpanded] = useState<boolean>(
+    initialTab === 'approvals'
+  );
+  const [isApprovedBatchExpanded, setIsApprovedBatchExpanded] = useState<boolean>(false);
 
   // Selected post for Client Post Detail & Feedback Modal
   const [selectedPortalPostId, setSelectedPortalPostId] = useState<string | null>(null);
   const [modalFeedbackText, setModalFeedbackText] = useState<string>('');
 
-  // Clickable Analytics Drill-Down in Client Portal
+  // Selected campaign for Campaign Analytics Pop-up Modal
+  const [selectedCampaignForModal, setSelectedCampaignForModal] =
+    useState<Campaign | null>(null);
+
+  // Clickable Analytics Drill-Down in Client Portal (null = no filter active, click away dismisses)
   const [analyticsDrillDown, setAnalyticsDrillDown] =
-    useState<PortalAnalyticsDrillDown | null>({
-      type: 'all',
-      label: 'All Client Posts',
-    });
+    useState<PortalAnalyticsDrillDown | null>(null);
 
   // Collapsible sections in Client Portal
   const [isCampaignsSectionOpen, setIsCampaignsSectionOpen] = useState<boolean>(true);
   const [isPastPostsSectionOpen, setIsPastPostsSectionOpen] = useState<boolean>(true);
-  const [isAnalyticsSectionOpen, setIsAnalyticsSectionOpen] = useState<boolean>(true);
-  const [expandedPortalCampaignId, setExpandedPortalCampaignId] = useState<string | null>(null);
+  const [expandedPortalCampaignId, setExpandedPortalCampaignId] = useState<string | null>(
+    initialCampaignId
+  );
+
+  React.useEffect(() => {
+    if (initialTab === 'approvals') {
+      setActiveTab('upcoming');
+      setIsReviewBatchExpanded(true);
+    } else {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, client.id]);
+
+  React.useEffect(() => {
+    if (initialCampaignId) {
+      setExpandedPortalCampaignId(initialCampaignId);
+    }
+  }, [initialCampaignId]);
 
   const todayStr = getTodayDateStr();
 
@@ -165,6 +192,15 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
     });
     return derived;
   }, [campaigns, client.id, client.name, clientPosts]);
+
+  React.useEffect(() => {
+    if (initialCampaignId && clientCampaigns.length > 0) {
+      const found = clientCampaigns.find((c) => c.id === initialCampaignId);
+      if (found) {
+        setSelectedCampaignForModal(found);
+      }
+    }
+  }, [initialCampaignId, clientCampaigns]);
 
   // 4-Stage groupings
   const plannedPosts = clientPosts.filter(
@@ -730,13 +766,27 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
     >
       {/* Top Client Portal Banner */}
       <div
-        className={`sticky top-0 z-30 border-b backdrop-blur-md px-4 sm:px-6 py-3 flex items-center justify-between gap-3 ${
+        className={`sticky top-0 z-30 border-b backdrop-blur-md px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 ${
           isDark
             ? 'bg-[#161D25]/95 border-[#25303E]'
             : 'bg-white/95 border-[#E8E4DC]'
         }`}
       >
         <div className="flex items-center gap-3 min-w-0">
+          {!isLockedPortal && onExit && (
+            <button
+              id="exit-client-portal-btn"
+              onClick={onExit}
+              className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
+                isDark
+                  ? 'bg-[#1D242C] border-[#2A3440] text-stone-200 hover:border-[#C44D34]'
+                  : 'bg-[#FAF8F5] border-[#E5DFD3] text-stone-700 hover:border-[#C44D34]'
+              }`}
+              title="Back to All Clients"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+          )}
           <div
             className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-xs shrink-0"
             style={{ backgroundColor: client.color || '#C44D34' }}
@@ -753,195 +803,247 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 <span>Unified Client Portal</span>
               </span>
             </div>
-            <p className="text-[11px] text-stone-400 truncate">
-              {client.handle} • {totalPosts} Posts ({postsDoneSoFar} Approved/Scheduled) •{' '}
-              {clientCampaigns.length}{' '}
-              {clientCampaigns.length === 1 ? 'Active Campaign' : 'Active Campaigns'}
-            </p>
+            <div className="flex items-center gap-2 flex-wrap mt-0.5 text-[11px] text-stone-400">
+              <span>
+                {totalPosts} Posts ({postsDoneSoFar} Approved/Scheduled)
+                {client.notes ? ` • ${client.notes}` : ''}
+              </span>
+            </div>
+
+            {/* Clean Icon-Only Social Channel Redirects + Plus Button */}
+            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+              {(client.socialLinks && client.socialLinks.length > 0
+                ? client.socialLinks
+                : client.socialUrl
+                ? [{ platform: 'Instagram' as const, url: client.socialUrl, label: client.handle }]
+                : []
+              ).map((link, idx) => {
+                const displayLabel = link.label || link.handle;
+                return (
+                  <a
+                    key={`${link.platform}-${idx}`}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className={`w-7 h-7 rounded-lg border flex items-center justify-center transition-all hover:scale-105 ${
+                      isDark
+                        ? 'bg-[#1D242C] border-[#2A3440] text-stone-200 hover:border-[#C44D34]'
+                        : 'bg-[#FAF8F5] border-[#E5DFD3] text-stone-700 hover:border-[#C44D34] shadow-2xs'
+                    }`}
+                    title={`Open ${link.platform}${displayLabel ? ` (${displayLabel})` : ''} in new tab`}
+                  >
+                    <PlatformLogo platform={link.platform} size="sm" showLabel={false} />
+                  </a>
+                );
+              })}
+
+              {!isLockedPortal && onEditClient && (
+                <button
+                  type="button"
+                  onClick={(e) => onEditClient(client, e)}
+                  className={`w-7 h-7 rounded-lg border border-dashed flex items-center justify-center transition-colors cursor-pointer ${
+                    isDark
+                      ? 'border-stone-700 text-stone-400 hover:text-[#C44D34] hover:border-[#C44D34]'
+                      : 'border-stone-300 text-stone-500 hover:text-[#C44D34] hover:border-[#C44D34]'
+                  }`}
+                  title="Add or manage social media links"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="hidden sm:flex items-center">
-            <BrandLogo size="sm" isDark={isDark} />
-          </div>
-          {!isLockedPortal && onExit && (
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {!isLockedPortal && onEditClient && (
             <button
-              id="exit-client-portal-btn"
-              onClick={onExit}
+              id="portal-edit-client-btn"
+              type="button"
+              onClick={(e) => onEditClient(client, e)}
               className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
                 isDark
                   ? 'bg-[#1D242C] border-[#2A3440] text-stone-200 hover:border-[#C44D34]'
-                  : 'bg-[#FAF8F5] border-[#E5DFD3] text-stone-700 hover:border-[#C44D34]'
+                  : 'bg-white border-[#E5DFD3] text-stone-700 hover:border-[#C44D34] shadow-2xs'
               }`}
+              title="Edit client details & manage multiple social account links"
             >
-              <Eye className="w-3.5 h-3.5 text-[#C44D34]" />
-              <span>Back to Studio</span>
+              <Pencil className="w-3.5 h-3.5 text-[#C44D34]" />
+              <span>Edit Client & Links</span>
             </button>
           )}
+
+          {!isLockedPortal && (
+            <button
+              id="portal-share-link-btn"
+              type="button"
+              onClick={() => setIsShareModalOpen(true)}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
+                isDark
+                  ? 'bg-[#1D242C] border-[#2A3440] text-stone-200 hover:border-[#C44D34]'
+                  : 'bg-white border-[#E5DFD3] text-stone-700 hover:border-[#C44D34] shadow-2xs'
+              }`}
+              title="Share Client Portal Link"
+            >
+              <Share2 className="w-3.5 h-3.5 text-[#C44D34]" />
+              <span>Share Portal</span>
+            </button>
+          )}
+
+          {!isLockedPortal && onNewPostForClient && (
+            <button
+              id="portal-new-post-btn"
+              type="button"
+              onClick={() => onNewPostForClient(client.id)}
+              className="px-3.5 py-1.5 rounded-xl bg-[#C44D34] hover:bg-[#A93E27] text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>New Post</span>
+            </button>
+          )}
+
+          <div className="hidden xl:flex items-center ml-1">
+            <BrandLogo size="sm" isDark={isDark} />
+          </div>
         </div>
       </div>
 
       {/* Main Container (Wider max-w-7xl so Full-Page Calendar has plenty of room) */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-5">
-        {/* TOP SUMMARY STRIP: Posts So Far (Synced with Selected Month) + Clean Campaign Running Dates */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 mb-3 tabular-nums">
-          {/* Card 1: Posts So Far for Selected Month */}
-          <div
-            onClick={() => {
-              setAnalyticsDrillDown({ type: 'all', label: 'All Client Posts' });
-              setActiveTab('analytics');
-            }}
-            className={`lg:col-span-4 p-4 rounded-2xl border flex items-center justify-between cursor-pointer hover:border-[#C44D34] transition-all ${
-              isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-            }`}
-          >
-            <div>
-              <div className="text-[10px] font-extrabold uppercase tracking-widest text-stone-400">
-                Posts So Far ({activeSummaryMonthLabel})
-              </div>
-              <div className="text-2xl font-black mt-1 flex items-baseline gap-2">
-                <span>{activeCalendarMonthAllPosts.length}</span>
-                <span className="text-xs font-semibold text-stone-500 dark:text-stone-400">
-                  {activeCalendarMonthAllPosts.length === 1
-                    ? 'post in month'
-                    : 'posts in month'}
-                </span>
-              </div>
-              <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1">
-                {totalPosts} total across all months ({postsDoneSoFar} approved/scheduled)
-              </div>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-[#C44D34]/10 text-[#C44D34] flex items-center justify-center shrink-0">
-              <Layers className="w-5 h-5" />
-            </div>
-          </div>
-
-          {/* Card 2: Campaign Running Dates (Clean without '1 Day') */}
-          <div
-            className={`lg:col-span-8 p-4 rounded-2xl border ${
-              isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-[10px] font-extrabold uppercase tracking-widest text-stone-400 flex items-center gap-1.5">
+        {/* Top 4-Stage Workflow Progress Breakdown Strip (No Stage Boxes) */}
+        <div
+          className={`p-4 rounded-2xl border mb-5 tabular-nums ${
+            isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-stone-500 dark:text-stone-300">
+              4-Stage Workflow Breakdown • {totalPosts} Total Deliverables
+            </span>
+            {clientCampaigns.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-stone-500 dark:text-stone-400">
                 <FolderKanban className="w-3.5 h-3.5 text-[#C44D34]" />
-                <span>Campaign Running Dates ({clientCampaigns.length})</span>
-              </div>
-            </div>
-
-            {clientCampaigns.length === 0 ? (
-              <p className="text-xs text-stone-400 italic py-1">
-                No active campaigns running right now.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {clientCampaigns.map((camp) => {
-                  const campPosts = clientPosts.filter(
-                    (p) =>
-                      (p.campaign || '').toLowerCase() === camp.name.toLowerCase() ||
-                      p.campaignId === camp.id
-                  );
-                  const dur = computeCampaignDuration(
-                    campPosts,
-                    camp.startDate,
-                    camp.endDate
-                  );
-                  const startFormatted = dur.startStr
-                    ? new Date(`${dur.startStr}T00:00:00`).toLocaleDateString(
-                        'en-US',
-                        { month: 'short', day: 'numeric', year: 'numeric' }
-                      )
-                    : 'Not scheduled';
-
-                  return (
-                    <div
-                      key={camp.id}
-                      onClick={() => {
-                        setAnalyticsDrillDown({
-                          type: 'campaign',
-                          campaignName: camp.name,
-                          label: `Campaign: ${camp.name}`,
-                        });
-                        setActiveTab('analytics');
-                      }}
-                      className={`p-3 rounded-xl border flex items-center justify-between gap-2 cursor-pointer hover:border-[#C44D34] transition-colors ${
-                        isDark
-                          ? 'bg-[#161C23] border-[#26313F]'
-                          : 'bg-[#FAF8F5] border-[#ECE8E0]'
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-stone-900 dark:text-white truncate">
-                          {camp.name}
-                        </div>
-                        <div className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
-                          Start Date:{' '}
-                          <strong className="text-stone-800 dark:text-stone-200">
-                            {startFormatted}
-                          </strong>{' '}
-                          • {campPosts.length} {campPosts.length === 1 ? 'post' : 'posts'}
-                        </div>
-                      </div>
-                      {dur.daysSpan > 1 && (
-                        <div className="px-2.5 py-1.5 rounded-xl bg-[#C44D34]/10 text-[#C44D34] text-xs font-black shrink-0 text-right">
-                          <div>{dur.daysSpan} Days</div>
-                          <div className="text-[9px] uppercase tracking-wider opacity-80">
-                            Running
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                <span>
+                  {clientCampaigns.length}{' '}
+                  {clientCampaigns.length === 1 ? 'Active Campaign' : 'Active Campaigns'}
+                </span>
+              </span>
             )}
           </div>
+
+          <div className="w-full h-3.5 rounded-xl bg-stone-100 dark:bg-stone-800 overflow-hidden flex gap-1 p-0.5">
+            {totalPosts === 0 ? (
+              <div className="w-full h-full rounded-lg bg-stone-200 dark:bg-stone-700" />
+            ) : (
+              (
+                [
+                  { status: 'Planned' as PostStatus, count: plannedPosts.length },
+                  { status: 'In review' as PostStatus, count: pendingApprovals.length },
+                  { status: 'Approved' as PostStatus, count: approvedPosts.length },
+                  { status: 'Scheduled' as PostStatus, count: scheduledPosts.length },
+                ] as const
+              ).map((item) => {
+                if (item.count === 0) return null;
+                const pct = Math.round((item.count / totalPosts) * 100);
+                const isSel =
+                  activeTab === 'analytics' &&
+                  analyticsDrillDown?.type === 'stage' &&
+                  analyticsDrillDown.stage === item.status;
+                return (
+                  <button
+                    key={item.status}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (
+                        activeTab === 'analytics' &&
+                        analyticsDrillDown?.type === 'stage' &&
+                        analyticsDrillDown.stage === item.status
+                      ) {
+                        setAnalyticsDrillDown(null);
+                      } else {
+                        setAnalyticsDrillDown({
+                          type: 'stage',
+                          stage: item.status,
+                          label: `Stage: ${item.status}`,
+                        });
+                        setActiveTab('analytics');
+                      }
+                    }}
+                    title={`Filter in Client Analytics by ${item.status}: ${item.count} (${pct}%)`}
+                    className={`h-full first:rounded-l-lg last:rounded-r-lg transition-all cursor-pointer ${
+                      isSel
+                        ? 'ring-2 ring-offset-1 ring-stone-900 dark:ring-white scale-y-105'
+                        : 'hover:opacity-90'
+                    }`}
+                    style={{
+                      width: `${Math.max(pct, 8)}%`,
+                      backgroundColor: STATUS_STYLES[item.status].hex,
+                    }}
+                  />
+                );
+              })
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-4 text-xs text-stone-500 dark:text-stone-400 mt-2.5">
+            {(
+              [
+                { status: 'Planned' as PostStatus, count: plannedPosts.length },
+                { status: 'In review' as PostStatus, count: pendingApprovals.length },
+                { status: 'Approved' as PostStatus, count: approvedPosts.length },
+                { status: 'Scheduled' as PostStatus, count: scheduledPosts.length },
+              ] as const
+            ).map((item) => {
+              const pct = totalPosts > 0 ? Math.round((item.count / totalPosts) * 100) : 0;
+              const isSel =
+                activeTab === 'analytics' &&
+                analyticsDrillDown?.type === 'stage' &&
+                analyticsDrillDown.stage === item.status;
+              return (
+                <button
+                  key={item.status}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (
+                      activeTab === 'analytics' &&
+                      analyticsDrillDown?.type === 'stage' &&
+                      analyticsDrillDown.stage === item.status
+                    ) {
+                      setAnalyticsDrillDown(null);
+                    } else {
+                      setAnalyticsDrillDown({
+                        type: 'stage',
+                        stage: item.status,
+                        label: `Stage: ${item.status}`,
+                      });
+                      setActiveTab('analytics');
+                    }
+                  }}
+                  className={`inline-flex items-center gap-1.5 font-bold cursor-pointer ${
+                    isSel
+                      ? 'text-stone-900 dark:text-white underline underline-offset-4'
+                      : 'hover:text-stone-900 dark:hover:text-white'
+                  }`}
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: STATUS_STYLES[item.status].hex }}
+                  />
+                  <span>{item.status}:</span>
+                  <strong style={{ color: STATUS_STYLES[item.status].hex }}>{item.count}</strong>
+                  <span className="text-[11px] opacity-75">({pct}%)</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Top 4-Stage Summary Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-5 tabular-nums">
-          {(
-            [
-              { status: 'Planned' as PostStatus, count: plannedPosts.length },
-              { status: 'In review' as PostStatus, count: pendingApprovals.length },
-              { status: 'Approved' as PostStatus, count: approvedPosts.length },
-              { status: 'Scheduled' as PostStatus, count: scheduledPosts.length },
-            ] as const
-          ).map((item) => (
-            <button
-              key={item.status}
-              type="button"
-              onClick={() => {
-                if (item.status === 'In review' || item.status === 'Approved') {
-                  setActiveTab('approvals');
-                } else {
-                  setAnalyticsDrillDown({
-                    type: 'stage',
-                    stage: item.status,
-                    label: `Stage: ${item.status}`,
-                  });
-                  setActiveTab('analytics');
-                }
-              }}
-              className={`p-3.5 rounded-2xl border flex items-center justify-between transition-all cursor-pointer hover:border-[#C44D34] ${
-                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-              }`}
-            >
-              <StatusStageBadge status={item.status} size="sm" />
-              <span
-                className="text-xl font-black"
-                style={{ color: STATUS_STYLES[item.status].hex }}
-              >
-                {item.count}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        {/* Navigation Tabs: Overview, Approvals, Month-Wise Posts, Full-Page Calendar, Client Analytics */}
+        {/* Navigation Tabs: Overview, Campaigns, Full Calendar, Monthly Posts (with Approvals), Client Analytics */}
         <div
-          className={`p-1 rounded-2xl border grid grid-cols-2 sm:grid-cols-5 gap-1 ${
+          className={`p-1 rounded-2xl border grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1 ${
             isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
           }`}
         >
@@ -959,27 +1061,16 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
           </button>
 
           <button
-            id="portal-tab-approvals"
-            onClick={() => setActiveTab('approvals')}
+            id="portal-tab-campaigns"
+            onClick={() => setActiveTab('campaigns')}
             className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-              activeTab === 'approvals'
+              activeTab === 'campaigns'
                 ? 'bg-[#C44D34] text-white shadow-xs'
                 : 'text-stone-500 hover:text-stone-900 dark:hover:text-white'
             }`}
           >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Approvals</span>
-            <span
-              className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold tabular-nums ${
-                activeTab === 'approvals'
-                  ? 'bg-white text-[#C44D34]'
-                  : pendingApprovals.length > 0
-                  ? 'bg-amber-500 text-white'
-                  : 'bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300'
-              }`}
-            >
-              {pendingApprovals.length}
-            </span>
+            <FolderKanban className="w-3.5 h-3.5" />
+            <span>Campaigns ({clientCampaigns.length})</span>
           </button>
 
           <button
@@ -1006,6 +1097,18 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
           >
             <List className="w-3.5 h-3.5" />
             <span>Monthly Posts ({clientPosts.length})</span>
+            {pendingApprovals.length > 0 && (
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold tabular-nums ${
+                  activeTab === 'upcoming'
+                    ? 'bg-white text-[#C44D34]'
+                    : 'bg-amber-500 text-white'
+                }`}
+                title={`${pendingApprovals.length} waiting for approval`}
+              >
+                {pendingApprovals.length}
+              </span>
+            )}
           </button>
 
           <button
@@ -1662,276 +1765,120 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        )}
 
-            {/* 5. Collapsible All-Time Analytics Snapshot on Overview */}
+        {/* TAB 2: DEDICATED CAMPAIGNS TAB (Clean Campaign List -> Click to Open Campaign Analytics Pop-up) */}
+        {activeTab === 'campaigns' && (
+          <div className="mt-5 space-y-4 animate-fade-in">
             <div
-              className={`rounded-3xl border shadow-xs overflow-hidden ${
+              className={`p-5 rounded-3xl border shadow-xs ${
                 isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
               }`}
             >
-              <button
-                id="portal-toggle-analytics-section"
-                type="button"
-                onClick={() => setIsAnalyticsSectionOpen((prev) => !prev)}
-                className="w-full p-5 flex items-center justify-between text-left cursor-pointer hover:bg-stone-50/50 dark:hover:bg-stone-800/30 transition-colors"
-              >
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-stone-200/70 dark:border-stone-800">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                    <BarChart3 className="w-4 h-4" />
+                  <div className="w-10 h-10 rounded-xl bg-[#C44D34]/15 text-[#C44D34] flex items-center justify-center shrink-0">
+                    <FolderKanban className="w-5 h-5" />
                   </div>
                   <div>
-                    <h2 className="text-sm font-bold tracking-tight">
-                      All-Time Performance & Pipeline Analytics
+                    <h2 className="text-sm sm:text-base font-bold tracking-tight">
+                      {client.name} — Campaigns ({clientCampaigns.length})
                     </h2>
                     <p className="text-xs text-stone-400 mt-0.5">
-                      Summary of {totalPosts} posts across {platformEntries.length} platforms and{' '}
-                      {clientCampaigns.length} campaigns
+                      Click any campaign below to open its Campaign Analytics pop-up (days running, live posts &amp; upcoming posts)
                     </p>
                   </div>
                 </div>
-                <ChevronDown
-                  className={`w-5 h-5 text-stone-400 transition-transform duration-200 ${
-                    isAnalyticsSectionOpen ? 'rotate-180 text-[#C44D34]' : ''
-                  }`}
-                />
-              </button>
+              </div>
 
-              {isAnalyticsSectionOpen && (
-                <div className="px-5 pb-5 pt-2 border-t border-stone-100 dark:border-stone-800 space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Platform Mix with SVG Logos */}
-                    <div
-                      className={`p-4 rounded-2xl border ${
-                        isDark
-                          ? 'bg-[#161C23] border-[#26313F]'
-                          : 'bg-[#FAF8F5] border-[#ECE8E0]'
-                      }`}
-                    >
-                      <h3 className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-3">
-                        Platform Distribution (Click to View Posts)
-                      </h3>
-                      <div className="space-y-2.5">
-                        {platformEntries.map((item) => (
-                          <button
-                            key={item.platform}
-                            type="button"
-                            onClick={() => {
-                              setAnalyticsDrillDown({
-                                type: 'platform',
-                                platform: item.platform,
-                                label: `Platform: ${item.platform}`,
-                              });
-                              setActiveTab('analytics');
-                            }}
-                            className="w-full text-left group cursor-pointer"
-                          >
-                            <div className="flex items-center justify-between text-xs mb-1">
-                              <PlatformLogo
-                                platform={item.platform}
-                                size="sm"
-                                className="font-semibold group-hover:text-[#C44D34]"
-                              />
-                              <span className="text-stone-400 font-bold tabular-nums">
-                                {item.count} ({item.percent}%)
-                              </span>
-                            </div>
-                            <div className="w-full h-2 rounded-full bg-stone-200 dark:bg-stone-800 overflow-hidden">
-                              <div
-                                className="h-full rounded-full bg-[#C44D34]"
-                                style={{ width: `${item.percent}%` }}
-                              />
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+              {clientCampaigns.length === 0 ? (
+                <p className="text-xs text-stone-400 py-8 text-center">
+                  No campaigns recorded for {client.name} yet.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {clientCampaigns.map((camp) => {
+                    const campPosts = clientPosts.filter(
+                      (p) =>
+                        (p.campaign || '').toLowerCase() === camp.name.toLowerCase() ||
+                        p.campaignId === camp.id ||
+                        (!p.campaign && !p.campaignId && camp.clientId === client.id)
+                    );
+                    const totalCampPosts = campPosts.length;
+                    const livePostsCount = campPosts.filter(
+                      (p) => p.date < todayStr
+                    ).length;
+                    const upcomingPostsCount = campPosts.filter(
+                      (p) => p.date >= todayStr
+                    ).length;
+                    const duration = computeCampaignDuration(
+                      campPosts,
+                      camp.startDate,
+                      camp.endDate
+                    );
 
-                    {/* Content Pillar Mix */}
-                    <div
-                      className={`p-4 rounded-2xl border ${
-                        isDark
-                          ? 'bg-[#161C23] border-[#26313F]'
-                          : 'bg-[#FAF8F5] border-[#ECE8E0]'
-                      }`}
-                    >
-                      <h3 className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-3">
-                        Content Category Breakdown (Click to View Posts)
-                      </h3>
-                      <div className="space-y-2.5">
-                        {categoryEntries.map((item) => {
-                          const catColor =
-                            CATEGORY_COLORS[
-                              item.category as keyof typeof CATEGORY_COLORS
-                            ] || CATEGORY_COLORS.POST;
-                          return (
-                            <button
-                              key={item.category}
-                              type="button"
-                              onClick={() => {
-                                setAnalyticsDrillDown({
-                                  type: 'category',
-                                  category: item.category,
-                                  label: `Category: ${item.category}`,
-                                });
-                                setActiveTab('analytics');
-                              }}
-                              className="w-full text-left group cursor-pointer"
-                            >
-                              <div className="flex items-center justify-between text-xs mb-1">
-                                <span className="font-semibold group-hover:text-[#C44D34]">
-                                  {item.category}
-                                </span>
-                                <span className="text-stone-400 font-bold tabular-nums">
-                                  {item.count} ({item.percent}%)
-                                </span>
-                              </div>
-                              <div className="w-full h-2 rounded-full bg-stone-200 dark:bg-stone-800 overflow-hidden">
-                                <div
-                                  className="h-full rounded-full"
-                                  style={{
-                                    width: `${item.percent}%`,
-                                    backgroundColor: catColor.dot,
-                                  }}
-                                />
-                              </div>
-                            </button>
-                          );
-                        })}
+                    return (
+                      <div
+                        key={camp.id}
+                        id={`portal-campaign-card-${camp.id}`}
+                        onClick={() => setSelectedCampaignForModal(camp)}
+                        className={`p-4 rounded-2xl border transition-all cursor-pointer group flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                          isDark
+                            ? 'bg-[#161C23] border-[#26313F] hover:border-[#C44D34]'
+                            : 'bg-[#FAF8F5] border-[#ECE8E0] hover:border-[#C44D34]'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="text-sm sm:text-base font-bold text-stone-900 dark:text-white group-hover:text-[#C44D34] transition-colors">
+                              {camp.name}
+                            </h3>
+                            <span className="text-stone-300 dark:text-stone-700">•</span>
+                            <span className="text-xs font-bold text-[#C44D34] tabular-nums">
+                              {totalCampPosts} {totalCampPosts === 1 ? 'post' : 'posts'}
+                            </span>
+                            <span className="text-stone-300 dark:text-stone-700">•</span>
+                            <span className="text-xs font-semibold text-stone-500 dark:text-stone-400 tabular-nums">
+                              {duration.daysSpan > 0
+                                ? `${duration.daysSpan} days (${duration.label})`
+                                : duration.label}
+                            </span>
+                          </div>
+
+                          {camp.description && (
+                            <p className="text-xs text-stone-500 dark:text-stone-400 mt-1 line-clamp-1">
+                              {camp.description}
+                            </p>
+                          )}
+
+                          <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] font-semibold tabular-nums">
+                            <span className="text-emerald-600 dark:text-emerald-400">
+                              Gone Live: <strong>{livePostsCount}</strong>
+                            </span>
+                            <span className="text-stone-300 dark:text-stone-700">•</span>
+                            <span className="text-amber-600 dark:text-amber-400">
+                              Upcoming: <strong>{upcomingPostsCount}</strong>
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                          <span className="px-3 py-1.5 rounded-xl bg-[#C44D34]/10 text-[#C44D34] group-hover:bg-[#C44D34] group-hover:text-white text-xs font-bold flex items-center gap-1.5 transition-colors">
+                            <BarChart3 className="w-3.5 h-3.5" />
+                            <span>View Analytics</span>
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* TAB 2: DEDICATED APPROVALS TAB (All In-Review & Approved Posts in One Link) */}
-        {activeTab === 'approvals' && (
-          <div className="mt-5 space-y-5 animate-fade-in">
-            {/* Waiting for Approval Section */}
-            <div
-              className={`rounded-3xl border shadow-xs overflow-hidden ${
-                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-              }`}
-            >
-              <div className="p-5 border-b border-stone-200/70 dark:border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                    <Clock className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-sm font-bold tracking-tight">
-                        Needs Your Approval ({pendingApprovals.length})
-                      </h2>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                        In Review
-                      </span>
-                    </div>
-                    <p className="text-xs text-stone-400 mt-0.5">
-                      Review each post below and click Approve Post or leave Client Feedback for revisions.
-                    </p>
-                  </div>
-                </div>
-
-                {pendingApprovals.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      pendingApprovals.forEach((p) => onApprovePost(p.id));
-                    }}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer self-start sm:self-center shrink-0"
-                  >
-                    <CheckCheck className="w-4 h-4" />
-                    <span>Approve All ({pendingApprovals.length})</span>
-                  </button>
-                )}
-              </div>
-
-              <div className="p-4 sm:p-5">
-                {pendingApprovals.length === 0 ? (
-                  <div
-                    className={`p-6 rounded-2xl border text-center ${
-                      isDark
-                        ? 'bg-[#161C23] border-[#242E3A]'
-                        : 'bg-[#FAF8F5] border-[#ECE8E0]'
-                    }`}
-                  >
-                    <Check className="w-8 h-8 text-emerald-500 mx-auto mb-1.5" />
-                    <p className="text-xs font-bold">
-                      No posts currently waiting for your approval!
-                    </p>
-                    <p className="text-[11px] text-stone-400 mt-0.5">
-                      All submitted posts have been reviewed. You can still edit your decision on approved posts below.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {pendingApprovals.map((post) =>
-                      renderClientPostReviewCard(post, false)
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Approved Posts Section (Editable Choice Anytime) */}
-            <div
-              className={`rounded-3xl border shadow-xs overflow-hidden ${
-                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-              }`}
-            >
-              <div
-                onClick={() => setIsApprovedBatchExpanded((prev) => !prev)}
-                className="p-5 border-b border-stone-200/70 dark:border-stone-800 flex items-center justify-between gap-3 cursor-pointer"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                    <Check className="w-5 h-5 stroke-[2.5]" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-sm font-bold tracking-tight">
-                        Approved Posts ({approvedPosts.length})
-                      </h2>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                        Approved
-                      </span>
-                    </div>
-                    <p className="text-xs text-stone-400 mt-0.5">
-                      Need to change your decision or add extra notes? You can request changes on any approved post.
-                    </p>
-                  </div>
-                </div>
-
-                <ChevronDown
-                  className={`w-5 h-5 text-stone-400 transition-transform ${
-                    isApprovedBatchExpanded ? 'rotate-180 text-[#C44D34]' : ''
-                  }`}
-                />
-              </div>
-
-              {isApprovedBatchExpanded && (
-                <div className="p-4 sm:p-5">
-                  {approvedPosts.length === 0 ? (
-                    <p className="text-xs text-stone-400 text-center py-4">
-                      No approved posts yet.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {approvedPosts.map((post) =>
-                        renderClientPostReviewCard(post, true)
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: FULL-PAGE MONTHLY CONTENT CALENDAR (Full post names written below the date) */}
+        {/* TAB 3: FULL-PAGE MONTHLY CONTENT CALENDAR (Compact, Clean Grid + Click Post for Pop-up) */}
         {activeTab === 'calendar' && (
           <div className="mt-5 space-y-4 animate-fade-in">
             <div
@@ -1939,146 +1886,131 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
               }`}
             >
-              {/* Calendar Top Bar + Stage Tabs & Platform Dropdown */}
-              <div className="p-4 sm:p-5 border-b border-stone-200 dark:border-stone-800 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+              {/* Clean Calendar Top Bar with Dropdown Filters */}
+              <div className="p-4 sm:p-5 border-b border-stone-200 dark:border-stone-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
                   <div>
                     <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#C44D34]">
-                      {client.name} • Full-Page Content Calendar
+                      {client.name} • Content Calendar
                     </span>
-                    <h2 className="text-xl sm:text-2xl font-black tracking-tight mt-0.5">
-                      {calendarMonthName}
-                    </h2>
-                  </div>
-
-                  {/* Month Selector Pills + Prev/Next */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {availableMonths.map((m) => {
-                      const [y, mo] = m.key.split('-').map(Number);
-                      const isActive = y === calendarYear && mo - 1 === calendarMonth;
-                      return (
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <h2 className="text-lg sm:text-xl font-black tracking-tight">
+                        {calendarMonthName}
+                      </h2>
+                      <div className="flex items-center gap-1">
                         <button
-                          key={m.key}
                           type="button"
-                          onClick={() => {
-                            setCalendarYear(y);
-                            setCalendarMonth(mo - 1);
-                          }}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
-                            isActive
-                              ? 'bg-[#C44D34] text-white'
-                              : isDark
-                              ? 'bg-[#161C23] text-stone-300 hover:text-white border border-[#26313F]'
-                              : 'bg-[#FAF8F5] text-stone-700 hover:text-stone-900 border border-[#E8E4DC]'
+                          onClick={handlePrevMonth}
+                          className={`p-1.5 rounded-lg border cursor-pointer ${
+                            isDark
+                              ? 'bg-[#161C23] border-[#26313F] text-stone-200 hover:border-[#C44D34]'
+                              : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-700 hover:border-[#C44D34]'
                           }`}
+                          title="Previous month"
                         >
-                          {m.label} ({m.count})
+                          <ChevronLeft className="w-3.5 h-3.5" />
                         </button>
-                      );
-                    })}
-
-                    <div className="flex items-center gap-1 ml-1">
-                      <button
-                        type="button"
-                        onClick={handlePrevMonth}
-                        className={`p-2 rounded-xl border cursor-pointer ${
-                          isDark
-                            ? 'bg-[#161C23] border-[#26313F] text-stone-200 hover:border-[#C44D34]'
-                            : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-700 hover:border-[#C44D34]'
-                        }`}
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleNextMonth}
-                        className={`p-2 rounded-xl border cursor-pointer ${
-                          isDark
-                            ? 'bg-[#161C23] border-[#26313F] text-stone-200 hover:border-[#C44D34]'
-                            : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-700 hover:border-[#C44D34]'
-                        }`}
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
+                        <button
+                          type="button"
+                          onClick={handleNextMonth}
+                          className={`p-1.5 rounded-lg border cursor-pointer ${
+                            isDark
+                              ? 'bg-[#161C23] border-[#26313F] text-stone-200 hover:border-[#C44D34]'
+                              : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-700 hover:border-[#C44D34]'
+                          }`}
+                          title="Next month"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Stage Tabs (All, Planned, In review, Approved, Scheduled) + Clean Platform Dropdown */}
-                <div className="pt-3 border-t border-stone-200/70 dark:border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => setFilterStage('all')}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
-                        filterStage === 'all'
-                          ? 'bg-[#C44D34] text-white'
-                          : isDark
-                          ? 'bg-[#161C23] text-stone-300 hover:text-white border border-[#26313F]'
-                          : 'bg-[#FAF8F5] text-stone-700 hover:text-stone-900 border border-[#E8E4DC]'
-                      }`}
-                    >
-                      All Stages ({activeCalendarMonthAllPosts.length})
-                    </button>
-                    {(['Planned', 'In review', 'Approved', 'Scheduled'] as PostStatus[]).map(
-                      (st) => {
-                        const stCount = activeCalendarMonthAllPosts.filter(
-                          (p) => normalizePostStatus(p.status) === st
-                        ).length;
-                        return (
-                          <button
-                            key={st}
-                            type="button"
-                            onClick={() =>
-                              setFilterStage((prev) => (prev === st ? 'all' : st))
-                            }
-                            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 border ${
-                              filterStage === st
-                                ? 'border-[#C44D34] ring-1 ring-[#C44D34] bg-[#C44D34]/10'
-                                : isDark
-                                ? 'bg-[#161C23] border-[#26313F] opacity-85 hover:opacity-100'
-                                : 'bg-[#FAF8F5] border-[#E8E4DC] opacity-90 hover:opacity-100'
-                            }`}
-                          >
-                            <StatusStageBadge status={st} size="xs" />
-                            <span className="text-[11px] font-extrabold tabular-nums">
-                              ({stCount})
-                            </span>
-                          </button>
-                        );
-                      }
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <label className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
-                      Platform:
-                    </label>
+                {/* Clean Dropdowns: Month, Stage, Platform */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {availableMonths.length > 0 && (
                     <select
-                      id="portal-calendar-platform-dropdown"
-                      value={filterPlatform}
-                      onChange={(e) => setFilterPlatform(e.target.value)}
+                      value={`${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}`}
+                      onChange={(e) => {
+                        const [y, mo] = e.target.value.split('-').map(Number);
+                        if (y && mo) {
+                          setCalendarYear(y);
+                          setCalendarMonth(mo - 1);
+                        }
+                      }}
                       className={`px-3 py-1.5 rounded-xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#C44D34] cursor-pointer ${
                         isDark
                           ? 'bg-[#161C23] border-[#26313F] text-stone-100'
                           : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-800'
                       }`}
                     >
-                      {['all', 'Instagram', 'LinkedIn', 'YouTube', 'TikTok', 'Twitter', 'Facebook'].map(
-                        (plat) => (
-                          <option key={plat} value={plat}>
-                            {plat === 'all' ? 'All Platforms' : plat}
-                          </option>
-                        )
-                      )}
+                      {availableMonths.map((m) => (
+                        <option key={m.key} value={m.key}>
+                          {m.label} ({m.count})
+                        </option>
+                      ))}
                     </select>
-                  </div>
+                  )}
+
+                  <select
+                    value={filterStage}
+                    onChange={(e) =>
+                      setFilterStage(e.target.value as 'all' | PostStatus)
+                    }
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#C44D34] cursor-pointer ${
+                      isDark
+                        ? 'bg-[#161C23] border-[#26313F] text-stone-100'
+                        : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-800'
+                    }`}
+                  >
+                    <option value="all">
+                      All Stages ({activeCalendarMonthAllPosts.length})
+                    </option>
+                    {(['Planned', 'In review', 'Approved', 'Scheduled'] as PostStatus[]).map(
+                      (st) => {
+                        const stCount = activeCalendarMonthAllPosts.filter(
+                          (p) => normalizePostStatus(p.status) === st
+                        ).length;
+                        return (
+                          <option key={st} value={st}>
+                            {st} ({stCount})
+                          </option>
+                        );
+                      }
+                    )}
+                  </select>
+
+                  <select
+                    id="portal-calendar-platform-dropdown"
+                    value={filterPlatform}
+                    onChange={(e) => setFilterPlatform(e.target.value)}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#C44D34] cursor-pointer ${
+                      isDark
+                        ? 'bg-[#161C23] border-[#26313F] text-stone-100'
+                        : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-800'
+                    }`}
+                  >
+                    {[
+                      'all',
+                      'Instagram',
+                      'LinkedIn',
+                      'YouTube',
+                      'TikTok',
+                      'Twitter',
+                      'Facebook',
+                    ].map((plat) => (
+                      <option key={plat} value={plat}>
+                        {plat === 'all' ? 'All Platforms' : plat}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
               {/* 7-Column Weekday Header */}
               <div
-                className={`grid grid-cols-7 border-b text-center text-xs font-extrabold uppercase tracking-wider ${
+                className={`grid grid-cols-7 border-b text-center text-[11px] font-extrabold uppercase tracking-wider ${
                   isDark
                     ? 'bg-[#161C23] border-[#26313F] text-stone-400'
                     : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-500'
@@ -2087,14 +2019,14 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
                   <div
                     key={day}
-                    className="py-3 border-r last:border-r-0 border-stone-200/60 dark:border-stone-800"
+                    className="py-2.5 border-r last:border-r-0 border-stone-200/60 dark:border-stone-800"
                   >
                     {day}
                   </div>
                 ))}
               </div>
 
-              {/* Full-Page 7-Column Calendar Grid with Drag-and-Drop */}
+              {/* Full-Page 7-Column Calendar Grid with Compact Draggable Post Chips */}
               <div className="grid grid-cols-7">
                 {calendarCells.map((cell, idx) => {
                   const isToday = cell.dateStr === todayStr;
@@ -2133,7 +2065,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                           onReschedulePost(postId, cell.dateStr);
                         }
                       }}
-                      className={`min-h-[160px] sm:min-h-[195px] p-2 sm:p-3 border-b border-r last:border-r-0 transition-all flex flex-col ${
+                      className={`min-h-[115px] sm:min-h-[135px] p-1.5 sm:p-2 border-b border-r last:border-r-0 transition-all flex flex-col overflow-hidden ${
                         !cell.dayNumber
                           ? isDark
                             ? 'bg-[#141A21]/60 border-[#242E3A]'
@@ -2147,39 +2079,29 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     >
                       {cell.dayNumber && (
                         <>
-                          {/* Date Number Header */}
-                          <div className="flex items-center justify-between mb-2">
+                          {/* Compact Date Number Header */}
+                          <div className="flex items-center justify-between mb-1 px-0.5">
                             <span
                               className={
                                 isToday
-                                  ? `inline-flex items-center justify-center font-black text-base sm:text-lg leading-none tabular-nums ${
-                                      isDark ? 'text-white' : 'text-[#181E24]'
-                                    }`
-                                  : 'inline-flex items-center justify-center w-7 h-7 text-xs sm:text-sm font-black tabular-nums text-stone-700 dark:text-stone-300'
-                              }
-                              style={
-                                isToday
-                                  ? {
-                                      textShadow: isDark
-                                        ? '0 1px 0 #000000, 1px 2px 0 rgba(196,77,52,0.75)'
-                                        : '0 1px 0 #ffffff, 1px 2px 0 rgba(196,77,52,0.35)',
-                                    }
-                                  : undefined
+                                  ? 'inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#C44D34] text-white font-extrabold text-[11px] leading-none tabular-nums'
+                                  : 'text-[11px] font-bold tabular-nums text-stone-500 dark:text-stone-400'
                               }
                             >
                               {cell.dayNumber}
                             </span>
                             {cell.posts.length > 0 && (
-                              <span className="text-[10px] font-bold text-[#C44D34] tabular-nums">
-                                {cell.posts.length} {cell.posts.length === 1 ? 'post' : 'posts'}
+                              <span className="text-[9px] font-bold text-stone-400 tabular-nums">
+                                {cell.posts.length}
                               </span>
                             )}
                           </div>
 
-                          {/* Draggable Full Post Names Written Below the Date */}
-                          <div className="space-y-2 flex-1">
+                          {/* Compact Draggable Post Pills inside Grid Cell */}
+                          <div className="space-y-1 flex-1 overflow-y-auto pr-0.5">
                             {cell.posts.map((post) => {
-                              const stStyle = STATUS_STYLES[normalizePostStatus(post.status)];
+                              const stStyle =
+                                STATUS_STYLES[normalizePostStatus(post.status)];
                               const isDragging = draggedPostId === post.id;
                               return (
                                 <div
@@ -2195,39 +2117,28 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                                     setDragOverDateStr(null);
                                   }}
                                   onClick={() => setSelectedPortalPostId(post.id)}
-                                  title="Click to inspect • Drag to another date to reschedule"
-                                  className={`p-2.5 rounded-xl border text-left cursor-grab active:cursor-grabbing transition-all hover:border-[#C44D34] shadow-2xs ${
+                                  title={`${post.title} (${post.platform} • ${post.status}) — Click to open post pop-up, or drag to reschedule`}
+                                  className={`px-1.5 py-1 rounded-lg border text-left cursor-grab active:cursor-grabbing transition-all hover:border-[#C44D34] ${
                                     isDragging ? 'opacity-45 scale-95' : ''
                                   } ${
                                     isDark
                                       ? 'bg-[#151C24] border-[#2B3746]'
                                       : 'bg-[#FAF8F5] border-[#E5DFD3]'
                                   }`}
+                                  style={{
+                                    borderLeftWidth: '3px',
+                                    borderLeftColor: stStyle.hex,
+                                  }}
                                 >
-                                  <div className="flex items-center justify-between gap-1 mb-1">
-                                    <div className="flex items-center gap-1">
-                                      <GripVertical className="w-3 h-3 text-stone-400 shrink-0" />
-                                      <PlatformLogo
-                                        platform={post.platform}
-                                        size="xs"
-                                        showLabel={false}
-                                      />
-                                    </div>
-                                    <span
-                                      className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded"
-                                      style={{
-                                        color: stStyle.hex,
-                                        backgroundColor: `${stStyle.hex}18`,
-                                      }}
-                                    >
-                                      {post.status}
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    <PlatformLogo
+                                      platform={post.platform}
+                                      size="xs"
+                                      showLabel={false}
+                                    />
+                                    <span className="text-[10px] font-bold text-stone-800 dark:text-stone-100 truncate leading-tight">
+                                      {post.title}
                                     </span>
-                                  </div>
-                                  <div className="text-xs font-bold text-stone-900 dark:text-white leading-snug break-words">
-                                    {post.title}
-                                  </div>
-                                  <div className="text-[10px] font-semibold text-[#C44D34] mt-1 uppercase tracking-wider">
-                                    {post.category}
                                   </div>
                                 </div>
                               );
@@ -2243,99 +2154,210 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
           </div>
         )}
 
-        {/* TAB 4: MONTH-WISE POSTS BREAKDOWN (July, August, September, October, etc.) */}
+        {/* TAB 4: MONTHLY POSTS & APPROVALS (Combined Approvals on Top + Clean Dropdown Filters) */}
         {activeTab === 'upcoming' && (
           <div className="mt-5 space-y-4 animate-fade-in">
-            {/* Month Filter Pills */}
-            {availableMonths.length > 0 && (
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                <button
-                  onClick={() => setSelectedMonthFilter('ALL')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
-                    selectedMonthFilter === 'ALL'
-                      ? 'bg-[#C44D34] text-white'
-                      : isDark
-                      ? 'bg-[#1D242C] text-stone-300 hover:text-white border border-[#2A3440]'
-                      : 'bg-white text-stone-700 hover:text-stone-900 border border-[#E8E4DC]'
-                  }`}
+            {/* Top Approvals Accordion Bar: Click to view & approve all posts waiting for review */}
+            <div
+              className={`rounded-3xl border shadow-xs overflow-hidden ${
+                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+              }`}
+            >
+              <div
+                onClick={() => setIsReviewBatchExpanded((prev) => !prev)}
+                className={`p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-colors ${
+                  isReviewBatchExpanded
+                    ? isDark
+                      ? 'bg-[#212B36] border-b border-[#2A3440]'
+                      : 'bg-[#FAF7F2] border-b border-[#E8E4DC]'
+                    : isDark
+                    ? 'hover:bg-[#212B36]/60'
+                    : 'hover:bg-stone-50/80'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-sm font-bold tracking-tight">
+                        Approvals — Posts Waiting for Review ({pendingApprovals.length})
+                      </h2>
+                      {pendingApprovals.length > 0 && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                          Action Needed
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-stone-400 mt-0.5">
+                      Click to {isReviewBatchExpanded ? 'hide' : 'view'} posts waiting for approval
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  className="flex items-center gap-2 self-end sm:self-center shrink-0"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  All Months ({clientPosts.length})
-                </button>
-                {availableMonths.map((m) => (
+                  {pendingApprovals.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        pendingApprovals.forEach((p) => onApprovePost(p.id));
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                    >
+                      <CheckCheck className="w-3.5 h-3.5" />
+                      <span>Approve All ({pendingApprovals.length})</span>
+                    </button>
+                  )}
                   <button
-                    key={m.key}
-                    onClick={() => setSelectedMonthFilter(m.key)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
-                      selectedMonthFilter === m.key
-                        ? 'bg-[#C44D34] text-white'
-                        : isDark
-                        ? 'bg-[#1D242C] text-stone-300 hover:text-white border border-[#2A3440]'
-                        : 'bg-white text-stone-700 hover:text-stone-900 border border-[#E8E4DC]'
+                    type="button"
+                    onClick={() => setIsReviewBatchExpanded((prev) => !prev)}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
+                      isDark
+                        ? 'bg-[#161D25] border-[#2C3846] text-stone-200'
+                        : 'bg-white border-stone-200 text-stone-700'
                     }`}
                   >
-                    {m.label} ({m.count})
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-              {/* 4-Stage Filter Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                <button
-                  onClick={() => setFilterStage('all')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
-                    filterStage === 'all'
-                      ? 'bg-[#181E24] text-white dark:bg-stone-100 dark:text-stone-900'
-                      : isDark
-                      ? 'bg-[#1D242C] text-stone-400'
-                      : 'bg-white text-stone-600'
-                  }`}
-                >
-                  All Stages ({clientPosts.length})
-                </button>
-                {(['Planned', 'In review', 'Approved', 'Scheduled'] as PostStatus[]).map(
-                  (st) => (
-                    <button
-                      key={st}
-                      onClick={() => setFilterStage(st)}
-                      className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${
-                        filterStage === st
-                          ? 'ring-2 ring-[#C44D34] bg-[#C44D34]/10'
-                          : isDark
-                          ? 'bg-[#1D242C] opacity-80 hover:opacity-100'
-                          : 'bg-white opacity-85 hover:opacity-100'
+                    <span>
+                      {isReviewBatchExpanded
+                        ? 'Hide Approvals'
+                        : `Show Approvals (${pendingApprovals.length})`}
+                    </span>
+                    <ChevronDown
+                      className={`w-4 h-4 transition-transform ${
+                        isReviewBatchExpanded ? 'rotate-180 text-[#C44D34]' : ''
                       }`}
-                    >
-                      <StatusStageBadge status={st} size="xs" />
-                    </button>
-                  )
-                )}
+                    />
+                  </button>
+                </div>
               </div>
 
-              {/* Platform Filter Dropdown */}
-              <div className="flex items-center gap-2 shrink-0">
-                <label className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
-                  Platform:
-                </label>
-                <select
-                  value={filterPlatform}
-                  onChange={(e) => setFilterPlatform(e.target.value)}
-                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#C44D34] cursor-pointer ${
-                    isDark
-                      ? 'bg-[#1D242C] border-[#2A3440] text-stone-100'
-                      : 'bg-white border-[#E8E4DC] text-stone-800'
-                  }`}
-                >
-                  {['all', 'Instagram', 'LinkedIn', 'YouTube', 'TikTok', 'Twitter', 'Facebook'].map(
-                    (plat) => (
+              {isReviewBatchExpanded && (
+                <div className="p-4 sm:p-5 space-y-3 animate-fade-in">
+                  {pendingApprovals.length === 0 ? (
+                    <p className="text-xs text-stone-400 text-center py-3">
+                      All posts have been reviewed! No pending approvals right now.
+                    </p>
+                  ) : (
+                    pendingApprovals.map((post) =>
+                      renderClientPostReviewCard(post, false)
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Clean 3-Dropdown Filter Bar: Month Dropdown, Stage Dropdown, Platform Dropdown */}
+            <div
+              className={`p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-3 ${
+                isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+              }`}
+            >
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Month Dropdown */}
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+                    Month:
+                  </label>
+                  <select
+                    value={selectedMonthFilter}
+                    onChange={(e) => setSelectedMonthFilter(e.target.value)}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#C44D34] cursor-pointer ${
+                      isDark
+                        ? 'bg-[#161C23] border-[#26313F] text-stone-100'
+                        : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-800'
+                    }`}
+                  >
+                    <option value="ALL">All Months ({clientPosts.length})</option>
+                    {availableMonths.map((m) => (
+                      <option key={m.key} value={m.key}>
+                        {m.label} ({m.count})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Stage Dropdown */}
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+                    Stage:
+                  </label>
+                  <select
+                    value={filterStage}
+                    onChange={(e) =>
+                      setFilterStage(e.target.value as 'all' | PostStatus)
+                    }
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#C44D34] cursor-pointer ${
+                      isDark
+                        ? 'bg-[#161C23] border-[#26313F] text-stone-100'
+                        : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-800'
+                    }`}
+                  >
+                    <option value="all">All Stages ({clientPosts.length})</option>
+                    {(
+                      ['Planned', 'In review', 'Approved', 'Scheduled'] as PostStatus[]
+                    ).map((st) => {
+                      const count = clientPosts.filter(
+                        (p) => normalizePostStatus(p.status) === st
+                      ).length;
+                      return (
+                        <option key={st} value={st}>
+                          {st} ({count})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {/* Platform Dropdown */}
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+                    Platform:
+                  </label>
+                  <select
+                    value={filterPlatform}
+                    onChange={(e) => setFilterPlatform(e.target.value)}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#C44D34] cursor-pointer ${
+                      isDark
+                        ? 'bg-[#161C23] border-[#26313F] text-stone-100'
+                        : 'bg-[#FAF8F5] border-[#E8E4DC] text-stone-800'
+                    }`}
+                  >
+                    {[
+                      'all',
+                      'Instagram',
+                      'LinkedIn',
+                      'YouTube',
+                      'TikTok',
+                      'Twitter',
+                      'Facebook',
+                    ].map((plat) => (
                       <option key={plat} value={plat}>
                         {plat === 'all' ? 'All Platforms' : plat}
                       </option>
-                    )
-                  )}
-                </select>
+                    ))}
+                  </select>
+                </div>
               </div>
+
+              {(selectedMonthFilter !== 'ALL' ||
+                filterStage !== 'all' ||
+                filterPlatform !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMonthFilter('ALL');
+                    setFilterStage('all');
+                    setFilterPlatform('all');
+                  }}
+                  className="text-xs font-bold text-[#C44D34] hover:underline cursor-pointer"
+                >
+                  Reset Filters
+                </button>
+              )}
             </div>
 
             {/* Month-Wise Grouped Post Cards */}
@@ -2346,7 +2368,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 }`}
               >
                 <p className="text-xs text-stone-400">
-                  No posts match the selected month or stage filter.
+                  No posts match the selected month, stage, or platform filter.
                 </p>
               </div>
             ) : (
@@ -2510,220 +2532,297 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
           </div>
         )}
 
-        {/* TAB 5: ALL ANALYTICS FOR THIS CLIENT (CLICKABLE METRICS) */}
+        {/* TAB 5: CLIENT ANALYTICS (Clean Non-Repetitive View: Platform Distribution + Content Pillar Pie Chart + Filtered Posts) */}
         {activeTab === 'analytics' && (
-          <div className="mt-5 space-y-4 animate-fade-in">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-xs font-extrabold uppercase tracking-wider text-[#C44D34]">
-                Click any metric card, platform, category, or campaign to view matching posts
-              </span>
-            </div>
-
-            {/* 4-Stage Summary Cards (Clickable) */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 tabular-nums">
-              <button
-                type="button"
-                onClick={() =>
-                  setAnalyticsDrillDown({ type: 'all', label: 'All Client Posts' })
-                }
-                className={`p-4 rounded-2xl border text-center transition-all cursor-pointer ${
-                  analyticsDrillDown?.type === 'all'
-                    ? 'border-[#C44D34] ring-1 ring-[#C44D34]/30 bg-[#C44D34]/[0.05]'
-                    : isDark
-                    ? 'bg-[#1D242C] border-[#2A3440]'
-                    : 'bg-white border-[#E8E4DC]'
-                }`}
-              >
-                <div className="text-2xl font-black text-stone-900 dark:text-white">
-                  {totalPosts}
-                </div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mt-1">
-                  TOTAL POSTS
-                </div>
-              </button>
-
-              {(
-                [
-                  { status: 'Planned' as PostStatus, count: plannedPosts.length },
-                  { status: 'In review' as PostStatus, count: pendingApprovals.length },
-                  { status: 'Approved' as PostStatus, count: approvedPosts.length },
-                  { status: 'Scheduled' as PostStatus, count: scheduledPosts.length },
-                ] as const
-              ).map((st) => {
-                const isSel =
-                  analyticsDrillDown?.type === 'stage' &&
-                  analyticsDrillDown.stage === st.status;
-                return (
-                  <button
-                    key={st.status}
-                    type="button"
-                    onClick={() =>
-                      setAnalyticsDrillDown({
-                        type: 'stage',
-                        stage: st.status,
-                        label: `Stage: ${st.status}`,
-                      })
-                    }
-                    className={`p-4 rounded-2xl border text-center transition-all cursor-pointer ${
-                      isSel
-                        ? 'border-[#C44D34] ring-1 ring-[#C44D34]/30 bg-[#C44D34]/[0.05]'
-                        : isDark
-                        ? 'bg-[#1D242C] border-[#2A3440]'
-                        : 'bg-white border-[#E8E4DC]'
-                    }`}
-                  >
-                    <div
-                      className="text-2xl font-black"
-                      style={{ color: STATUS_STYLES[st.status].hex }}
-                    >
-                      {st.count}
-                    </div>
-                    <div className="mt-1.5 flex justify-center">
-                      <StatusStageBadge status={st.status} size="xs" />
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Platform Distribution (Clickable, using SVG Brand Logos) */}
-              <div
-                className={`p-5 rounded-3xl border ${
-                  isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-                }`}
-              >
-                <h3 className="text-xs font-bold uppercase tracking-wider text-stone-400 mb-4">
-                  Platform Distribution (Click to View Posts)
-                </h3>
-                <div className="space-y-3">
-                  {platformEntries.map((item) => {
-                    const isSel =
-                      analyticsDrillDown?.type === 'platform' &&
-                      analyticsDrillDown.platform === item.platform;
-                    return (
-                      <button
-                        key={item.platform}
-                        type="button"
-                        onClick={() =>
-                          setAnalyticsDrillDown({
-                            type: 'platform',
-                            platform: item.platform,
-                            label: `Platform: ${item.platform}`,
-                          })
-                        }
-                        className={`w-full text-left p-2 rounded-xl border transition-all cursor-pointer ${
-                          isSel
-                            ? 'border-[#C44D34] bg-[#C44D34]/10'
-                            : 'border-transparent hover:bg-stone-50 dark:hover:bg-stone-800/40'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between text-xs mb-1">
-                          <PlatformLogo
-                            platform={item.platform}
-                            size="sm"
-                            className="font-semibold"
-                          />
-                          <span className="text-stone-400 font-bold tabular-nums">
-                            {item.count} posts ({item.percent}%)
-                          </span>
-                        </div>
-                        <div className="w-full h-2.5 rounded-full bg-stone-100 dark:bg-stone-800 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-[#C44D34]"
-                            style={{ width: `${item.percent}%` }}
-                          />
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Category Breakdown (Clickable) */}
-              <div
-                className={`p-5 rounded-3xl border ${
-                  isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
-                }`}
-              >
-                <h3 className="text-xs font-bold uppercase tracking-wider text-stone-400 mb-4">
-                  Content Pillar Mix (Click to View Posts)
-                </h3>
-                <div className="space-y-3">
-                  {categoryEntries.map((item) => {
-                    const catColor =
-                      CATEGORY_COLORS[item.category as keyof typeof CATEGORY_COLORS] ||
-                      CATEGORY_COLORS.POST;
-                    const isSel =
-                      analyticsDrillDown?.type === 'category' &&
-                      analyticsDrillDown.category === item.category;
-                    return (
-                      <button
-                        key={item.category}
-                        type="button"
-                        onClick={() =>
-                          setAnalyticsDrillDown({
-                            type: 'category',
-                            category: item.category,
-                            label: `Category: ${item.category}`,
-                          })
-                        }
-                        className={`w-full text-left p-2 rounded-xl border transition-all cursor-pointer ${
-                          isSel
-                            ? 'border-[#C44D34] bg-[#C44D34]/10'
-                            : 'border-transparent hover:bg-stone-50 dark:hover:bg-stone-800/40'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between text-xs mb-1">
-                          <span className="font-semibold">{item.category}</span>
-                          <span className="text-stone-400 font-bold tabular-nums">
-                            {item.count} posts ({item.percent}%)
-                          </span>
-                        </div>
-                        <div className="w-full h-2.5 rounded-full bg-stone-100 dark:bg-stone-800 overflow-hidden">
-                          <div
-                            className="h-full rounded-full"
-                            style={{
-                              width: `${item.percent}%`,
-                              backgroundColor: catColor.dot,
-                            }}
-                          />
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Drill-Down Posts List in Client Portal Analytics */}
+          <div
+            onClick={() => setAnalyticsDrillDown(null)}
+            className="mt-5 space-y-4 animate-fade-in"
+          >
+            {/* Active One-Click Filter Pill Banner */}
             {analyticsDrillDown && (
               <div
-                className={`p-5 rounded-3xl border ${
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl border border-[#C44D34]/30 bg-[#C44D34]/10 text-xs"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-[#C44D34]">Active Filter:</span>
+                  <span className="font-bold text-stone-900 dark:text-white">
+                    {analyticsDrillDown.label}
+                  </span>
+                  <span className="text-stone-500 dark:text-stone-400 tabular-nums">
+                    ({portalAnalyticsPosts.length} matching post
+                    {portalAnalyticsPosts.length === 1 ? '' : 's'})
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAnalyticsDrillDown(null)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#C44D34] text-white font-bold text-[11px] hover:bg-[#A93E27] transition-colors cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                  <span>Clear Filter</span>
+                </button>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Platform Distribution (One-Click Filter, same look as main Analytics page) */}
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className={`p-5 rounded-3xl border shadow-xs ${
+                  isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-stone-500 dark:text-stone-300">
+                    Platform Distribution (Click to Filter)
+                  </h3>
+                  {analyticsDrillDown?.type === 'platform' && (
+                    <button
+                      type="button"
+                      onClick={() => setAnalyticsDrillDown(null)}
+                      className="text-[11px] font-bold text-[#C44D34] hover:underline cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+
+                {platformEntries.length === 0 ? (
+                  <p className="text-xs text-stone-400 py-8 text-center">
+                    No platform data available yet.
+                  </p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {platformEntries.map((item) => {
+                      const isSel =
+                        analyticsDrillDown?.type === 'platform' &&
+                        analyticsDrillDown.platform === item.platform;
+                      return (
+                        <button
+                          key={item.platform}
+                          type="button"
+                          onClick={() => {
+                            if (isSel) {
+                              setAnalyticsDrillDown(null);
+                            } else {
+                              setAnalyticsDrillDown({
+                                type: 'platform',
+                                platform: item.platform,
+                                label: `Platform: ${item.platform}`,
+                              });
+                            }
+                          }}
+                          className={`w-full text-left p-2.5 rounded-2xl border transition-all cursor-pointer ${
+                            isSel
+                              ? 'border-[#C44D34] bg-[#C44D34]/10'
+                              : isDark
+                              ? 'border-transparent hover:bg-stone-800/50'
+                              : 'border-transparent hover:bg-stone-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between text-xs mb-1.5">
+                            <PlatformLogo
+                              platform={item.platform}
+                              size="sm"
+                              className="font-bold"
+                            />
+                            <span className="text-stone-400 font-bold tabular-nums">
+                              {item.count} posts ({item.percent}%)
+                            </span>
+                          </div>
+                          <div className="w-full h-2.5 rounded-full bg-stone-100 dark:bg-stone-800 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-[#C44D34] transition-all duration-300"
+                              style={{ width: `${item.percent}%` }}
+                            />
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Content Pillar Mix — Interactive SVG Pie Chart */}
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className={`p-5 rounded-3xl border shadow-xs ${
+                  isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-stone-500 dark:text-stone-300">
+                    Content Pillars (Click Slice or Legend to Filter)
+                  </h3>
+                  {analyticsDrillDown?.type === 'category' && (
+                    <button
+                      type="button"
+                      onClick={() => setAnalyticsDrillDown(null)}
+                      className="text-[11px] font-bold text-[#C44D34] hover:underline cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+
+                {categoryEntries.length === 0 || totalPosts === 0 ? (
+                  <p className="text-xs text-stone-400 py-8 text-center">
+                    No content pillar data available yet.
+                  </p>
+                ) : (
+                  <div className="flex flex-col sm:flex-row items-center gap-5">
+                    {/* Interactive SVG Donut / Pie Chart */}
+                    <div className="relative w-36 h-36 shrink-0 flex items-center justify-center">
+                      <svg
+                        viewBox="0 0 36 36"
+                        className="w-36 h-36 -rotate-90 overflow-visible"
+                      >
+                        <circle
+                          cx="18"
+                          cy="18"
+                          r="15.9155"
+                          fill="transparent"
+                          stroke={isDark ? '#26313F' : '#F1EDE6'}
+                          strokeWidth="5.2"
+                        />
+                        {(() => {
+                          let cumulativePercent = 0;
+                          return categoryEntries.map((item) => {
+                            const rawPct =
+                              totalPosts > 0 ? (item.count / totalPosts) * 100 : 0;
+                            const strokeDasharray = `${rawPct} ${100 - rawPct}`;
+                            const strokeDashoffset = -cumulativePercent;
+                            cumulativePercent += rawPct;
+                            const catColor =
+                              CATEGORY_COLORS[
+                                item.category as keyof typeof CATEGORY_COLORS
+                              ] || CATEGORY_COLORS.POST;
+                            const isSel =
+                              analyticsDrillDown?.type === 'category' &&
+                              analyticsDrillDown.category === item.category;
+
+                            return (
+                              <circle
+                                key={item.category}
+                                cx="18"
+                                cy="18"
+                                r="15.9155"
+                                fill="transparent"
+                                stroke={catColor.dot}
+                                strokeWidth={isSel ? '6.6' : '5.2'}
+                                strokeDasharray={strokeDasharray}
+                                strokeDashoffset={strokeDashoffset}
+                                onClick={() => {
+                                  if (isSel) {
+                                    setAnalyticsDrillDown(null);
+                                  } else {
+                                    setAnalyticsDrillDown({
+                                      type: 'category',
+                                      category: item.category,
+                                      label: `Pillar: ${item.category}`,
+                                    });
+                                  }
+                                }}
+                                className="cursor-pointer transition-all duration-200 hover:opacity-85"
+                              >
+                                <title>{`${item.category}: ${item.count} posts (${item.percent}%)`}</title>
+                              </circle>
+                            );
+                          });
+                        })()}
+                      </svg>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
+                        <span className="text-lg font-black tabular-nums leading-none">
+                          {analyticsDrillDown?.type === 'category'
+                            ? portalAnalyticsPosts.length
+                            : totalPosts}
+                        </span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-stone-400 mt-0.5">
+                          {analyticsDrillDown?.type === 'category'
+                            ? analyticsDrillDown.category
+                            : 'Total Posts'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Interactive Legend */}
+                    <div className="flex-1 w-full space-y-1.5">
+                      {categoryEntries.map((item) => {
+                        const catColor =
+                          CATEGORY_COLORS[
+                            item.category as keyof typeof CATEGORY_COLORS
+                          ] || CATEGORY_COLORS.POST;
+                        const isSel =
+                          analyticsDrillDown?.type === 'category' &&
+                          analyticsDrillDown.category === item.category;
+                        return (
+                          <button
+                            key={item.category}
+                            type="button"
+                            onClick={() => {
+                              if (isSel) {
+                                setAnalyticsDrillDown(null);
+                              } else {
+                                setAnalyticsDrillDown({
+                                  type: 'category',
+                                  category: item.category,
+                                  label: `Pillar: ${item.category}`,
+                                });
+                              }
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border text-xs transition-all cursor-pointer ${
+                              isSel
+                                ? 'border-[#C44D34] bg-[#C44D34]/10 font-bold'
+                                : isDark
+                                ? 'border-transparent hover:bg-stone-800/50'
+                                : 'border-transparent hover:bg-stone-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="w-3 h-3 rounded-full shrink-0"
+                                style={{ backgroundColor: catColor.dot }}
+                              />
+                              <span className="font-bold">{item.category}</span>
+                            </div>
+                            <span className="text-stone-400 font-bold tabular-nums">
+                              {item.count} ({item.percent}%)
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Filtered Posts List (Shown automatically when a stage, platform, or pillar is clicked; click away to dismiss) */}
+            {analyticsDrillDown && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className={`p-5 rounded-3xl border shadow-xs animate-fade-in ${
                   isDark ? 'bg-[#1D242C] border-[#2A3440]' : 'bg-white border-[#E8E4DC]'
                 }`}
               >
                 <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-stone-200 dark:border-stone-800">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-extrabold uppercase tracking-wider text-[#C44D34]">
-                      Posts for:
+                      Filtered Posts:
                     </span>
                     <span className="text-sm font-bold">{analyticsDrillDown.label}</span>
                     <span className="text-xs text-stone-400 font-bold tabular-nums">
                       ({portalAnalyticsPosts.length})
                     </span>
                   </div>
-                  {analyticsDrillDown.type !== 'all' && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAnalyticsDrillDown({ type: 'all', label: 'All Client Posts' })
-                      }
-                      className="text-xs font-bold text-[#C44D34] hover:underline cursor-pointer"
-                    >
-                      Show All
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setAnalyticsDrillDown(null)}
+                    className="text-xs font-bold text-[#C44D34] hover:underline cursor-pointer"
+                  >
+                    Close Filter
+                  </button>
                 </div>
 
                 {portalAnalyticsPosts.length === 0 ? (
@@ -2804,13 +2903,33 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                   {selectedPortalPost.date}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedPortalPostId(null)}
-                className="p-1.5 rounded-xl text-stone-400 hover:text-stone-700 dark:hover:text-white cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {!isLockedPortal && onEditPost && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const postToEdit = selectedPortalPost;
+                      setSelectedPortalPostId(null);
+                      onEditPost(postToEdit);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                      isDark
+                        ? 'bg-[#1D242C] border-[#2C3949] text-stone-200 hover:border-[#C44D34]'
+                        : 'bg-white border-stone-200 text-stone-700 hover:border-[#C44D34]'
+                    }`}
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-[#C44D34]" />
+                    <span>Edit Post</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedPortalPostId(null)}
+                  className="p-1.5 rounded-xl text-stone-400 hover:text-stone-700 dark:hover:text-white cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Scrollable Body */}
@@ -3066,6 +3185,234 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Campaign Analytics Pop-up Modal */}
+      {selectedCampaignForModal &&
+        (() => {
+          const modalCamp = selectedCampaignForModal;
+          const campPosts = clientPosts.filter(
+            (p) =>
+              (p.campaign || '').toLowerCase() === modalCamp.name.toLowerCase() ||
+              p.campaignId === modalCamp.id ||
+              (!p.campaign && !p.campaignId && modalCamp.clientId === client.id)
+          );
+          const duration = computeCampaignDuration(
+            campPosts,
+            modalCamp.startDate,
+            modalCamp.endDate
+          );
+          const livePosts = campPosts
+            .filter((p) => p.date < todayStr)
+            .sort((a, b) => b.date.localeCompare(a.date));
+          const upcomingPosts = campPosts
+            .filter((p) => p.date >= todayStr)
+            .sort((a, b) => a.date.localeCompare(b.date));
+
+          return (
+            <div
+              id="campaign-analytics-modal"
+              onClick={() => setSelectedCampaignForModal(null)}
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-fade-in"
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className={`w-full max-w-2xl max-h-[90vh] rounded-3xl border shadow-2xl flex flex-col overflow-hidden ${
+                  isDark
+                    ? 'bg-[#1A222C] border-[#2C3949] text-stone-100'
+                    : 'bg-white border-[#E5DFD3] text-[#1E252B]'
+                }`}
+              >
+                {/* Modal Header */}
+                <div
+                  className={`px-5 py-4 border-b flex items-center justify-between gap-3 ${
+                    isDark ? 'bg-[#151C24] border-[#263240]' : 'bg-[#FAF7F2] border-[#E8E4DC]'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#C44D34]">
+                      Campaign Analytics • {client.name}
+                    </span>
+                    <h3 className="text-base sm:text-lg font-bold truncate mt-0.5">
+                      {modalCamp.name}
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCampaignForModal(null)}
+                    className="p-1.5 rounded-xl text-stone-400 hover:text-stone-700 dark:hover:text-white cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Modal Body */}
+                <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                  {modalCamp.description && (
+                    <p className="text-xs text-stone-500 dark:text-stone-400">
+                      {modalCamp.description}
+                    </p>
+                  )}
+
+                  {/* Summary Metrics Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 tabular-nums">
+                    <div
+                      className={`p-3 rounded-2xl border ${
+                        isDark
+                          ? 'bg-[#151C24] border-[#26313F]'
+                          : 'bg-[#FAF8F5] border-[#ECE8E0]'
+                      }`}
+                    >
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                        Total Posts
+                      </div>
+                      <div className="text-lg font-black mt-0.5">{campPosts.length}</div>
+                    </div>
+
+                    <div
+                      className={`p-3 rounded-2xl border ${
+                        isDark
+                          ? 'bg-[#151C24] border-[#26313F]'
+                          : 'bg-[#FAF8F5] border-[#ECE8E0]'
+                      }`}
+                    >
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                        Days Running
+                      </div>
+                      <div className="text-lg font-black text-[#C44D34] mt-0.5">
+                        {duration.daysSpan > 0 ? `${duration.daysSpan} Days` : '—'}
+                      </div>
+                      <div className="text-[10px] text-stone-400 truncate">
+                        {duration.label}
+                      </div>
+                    </div>
+
+                    <div
+                      className={`p-3 rounded-2xl border ${
+                        isDark
+                          ? 'bg-[#151C24] border-[#26313F]'
+                          : 'bg-[#FAF8F5] border-[#ECE8E0]'
+                      }`}
+                    >
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                        Gone Live
+                      </div>
+                      <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                        {livePosts.length}
+                      </div>
+                    </div>
+
+                    <div
+                      className={`p-3 rounded-2xl border ${
+                        isDark
+                          ? 'bg-[#151C24] border-[#26313F]'
+                          : 'bg-[#FAF8F5] border-[#ECE8E0]'
+                      }`}
+                    >
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                        Upcoming
+                      </div>
+                      <div className="text-lg font-black text-amber-600 dark:text-amber-400 mt-0.5">
+                        {upcomingPosts.length}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Posts Gone Live */}
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                      Posts Gone Live ({livePosts.length})
+                    </h4>
+                    {livePosts.length === 0 ? (
+                      <p className="text-xs text-stone-400 py-2">
+                        No posts have gone live for this campaign yet.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {livePosts.map((post) => (
+                          <div
+                            key={post.id}
+                            onClick={() => {
+                              setSelectedCampaignForModal(null);
+                              setSelectedPortalPostId(post.id);
+                            }}
+                            className={`p-3 rounded-2xl border flex items-center justify-between gap-2 text-xs cursor-pointer hover:border-[#C44D34] transition-all ${
+                              isDark
+                                ? 'bg-[#151C24] border-[#26313F]'
+                                : 'bg-[#FAF8F5] border-[#ECE8E0]'
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="font-bold truncate">{post.title}</div>
+                              <div className="text-[11px] text-stone-400 flex items-center gap-1.5 mt-0.5">
+                                <PlatformLogo platform={post.platform} size="xs" />
+                                <span>•</span>
+                                <span>{post.category}</span>
+                                <span>•</span>
+                                <span className="tabular-nums">{post.date}</span>
+                              </div>
+                            </div>
+                            <StatusStageBadge status={post.status} size="xs" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upcoming Posts */}
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                      Upcoming Posts ({upcomingPosts.length})
+                    </h4>
+                    {upcomingPosts.length === 0 ? (
+                      <p className="text-xs text-stone-400 py-2">
+                        No upcoming posts scheduled for this campaign.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {upcomingPosts.map((post) => (
+                          <div
+                            key={post.id}
+                            onClick={() => {
+                              setSelectedCampaignForModal(null);
+                              setSelectedPortalPostId(post.id);
+                            }}
+                            className={`p-3 rounded-2xl border flex items-center justify-between gap-2 text-xs cursor-pointer hover:border-[#C44D34] transition-all ${
+                              isDark
+                                ? 'bg-[#151C24] border-[#26313F]'
+                                : 'bg-[#FAF8F5] border-[#ECE8E0]'
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="font-bold truncate">{post.title}</div>
+                              <div className="text-[11px] text-stone-400 flex items-center gap-1.5 mt-0.5">
+                                <PlatformLogo platform={post.platform} size="xs" />
+                                <span>•</span>
+                                <span>{post.category}</span>
+                                <span>•</span>
+                                <span className="tabular-nums">{post.date}</span>
+                              </div>
+                            </div>
+                            <StatusStageBadge status={post.status} size="xs" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+      {/* Share Client Portal Link Modal */}
+      {isShareModalOpen && (
+        <ClientShareModal
+          client={client}
+          posts={clientPosts}
+          onClose={() => setIsShareModalOpen(false)}
+          isDark={isDark}
+        />
       )}
     </div>
   );
