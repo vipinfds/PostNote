@@ -1300,6 +1300,15 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
+  // Bind to 0.0.0.0:PORT immediately so Cloud Run health checks succeed right away
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
+    console.log(`[Multi-AI Hub] MCP (Claude/Cursor), OpenAPI (ChatGPT), and Gemini Copilot ready`);
+    if (process.env.ENABLE_AUTO_TUNNEL === 'true') {
+      initializeActiveTunnel();
+    }
+  });
+
   // Global permissive CORS headers for Claude browser connections and external tools
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
@@ -2955,6 +2964,8 @@ ${text}
   const isProdRuntime =
     hasBuiltDist &&
     (process.env.NODE_ENV === 'production' ||
+      Boolean(process.env.K_SERVICE) ||
+      Boolean(process.env.K_REVISION) ||
       process.argv[1]?.includes('server.cjs') ||
       !process.argv[1]?.endsWith('server.ts'));
 
@@ -3002,14 +3013,6 @@ ${text}
       });
     }
   }
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
-    console.log(`[Multi-AI Hub] MCP (Claude/Cursor), OpenAPI (ChatGPT), and Gemini Copilot ready`);
-    if (process.env.ENABLE_AUTO_TUNNEL === 'true') {
-      initializeActiveTunnel();
-    }
-  });
 }
 
 process.on('uncaughtException', (err) => {

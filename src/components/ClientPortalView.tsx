@@ -193,14 +193,41 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
     return derived;
   }, [campaigns, client.id, client.name, clientPosts]);
 
+  const openedInitialCampaignRef = React.useRef<string | null>(null);
+
   React.useEffect(() => {
-    if (initialCampaignId && clientCampaigns.length > 0) {
+    if (!initialCampaignId) {
+      openedInitialCampaignRef.current = null;
+      return;
+    }
+    if (
+      openedInitialCampaignRef.current !== initialCampaignId &&
+      clientCampaigns.length > 0
+    ) {
       const found = clientCampaigns.find((c) => c.id === initialCampaignId);
       if (found) {
+        openedInitialCampaignRef.current = initialCampaignId;
         setSelectedCampaignForModal(found);
       }
     }
   }, [initialCampaignId, clientCampaigns]);
+
+  // Allow Escape key to close any open modal or analytics drill-down
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selectedCampaignForModal) {
+          setSelectedCampaignForModal(null);
+        } else if (selectedPortalPostId) {
+          setSelectedPortalPostId(null);
+        } else if (analyticsDrillDown) {
+          setAnalyticsDrillDown(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedCampaignForModal, selectedPortalPostId, analyticsDrillDown]);
 
   // 4-Stage groupings
   const plannedPosts = clientPosts.filter(
@@ -3359,51 +3386,66 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     )}
                   </div>
 
-                  {/* Upcoming Posts */}
-                  <div className="space-y-2">
-                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                      Upcoming Posts ({upcomingPosts.length})
-                    </h4>
-                    {upcomingPosts.length === 0 ? (
-                      <p className="text-xs text-stone-400 py-2">
-                        No upcoming posts scheduled for this campaign.
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {upcomingPosts.map((post) => (
-                          <div
-                            key={post.id}
-                            onClick={() => {
-                              setSelectedCampaignForModal(null);
-                              setSelectedPortalPostId(post.id);
-                            }}
-                            className={`p-3 rounded-2xl border flex items-center justify-between gap-2 text-xs cursor-pointer hover:border-[#C44D34] transition-all ${
-                              isDark
-                                ? 'bg-[#151C24] border-[#26313F]'
-                                : 'bg-[#FAF8F5] border-[#ECE8E0]'
-                            }`}
-                          >
-                            <div className="min-w-0">
-                              <div className="font-bold truncate">{post.title}</div>
-                              <div className="text-[11px] text-stone-400 flex items-center gap-1.5 mt-0.5">
-                                <PlatformLogo platform={post.platform} size="xs" />
-                                <span>•</span>
-                                <span>{post.category}</span>
-                                <span>•</span>
-                                <span className="tabular-nums">{post.date}</span>
+                    {/* Upcoming Posts */}
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                        Upcoming Posts ({upcomingPosts.length})
+                      </h4>
+                      {upcomingPosts.length === 0 ? (
+                        <p className="text-xs text-stone-400 py-2">
+                          No upcoming posts scheduled for this campaign.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {upcomingPosts.map((post) => (
+                            <div
+                              key={post.id}
+                              onClick={() => {
+                                setSelectedCampaignForModal(null);
+                                setSelectedPortalPostId(post.id);
+                              }}
+                              className={`p-3 rounded-2xl border flex items-center justify-between gap-2 text-xs cursor-pointer hover:border-[#C44D34] transition-all ${
+                                isDark
+                                  ? 'bg-[#151C24] border-[#26313F]'
+                                  : 'bg-[#FAF8F5] border-[#ECE8E0]'
+                              }`}
+                            >
+                              <div className="min-w-0">
+                                <div className="font-bold truncate">{post.title}</div>
+                                <div className="text-[11px] text-stone-400 flex items-center gap-1.5 mt-0.5">
+                                  <PlatformLogo platform={post.platform} size="xs" />
+                                  <span>•</span>
+                                  <span>{post.category}</span>
+                                  <span>•</span>
+                                  <span className="tabular-nums">{post.date}</span>
+                                </div>
                               </div>
+                              <StatusStageBadge status={post.status} size="xs" />
                             </div>
-                            <StatusStageBadge status={post.status} size="xs" />
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Modal Footer with Close Button */}
+                  <div
+                    className={`px-5 py-3 border-t flex items-center justify-end ${
+                      isDark ? 'bg-[#151C24] border-[#263240]' : 'bg-[#FAF7F2] border-[#E8E4DC]'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCampaignForModal(null)}
+                      className="px-4 py-2 rounded-xl bg-[#181E24] hover:bg-black dark:bg-stone-100 dark:hover:bg-white text-white dark:text-stone-900 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      Close Analytics
+                    </button>
                   </div>
                 </div>
               </div>
-            </div>
-          );
-        })()}
+            );
+          })()}
 
       {/* Share Client Portal Link Modal */}
       {isShareModalOpen && (

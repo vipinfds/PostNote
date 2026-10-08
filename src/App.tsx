@@ -1059,6 +1059,15 @@ export default function App() {
     }
   };
 
+  const handleReorderClients = (reorderedClients: Client[]) => {
+    if (myRole === 'Viewer') {
+      showToast('Viewers have read-only access');
+      return;
+    }
+    setClients(reorderedClients);
+    showToast('Client order saved');
+  };
+
   // Ideas handlers
   const handleAddToCalendar = (idea: Idea) => {
     if (myRole === 'Viewer') {
@@ -1812,6 +1821,7 @@ export default function App() {
             setIsClientModalOpen(true);
           }}
           onDeleteClient={handleDeleteClient}
+          onReorderClients={handleReorderClients}
           onNewPostForClient={(cId) => handleOpenNewPost(undefined, cId)}
           onSaveCampaign={handleSaveCampaign}
           onEditPost={handleEditPost}

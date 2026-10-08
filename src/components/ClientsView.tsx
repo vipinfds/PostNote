@@ -15,8 +15,10 @@ import {
   ExternalLink,
   CheckCircle2,
   ChevronRight,
+  ChevronDown,
   Link as LinkIcon,
   X,
+  GripVertical,
 } from 'lucide-react';
 import { Client, Post, SubscriptionState, PostStatus, Campaign, CampaignExternalLink } from '../types';
 import { PLANS } from '../data/pricingData';
@@ -40,6 +42,7 @@ interface ClientsViewProps {
   onOpenNewClientModal: () => void;
   onEditClient: (client: Client, e: React.MouseEvent) => void;
   onDeleteClient: (clientId: string, e: React.MouseEvent) => void;
+  onReorderClients?: (reorderedClients: Client[]) => void;
   onNewPostForClient?: (clientId: string) => void;
   onSaveCampaign?: (campaign: Omit<Campaign, 'id'> & { id?: string }) => void;
   onEditPost?: (post: Post) => void;
@@ -61,6 +64,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   onOpenNewClientModal,
   onEditClient,
   onDeleteClient,
+  onReorderClients,
   onNewPostForClient,
   onSaveCampaign,
   onEditPost,
@@ -71,6 +75,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [sectionTab, setSectionTab] = useState<'clients' | 'campaigns'>('clients');
   const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
+  const [draggedClientId, setDraggedClientId] = useState<string | null>(null);
+  const [dragOverClientId, setDragOverClientId] = useState<string | null>(null);
 
   // Campaign creation / edit modal state
   const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
@@ -245,6 +251,22 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       (camp.clientName && camp.clientName.toLowerCase().includes(query))
     );
   });
+
+  const handleClientDrop = (targetClientId: string) => {
+    const sourceId = draggedClientId;
+    setDraggedClientId(null);
+    setDragOverClientId(null);
+    if (!sourceId || sourceId === targetClientId || !onReorderClients) return;
+
+    const fromIndex = clients.findIndex((c) => c.id === sourceId);
+    const toIndex = clients.findIndex((c) => c.id === targetClientId);
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const updated = [...clients];
+    const [moved] = updated.splice(fromIndex, 1);
+    updated.splice(toIndex, 0, moved);
+    onReorderClients(updated);
+  };
 
   return (
     <div
@@ -513,20 +535,69 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 ? [{ platform: 'Instagram' as const, url: client.socialUrl }]
                 : [];
 
+            const isBeingDragged = draggedClientId === client.id;
+            const isDropTarget = dragOverClientId === client.id && draggedClientId !== client.id;
+
             return (
               <div
                 key={client.id}
                 id={`client-row-${client.id}`}
+                draggable={Boolean(onReorderClients)}
+                onDragStart={(e) => {
+                  setDraggedClientId(client.id);
+                  e.dataTransfer.setData('text/plain', client.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragOver={(e) => {
+                  if (!onReorderClients) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  if (dragOverClientId !== client.id) {
+                    setDragOverClientId(client.id);
+                  }
+                }}
+                onDragEnter={(e) => {
+                  if (!onReorderClients) return;
+                  e.preventDefault();
+                  setDragOverClientId(client.id);
+                }}
+                onDragLeave={() => {
+                  if (dragOverClientId === client.id) {
+                    setDragOverClientId(null);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleClientDrop(client.id);
+                }}
+                onDragEnd={() => {
+                  setDraggedClientId(null);
+                  setDragOverClientId(null);
+                }}
                 onClick={() => onSelectClient(client, 'overview')}
                 className={`p-4 sm:p-5 rounded-3xl border shadow-xs transition-all duration-150 cursor-pointer group ${
-                  isDark
+                  isBeingDragged ? 'opacity-50 scale-[0.99]' : ''
+                } ${
+                  isDropTarget
+                    ? 'ring-2 ring-[#C44D34] border-[#C44D34]'
+                    : isDark
                     ? 'bg-[#1D242C] border-[#2A3440] hover:bg-[#222B35] hover:border-[#C44D34]/60'
                     : 'bg-white border-[#E8E4DC] hover:border-[#C44D34]/60 hover:shadow-sm'
                 }`}
               >
-                {/* LINE 1: Client Avatar + Client Name + Delete */}
+                {/* LINE 1: Drag Handle + Client Avatar + Client Name + Delete */}
                 <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {onReorderClients && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1 -ml-1 rounded-lg text-stone-400 hover:text-[#C44D34] cursor-grab active:cursor-grabbing shrink-0 transition-colors"
+                        title="Drag and drop to reorder client"
+                      >
+                        <GripVertical className="w-4 h-4" />
+                      </div>
+                    )}
                     <div
                       className="w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm text-white shrink-0 shadow-xs"
                       style={{ backgroundColor: client.color || '#C44D34' }}
@@ -776,21 +847,70 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 ? [{ platform: 'Instagram' as const, url: client.socialUrl }]
                 : [];
 
+            const isBeingDragged = draggedClientId === client.id;
+            const isDropTarget = dragOverClientId === client.id && draggedClientId !== client.id;
+
             return (
               <div
                 key={client.id}
                 id={`client-card-${client.id}`}
+                draggable={Boolean(onReorderClients)}
+                onDragStart={(e) => {
+                  setDraggedClientId(client.id);
+                  e.dataTransfer.setData('text/plain', client.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragOver={(e) => {
+                  if (!onReorderClients) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  if (dragOverClientId !== client.id) {
+                    setDragOverClientId(client.id);
+                  }
+                }}
+                onDragEnter={(e) => {
+                  if (!onReorderClients) return;
+                  e.preventDefault();
+                  setDragOverClientId(client.id);
+                }}
+                onDragLeave={() => {
+                  if (dragOverClientId === client.id) {
+                    setDragOverClientId(null);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleClientDrop(client.id);
+                }}
+                onDragEnd={() => {
+                  setDraggedClientId(null);
+                  setDragOverClientId(null);
+                }}
                 onClick={() => onSelectClient(client, 'overview')}
                 className={`p-5 rounded-3xl border shadow-xs hover:border-[#C44D34] transition-all cursor-pointer group flex flex-col justify-between ${
-                  isDark
+                  isBeingDragged ? 'opacity-50 scale-[0.98]' : ''
+                } ${
+                  isDropTarget
+                    ? 'ring-2 ring-[#C44D34] border-[#C44D34]'
+                    : isDark
                     ? 'bg-[#1D242C] border-[#2A3440] hover:bg-[#222B34]'
                     : 'bg-white border-[#E8E4DC] hover:shadow-sm'
                 }`}
               >
                 <div>
-                  {/* LINE 1: Client Name */}
+                  {/* LINE 1: Drag Handle + Client Name */}
                   <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      {onReorderClients && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="p-1 -ml-1 rounded-lg text-stone-400 hover:text-[#C44D34] cursor-grab active:cursor-grabbing shrink-0 transition-colors"
+                          title="Drag and drop to reorder client"
+                        >
+                          <GripVertical className="w-4 h-4" />
+                        </div>
+                      )}
                       <div
                         className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-xs"
                         style={{ backgroundColor: client.color || '#C44D34' }}
@@ -1024,16 +1144,24 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 camp.endDate
               );
 
+              const isExpanded = expandedCampaignId === camp.id;
+              const livePosts = campaignPosts
+                .filter((p) => p.date < todayStr)
+                .sort((a, b) => b.date.localeCompare(a.date));
+              const upcomingPosts = campaignPosts
+                .filter((p) => p.date >= todayStr)
+                .sort((a, b) => a.date.localeCompare(b.date));
+
               return (
                 <div
                   key={camp.id}
-                  onClick={() => {
-                    if (client) {
-                      onSelectClient(client, 'campaigns', camp.id);
-                    }
-                  }}
+                  onClick={() => setExpandedCampaignId(isExpanded ? null : camp.id)}
                   className={`p-4 sm:p-5 rounded-2xl border shadow-xs transition-all cursor-pointer group ${
-                    isDark
+                    isExpanded
+                      ? isDark
+                        ? 'bg-[#1D242C] border-[#C44D34]'
+                        : 'bg-white border-[#C44D34]'
+                      : isDark
                       ? 'bg-[#1D242C] border-[#2A3440] hover:border-[#C44D34]'
                       : 'bg-white border-[#E8E4DC] hover:border-[#C44D34]'
                   }`}
@@ -1050,7 +1178,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           e.stopPropagation();
                           if (client) onSelectClient(client, 'campaigns', camp.id);
                         }}
-                        className="font-bold text-stone-600 dark:text-stone-300 hover:text-[#C44D34] uppercase tracking-wider text-[10px] cursor-pointer"
+                        className="font-bold text-stone-600 dark:text-stone-300 hover:text-[#C44D34] uppercase tracking-wider text-[10px] cursor-pointer hover:underline"
+                        title="Open Client Page Campaigns tab"
                       >
                         {client ? client.name : camp.clientName || 'All Clients'}
                       </button>
@@ -1072,11 +1201,39 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      <span className="text-[11px] font-bold text-[#C44D34] flex items-center gap-1">
-                        <FolderKanban className="w-3.5 h-3.5" />
-                        <span>Open Campaign in Client Page</span>
-                      </span>
-                      <ChevronRight className="w-4 h-4 text-stone-400 group-hover:translate-x-0.5 transition-transform" />
+                      {client && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectClient(client, 'campaigns', camp.id);
+                          }}
+                          className="px-2.5 py-1 rounded-xl border border-stone-200 dark:border-stone-700 hover:border-[#C44D34] text-[11px] font-bold text-stone-600 dark:text-stone-300 hover:text-[#C44D34] flex items-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <FolderKanban className="w-3 h-3 text-[#C44D34]" />
+                          <span>Client Page</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedCampaignId(isExpanded ? null : camp.id);
+                        }}
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer ${
+                          isExpanded
+                            ? 'bg-[#C44D34] text-white'
+                            : 'bg-[#C44D34]/10 text-[#C44D34] hover:bg-[#C44D34] hover:text-white'
+                        }`}
+                      >
+                        <BarChart3 className="w-3.5 h-3.5" />
+                        <span>{isExpanded ? 'Hide Analytics' : 'View Analytics'}</span>
+                        <ChevronDown
+                          className={`w-3.5 h-3.5 transition-transform ${
+                            isExpanded ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </button>
                     </div>
                   </div>
 
@@ -1165,6 +1322,104 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       {scheduledCount}
                     </span>
                   </div>
+
+                  {/* Collapsible Campaign Analytics Panel (Click to open or close) */}
+                  {isExpanded && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="mt-4 pt-4 border-t border-stone-200 dark:border-stone-800 space-y-4 animate-fade-in"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-[#C44D34]">
+                          Campaign Analytics — {camp.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedCampaignId(null)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>Close Analytics</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 tabular-nums">
+                        <div
+                          className={`p-3 rounded-xl border ${
+                            isDark ? 'bg-[#161E27] border-[#263240]' : 'bg-[#FAF8F5] border-[#E8E2D8]'
+                          }`}
+                        >
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                            Total Posts
+                          </div>
+                          <div className="text-lg font-black mt-0.5">{totalCampPosts}</div>
+                        </div>
+
+                        <div
+                          className={`p-3 rounded-xl border ${
+                            isDark ? 'bg-[#161E27] border-[#263240]' : 'bg-[#FAF8F5] border-[#E8E2D8]'
+                          }`}
+                        >
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                            Days Running
+                          </div>
+                          <div className="text-lg font-black text-[#C44D34] mt-0.5">
+                            {durationInfo.daysSpan > 0 ? `${durationInfo.daysSpan} Days` : '—'}
+                          </div>
+                        </div>
+
+                        <div
+                          className={`p-3 rounded-xl border ${
+                            isDark ? 'bg-[#161E27] border-[#263240]' : 'bg-[#FAF8F5] border-[#E8E2D8]'
+                          }`}
+                        >
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                            Gone Live
+                          </div>
+                          <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                            {livePosts.length}
+                          </div>
+                        </div>
+
+                        <div
+                          className={`p-3 rounded-xl border ${
+                            isDark ? 'bg-[#161E27] border-[#263240]' : 'bg-[#FAF8F5] border-[#E8E2D8]'
+                          }`}
+                        >
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                            Upcoming
+                          </div>
+                          <div className="text-lg font-black text-amber-600 dark:text-amber-400 mt-0.5">
+                            {upcomingPosts.length}
+                          </div>
+                        </div>
+                      </div>
+
+                      {campaignPosts.length > 0 && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {campaignPosts.map((p) => (
+                            <div
+                              key={p.id}
+                              onClick={() => onEditPost && onEditPost(p)}
+                              className={`p-3 rounded-xl border flex items-center justify-between text-xs cursor-pointer hover:border-[#C44D34] transition-all ${
+                                isDark
+                                  ? 'bg-[#161E27] border-[#2A3646]'
+                                  : 'bg-stone-50 border-stone-200'
+                              }`}
+                            >
+                              <div className="min-w-0 pr-2">
+                                <div className="font-bold truncate">{p.title}</div>
+                                <div className="text-[10px] text-stone-400 mt-0.5 tabular-nums">
+                                  {p.date} · {p.platform}
+                                </div>
+                              </div>
+                              <StatusStageBadge status={p.status} size="xs" />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })

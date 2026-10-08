@@ -925,16 +925,10 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                     }`}
                   >
                     <div
-                      onClick={() => {
-                        if (client && onSelectClientCampaign) {
-                          onSelectClientCampaign(client, camp.id);
-                        } else {
-                          setExpandedCampaignId(isExpanded ? null : camp.id);
-                        }
-                      }}
+                      onClick={() => setExpandedCampaignId(isExpanded ? null : camp.id)}
                       className="cursor-pointer"
                     >
-                      {/* Top row: Client + Duration + Edit + Open Campaign */}
+                      {/* Top row: Client + Duration + Edit + Toggle Analytics / Open Campaign */}
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs mb-1.5">
                         <div className="flex items-center gap-2">
                           <span
@@ -949,7 +943,8 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                                 onSelectClientCampaign(client, camp.id);
                               }
                             }}
-                            className="font-bold text-stone-600 dark:text-stone-300 hover:text-[#C44D34] uppercase tracking-wider text-[10px] cursor-pointer"
+                            className="font-bold text-stone-600 dark:text-stone-300 hover:text-[#C44D34] uppercase tracking-wider text-[10px] cursor-pointer hover:underline"
+                            title="Open Client Page Campaigns tab"
                           >
                             {client ? client.name : camp.clientName || 'All Clients'}
                           </button>
@@ -971,15 +966,39 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
                           )}
-                          <span className="text-[11px] font-bold text-[#C44D34] flex items-center gap-1">
-                            <FolderKanban className="w-3.5 h-3.5" />
-                            <span>Open Campaign Page</span>
-                          </span>
-                          <ChevronRight
-                            className={`w-4 h-4 text-stone-400 transition-transform ${
-                              isExpanded ? 'rotate-90' : ''
+                          {client && onSelectClientCampaign && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectClientCampaign(client, camp.id);
+                              }}
+                              className="px-2.5 py-1 rounded-xl border border-stone-200 dark:border-stone-700 hover:border-[#C44D34] text-[11px] font-bold text-stone-600 dark:text-stone-300 hover:text-[#C44D34] flex items-center gap-1 transition-colors cursor-pointer"
+                            >
+                              <FolderKanban className="w-3 h-3 text-[#C44D34]" />
+                              <span>Client Page</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedCampaignId(isExpanded ? null : camp.id);
+                            }}
+                            className={`px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer ${
+                              isExpanded
+                                ? 'bg-[#C44D34] text-white'
+                                : 'bg-[#C44D34]/10 text-[#C44D34] hover:bg-[#C44D34] hover:text-white'
                             }`}
-                          />
+                          >
+                            <BarChart3 className="w-3.5 h-3.5" />
+                            <span>{isExpanded ? 'Hide Analytics' : 'View Analytics'}</span>
+                            <ChevronDown
+                              className={`w-3.5 h-3.5 transition-transform ${
+                                isExpanded ? 'rotate-180' : ''
+                              }`}
+                            />
+                          </button>
                         </div>
                       </div>
 
@@ -1076,7 +1095,24 @@ export const ContentOverviewView: React.FC<ContentOverviewViewProps> = ({
                         EXPANDED CAMPAIGN ANALYTICS, DURATION, LINKS & POSTS
                         ========================================================= */}
                     {isExpanded && (
-                      <div className="mt-4 pt-4 border-t border-stone-200 dark:border-stone-800 space-y-4 animate-fade-in">
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="mt-4 pt-4 border-t border-stone-200 dark:border-stone-800 space-y-4 animate-fade-in"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-extrabold uppercase tracking-wider text-[#C44D34]">
+                            Campaign Analytics — {camp.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedCampaignId(null)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 text-xs font-bold transition-colors cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                            <span>Close Analytics</span>
+                          </button>
+                        </div>
+
                         {/* Analytics KPI Grid */}
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                           <div
